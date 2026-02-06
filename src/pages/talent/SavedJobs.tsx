@@ -1,0 +1,103 @@
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import JobCard from "@/components/dashboard/JobCard";
+import { Button } from "@/components/ui/button";
+import {
+  LayoutDashboard,
+  Search,
+  FileText,
+  Heart,
+  Settings,
+  Trash2,
+} from "lucide-react";
+
+const navItems = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
+  { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
+  { icon: FileText, label: "Applications", path: "/talent/applications" },
+  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
+  { icon: Settings, label: "Settings", path: "/talent/settings" },
+];
+
+const mockSavedJobs = [
+  {
+    id: "1",
+    title: "Senior Frontend Developer",
+    company: "TechCorp AI",
+    location: "San Francisco, CA",
+    type: "hybrid" as const,
+    salary: "$150k - $200k",
+    postedAt: "2 days ago",
+    matchScore: 92,
+    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
+  },
+  {
+    id: "2",
+    title: "Full Stack Engineer",
+    company: "StartupXYZ",
+    location: "New York, NY",
+    type: "remote" as const,
+    salary: "$130k - $170k",
+    postedAt: "5 days ago",
+    matchScore: 87,
+    skills: ["Python", "React", "PostgreSQL", "Docker"],
+  },
+  {
+    id: "3",
+    title: "ML Engineer",
+    company: "AI Labs",
+    location: "Boston, MA",
+    type: "hybrid" as const,
+    salary: "$160k - $210k",
+    postedAt: "1 day ago",
+    matchScore: 68,
+    skills: ["Python", "PyTorch", "TensorFlow", "MLOps"],
+  },
+];
+
+const TalentSavedJobs = () => {
+  return (
+    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-bold text-foreground mb-2">
+            Saved Jobs
+          </h1>
+          <p className="text-muted-foreground">
+            Jobs you've saved for later. Apply before they're gone!
+          </p>
+        </div>
+        <Button variant="outline">
+          <Trash2 className="w-4 h-4 mr-2" />
+          Clear All
+        </Button>
+      </div>
+
+      {mockSavedJobs.length > 0 ? (
+        <div className="space-y-4">
+          {mockSavedJobs.map((job) => (
+            <JobCard
+              key={job.id}
+              {...job}
+              onApply={() => console.log("Apply to", job.id)}
+              onSave={() => console.log("Remove from saved", job.id)}
+              onView={() => console.log("View", job.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Heart className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+            No saved jobs yet
+          </h3>
+          <p className="text-muted-foreground mb-6">
+            Start exploring jobs and save the ones you're interested in.
+          </p>
+          <Button variant="hero">Browse Jobs</Button>
+        </div>
+      )}
+    </DashboardLayout>
+  );
+};
+
+export default TalentSavedJobs;
