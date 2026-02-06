@@ -36,6 +36,10 @@ import RecruiterSettings from "./pages/recruiter/Settings";
 
 // Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
+import AdminOrganizations from "./pages/admin/Organizations";
+import AdminUsers from "./pages/admin/Users";
+import AdminSecurity from "./pages/admin/Security";
+import AdminSettings from "./pages/admin/Settings";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +81,10 @@ const App = () => (
           
           {/* Admin routes */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/organizations" element={<AdminOrganizations />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
+          <Route path="/admin/security" element={<AdminSecurity />} />
+          <Route path="/admin/settings" element={<AdminSettings />} />
           
           {/* Catch-all */}
           <Route path="*" element={<NotFound />} />
