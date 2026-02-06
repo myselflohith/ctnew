@@ -18,6 +18,10 @@ import NewJob from "./pages/employer/NewJob";
 
 // Recruiter pages
 import RecruiterDashboard from "./pages/recruiter/Dashboard";
+import RecruiterJobs from "./pages/recruiter/Jobs";
+import RecruiterCandidates from "./pages/recruiter/Candidates";
+import RecruiterClients from "./pages/recruiter/Clients";
+import RecruiterSettings from "./pages/recruiter/Settings";
 
 // Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -44,6 +48,10 @@ const App = () => (
           
           {/* Recruiter routes */}
           <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
+          <Route path="/recruiter/jobs" element={<RecruiterJobs />} />
+          <Route path="/recruiter/candidates" element={<RecruiterCandidates />} />
+          <Route path="/recruiter/clients" element={<RecruiterClients />} />
+          <Route path="/recruiter/settings" element={<RecruiterSettings />} />
           
           {/* Admin routes */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
