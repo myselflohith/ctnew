@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Briefcase,
   User,
   Building2,
   Users,
-  ShieldCheck,
   ArrowLeft,
   Eye,
   EyeOff,
@@ -22,7 +23,8 @@ import { useToast } from "@/hooks/use-toast";
 type Role = "talent" | "employer" | "recruiter" | "admin";
 type AuthMode = "signin" | "signup";
 
-const roles: { id: Role; icon: React.ElementType; label: string; description: string }[] = [
+// Public roles (Admin is assigned internally based on email)
+const publicRoles: { id: Exclude<Role, "admin">; icon: React.ElementType; label: string; description: string }[] = [
   {
     id: "talent",
     icon: User,
@@ -41,12 +43,6 @@ const roles: { id: Role; icon: React.ElementType; label: string; description: st
     label: "Recruiter",
     description: "Manage clients and placements",
   },
-  {
-    id: "admin",
-    icon: ShieldCheck,
-    label: "Administrator",
-    description: "Platform administration",
-  },
 ];
 
 const Auth = () => {
@@ -57,14 +53,13 @@ const Auth = () => {
   const [mode, setMode] = useState<AuthMode>(
     searchParams.get("mode") === "signup" ? "signup" : "signin"
   );
-  const [step, setStep] = useState<"role" | "form">(
-    searchParams.get("role") ? "form" : mode === "signup" ? "role" : "form"
-  );
-  const [selectedRole, setSelectedRole] = useState<Role | null>(
-    (searchParams.get("role") as Role) || null
+  const [step, setStep] = useState<"role" | "form">("form");
+  const [selectedRole, setSelectedRole] = useState<Exclude<Role, "admin">>(
+    (searchParams.get("role") as Exclude<Role, "admin">) || "talent"
   );
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -75,13 +70,22 @@ const Auth = () => {
     companyName: "",
   });
 
-  const handleRoleSelect = (role: Role) => {
-    setSelectedRole(role);
-    setStep("form");
+  const handleRoleChange = (role: string) => {
+    setSelectedRole(role as Exclude<Role, "admin">);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (mode === "signup" && !acceptedTerms) {
+      toast({
+        title: "Terms Required",
+        description: "Please accept the Privacy Policy and Terms of Service to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsLoading(true);
 
     // Simulate API call - will be replaced with actual auth
@@ -97,6 +101,9 @@ const Auth = () => {
 
     setIsLoading(false);
 
+    // Check if admin based on email (admin role determined server-side)
+    const isAdmin = formData.email.toLowerCase() === "admin@cardinaltalent.com";
+    
     // Navigate to appropriate dashboard based on role
     const dashboardRoutes: Record<Role, string> = {
       talent: "/talent/dashboard",
@@ -105,20 +112,13 @@ const Auth = () => {
       admin: "/admin/dashboard",
     };
 
-    if (selectedRole || mode === "signin") {
-      navigate(dashboardRoutes[selectedRole || "talent"]);
-    }
+    navigate(isAdmin ? dashboardRoutes.admin : dashboardRoutes[selectedRole]);
   };
 
   const switchMode = () => {
     const newMode = mode === "signin" ? "signup" : "signin";
     setMode(newMode);
-    if (newMode === "signup") {
-      setStep("role");
-      setSelectedRole(null);
-    } else {
-      setStep("form");
-    }
+    setAcceptedTerms(false);
   };
 
   return (
@@ -185,75 +185,48 @@ const Auth = () => {
             </span>
           </Link>
 
-          {mode === "signup" && step === "role" ? (
+          {(
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.4 }}
             >
-              <h1 className="font-display text-2xl md:text-3xl font-bold mb-2">
-                Choose Your Role
-              </h1>
-              <p className="text-muted-foreground mb-8">
-                Select how you'll be using CardinalTalent
-              </p>
-
-              <div className="grid grid-cols-2 gap-4">
-                {roles.map((role) => (
-                  <motion.button
-                    key={role.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleRoleSelect(role.id)}
-                    className={`role-card text-left ${
-                      selectedRole === role.id ? "selected" : ""
-                    }`}
-                  >
-                    <role.icon className="w-8 h-8 text-primary mb-3" />
-                    <h3 className="font-semibold text-foreground mb-1">
-                      {role.label}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {role.description}
-                    </p>
-                  </motion.button>
-                ))}
-              </div>
-
-              <p className="text-center text-sm text-muted-foreground mt-8">
-                Already have an account?{" "}
-                <button
-                  onClick={switchMode}
-                  className="text-primary hover:underline font-medium"
-                >
-                  Sign in
-                </button>
-              </p>
-            </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4 }}
-            >
-              {mode === "signup" && (
-                <button
-                  onClick={() => setStep("role")}
-                  className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to role selection
-                </button>
-              )}
-
               <h1 className="font-display text-2xl md:text-3xl font-bold mb-2">
                 {mode === "signup" ? "Create Account" : "Sign In"}
               </h1>
-              <p className="text-muted-foreground mb-8">
+              <p className="text-muted-foreground mb-6">
                 {mode === "signup"
-                  ? `Signing up as ${roles.find((r) => r.id === selectedRole)?.label}`
+                  ? "Create your account to get started"
                   : "Enter your credentials to continue"}
               </p>
+
+              {/* Role Selection */}
+              <div className="mb-6">
+                <Label className="text-sm font-medium mb-3 block">I am a...</Label>
+                <RadioGroup
+                  value={selectedRole}
+                  onValueChange={handleRoleChange}
+                  className="flex flex-col gap-3"
+                >
+                  {publicRoles.map((role) => (
+                    <label
+                      key={role.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        selectedRole === role.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <RadioGroupItem value={role.id} id={role.id} />
+                      <role.icon className="w-5 h-5 text-primary" />
+                      <div className="flex-1">
+                        <span className="font-medium text-foreground">{role.label}</span>
+                        <span className="text-xs text-muted-foreground ml-2">— {role.description}</span>
+                      </div>
+                    </label>
+                  ))}
+                </RadioGroup>
+              </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 {mode === "signup" && (
@@ -363,12 +336,33 @@ const Auth = () => {
                   </div>
                 )}
 
+                {mode === "signup" && (
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
+                    <Checkbox
+                      id="terms"
+                      checked={acceptedTerms}
+                      onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
+                      I agree to the{" "}
+                      <Link to="/privacy" className="text-primary hover:underline">
+                        Privacy Policy
+                      </Link>{" "}
+                      and{" "}
+                      <Link to="/terms" className="text-primary hover:underline">
+                        Terms of Service
+                      </Link>
+                    </label>
+                  </div>
+                )}
+
                 <Button
                   type="submit"
                   variant="hero"
                   className="w-full"
                   size="lg"
-                  disabled={isLoading}
+                  disabled={isLoading || (mode === "signup" && !acceptedTerms)}
                 >
                   {isLoading
                     ? "Please wait..."
