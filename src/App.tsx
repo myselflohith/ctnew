@@ -7,6 +7,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 // Pages
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import Jobs from "./pages/Jobs";
+import Employers from "./pages/Employers";
+import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 
 // Talent pages
@@ -38,6 +41,9 @@ const App = () => (
           {/* Public routes */}
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/jobs" element={<Jobs />} />
+          <Route path="/employers" element={<Employers />} />
+          <Route path="/about" element={<About />} />
           
           {/* Talent routes */}
           <Route path="/talent/dashboard" element={<TalentDashboard />} />
