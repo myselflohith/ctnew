@@ -1,8 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Briefcase, Users, Sparkles, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import cardinalLogo from "@/assets/cardinal-logo.png";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -20,10 +21,7 @@ const Navbar = () => {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <div className="relative">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cardinal to-amber flex items-center justify-center">
-                <Briefcase className="w-4 h-4 text-white" />
-              </div>
-              <div className="absolute -inset-1 bg-gradient-to-br from-cardinal to-amber rounded-lg blur opacity-30" />
+              <img src={cardinalLogo} alt="CardinalTalent" className="w-10 h-10 object-contain" />
             </div>
             <span className="font-display text-xl font-bold text-gradient">
               CardinalTalent

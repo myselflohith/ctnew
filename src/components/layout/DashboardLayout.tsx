@@ -17,6 +17,7 @@ import {
   BarChart3,
   ChevronDown,
 } from "lucide-react";
+import cardinalLogo from "@/assets/cardinal-logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -63,9 +64,7 @@ const DashboardLayout = ({
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cardinal to-amber flex items-center justify-center">
-              <Briefcase className="w-5 h-5 text-white" />
-            </div>
+            <img src={cardinalLogo} alt="CardinalTalent" className="w-9 h-9 object-contain" />
             <span className="font-display text-lg font-bold text-gradient">
               CardinalTalent
             </span>
