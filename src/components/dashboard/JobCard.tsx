@@ -17,7 +17,9 @@ interface JobCardProps {
   onSave?: () => void;
   onView?: () => void;
   onRemove?: () => void;
+  onToggleSelect?: (checked: boolean) => void;
   showRemove?: boolean;
+  isSelected?: boolean;
 }
 
 const JobCard = ({
@@ -33,8 +35,9 @@ const JobCard = ({
   onApply,
   onSave,
   onView,
-  onRemove,
+  onToggleSelect,
   showRemove = false,
+  isSelected = false,
 }: JobCardProps) => {
   const getMatchVariant = (score: number) => {
     if (score >= 85) return "excellent";
@@ -47,21 +50,16 @@ const JobCard = ({
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-start gap-4 flex-1">
           {showRemove && (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="pt-1">
               <Checkbox
-                id={`remove-${id}`}
+                id={`select-${id}`}
+                checked={isSelected}
                 onCheckedChange={(checked) => {
-                  if (checked && onRemove) {
-                    onRemove();
+                  if (onToggleSelect) {
+                    onToggleSelect(checked as boolean);
                   }
                 }}
               />
-              <label
-                htmlFor={`remove-${id}`}
-                className="text-sm text-muted-foreground cursor-pointer"
-              >
-                Remove
-              </label>
             </div>
           )}
           <div className="flex-1">
@@ -88,9 +86,11 @@ const JobCard = ({
             </div>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onSave}>
-          <Bookmark className="w-5 h-5" />
-        </Button>
+        {onSave && (
+          <Button variant="ghost" size="icon" onClick={onSave}>
+            <Bookmark className="w-5 h-5" />
+          </Button>
+        )}
       </div>
 
       {skills.length > 0 && (
