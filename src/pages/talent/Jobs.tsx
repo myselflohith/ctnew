@@ -13,6 +13,8 @@ import {
   MapPin,
 } from "lucide-react";
 import { useState } from "react";
+import { useJobs } from "@/contexts/JobsContext";
+import { toast } from "sonner";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -22,67 +24,25 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
-const mockJobs = [
-  {
-    id: "1",
-    title: "Senior Frontend Developer",
-    company: "TechCorp AI",
-    location: "San Francisco, CA",
-    type: "hybrid" as const,
-    salary: "$150k - $200k",
-    postedAt: "2 days ago",
-    matchScore: 92,
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
-  },
-  {
-    id: "2",
-    title: "Full Stack Engineer",
-    company: "StartupXYZ",
-    location: "New York, NY",
-    type: "remote" as const,
-    salary: "$130k - $170k",
-    postedAt: "5 days ago",
-    matchScore: 87,
-    skills: ["Python", "React", "PostgreSQL", "Docker"],
-  },
-  {
-    id: "3",
-    title: "Backend Developer",
-    company: "Enterprise Inc",
-    location: "Austin, TX",
-    type: "onsite" as const,
-    salary: "$120k - $150k",
-    postedAt: "1 week ago",
-    matchScore: 75,
-    skills: ["Java", "Spring Boot", "Kubernetes", "MongoDB"],
-  },
-  {
-    id: "4",
-    title: "DevOps Engineer",
-    company: "CloudScale",
-    location: "Seattle, WA",
-    type: "remote" as const,
-    salary: "$140k - $180k",
-    postedAt: "3 days ago",
-    matchScore: 82,
-    skills: ["AWS", "Terraform", "Docker", "Kubernetes"],
-  },
-  {
-    id: "5",
-    title: "ML Engineer",
-    company: "AI Labs",
-    location: "Boston, MA",
-    type: "hybrid" as const,
-    salary: "$160k - $210k",
-    postedAt: "1 day ago",
-    matchScore: 68,
-    skills: ["Python", "PyTorch", "TensorFlow", "MLOps"],
-  },
-];
-
 const TalentJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
+  const { availableJobs, removeFromAvailable, saveJob, applyToJob } = useJobs();
+
+  const handleApply = (job: typeof availableJobs[0]) => {
+    applyToJob(job);
+    toast.success(`Applied to ${job.title} at ${job.company}`);
+  };
+
+  const handleRemove = (jobId: string) => {
+    removeFromAvailable(jobId);
+    toast.info("Job removed from list");
+  };
+
+  const handleSave = (job: typeof availableJobs[0]) => {
+    saveJob(job);
+    toast.success(`Saved ${job.title} to your saved jobs`);
+  };
 
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
@@ -135,21 +95,35 @@ const TalentJobs = () => {
       {/* Results */}
       <div className="mb-4 flex items-center justify-between">
         <p className="text-muted-foreground">
-          Showing {mockJobs.length} jobs sorted by match score
+          Showing {availableJobs.length} jobs sorted by match score
         </p>
       </div>
 
-      <div className="space-y-4">
-        {mockJobs.map((job) => (
-          <JobCard
-            key={job.id}
-            {...job}
-            onApply={() => console.log("Apply to", job.id)}
-            onSave={() => console.log("Save", job.id)}
-            onView={() => console.log("View", job.id)}
-          />
-        ))}
-      </div>
+      {availableJobs.length > 0 ? (
+        <div className="space-y-4">
+          {availableJobs.map((job) => (
+            <JobCard
+              key={job.id}
+              {...job}
+              showRemove={true}
+              onApply={() => handleApply(job)}
+              onSave={() => handleSave(job)}
+              onRemove={() => handleRemove(job.id)}
+              onView={() => console.log("View", job.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+            No jobs available
+          </h3>
+          <p className="text-muted-foreground">
+            Check back later for new opportunities.
+          </p>
+        </div>
+      )}
     </DashboardLayout>
   );
 };

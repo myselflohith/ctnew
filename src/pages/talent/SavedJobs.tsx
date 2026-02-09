@@ -11,6 +11,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { useJobs } from "@/contexts/JobsContext";
+import { toast } from "sonner";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -20,44 +22,19 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
-const mockSavedJobs = [
-  {
-    id: "1",
-    title: "Senior Frontend Developer",
-    company: "TechCorp AI",
-    location: "San Francisco, CA",
-    type: "hybrid" as const,
-    salary: "$150k - $200k",
-    postedAt: "2 days ago",
-    matchScore: 92,
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
-  },
-  {
-    id: "2",
-    title: "Full Stack Engineer",
-    company: "StartupXYZ",
-    location: "New York, NY",
-    type: "remote" as const,
-    salary: "$130k - $170k",
-    postedAt: "5 days ago",
-    matchScore: 87,
-    skills: ["Python", "React", "PostgreSQL", "Docker"],
-  },
-  {
-    id: "3",
-    title: "ML Engineer",
-    company: "AI Labs",
-    location: "Boston, MA",
-    type: "hybrid" as const,
-    salary: "$160k - $210k",
-    postedAt: "1 day ago",
-    matchScore: 68,
-    skills: ["Python", "PyTorch", "TensorFlow", "MLOps"],
-  },
-];
-
 const TalentSavedJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const { savedJobs, removeFromSaved, applyToJob } = useJobs();
+
+  const handleApply = (job: typeof savedJobs[0]) => {
+    applyToJob(job);
+    toast.success(`Applied to ${job.title} at ${job.company}`);
+  };
+
+  const handleRemove = (jobId: string) => {
+    removeFromSaved(jobId);
+    toast.info("Job removed from saved");
+  };
 
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
@@ -70,10 +47,6 @@ const TalentSavedJobs = () => {
             Jobs you've saved for later. Apply before they're gone!
           </p>
         </div>
-        <Button variant="outline">
-          <Trash2 className="w-4 h-4 mr-2" />
-          Clear All
-        </Button>
       </div>
 
       {/* Search */}
@@ -89,14 +62,15 @@ const TalentSavedJobs = () => {
         </div>
       </div>
 
-      {mockSavedJobs.length > 0 ? (
+      {savedJobs.length > 0 ? (
         <div className="space-y-4">
-          {mockSavedJobs.map((job) => (
+          {savedJobs.map((job) => (
             <JobCard
               key={job.id}
               {...job}
-              onApply={() => console.log("Apply to", job.id)}
-              onSave={() => console.log("Remove from saved", job.id)}
+              showRemove={true}
+              onApply={() => handleApply(job)}
+              onRemove={() => handleRemove(job.id)}
               onView={() => console.log("View", job.id)}
             />
           ))}
