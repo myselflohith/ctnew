@@ -1,0 +1,62 @@
+CardinalTalent_New
+
+Build a new web based application for Employers/Recruiters and Job Seekers. Get ideas from noon.ai for colors and flow.
+
+Personas:
+
+Administrator
+Job Seeker (aka Talent)
+Employer
+Recruiter
+
+Administrator:
+
+Organization Setup/Edit:
+
+Each Company is an Organization - we need Organization Setup - capture all information that is required for a company to be setup - this is done 
+
+Users:
+
+Users are created as part of self-service registration - Talent has to upload their resume which gets saved to AWS S3.
+
+Recruiters are assigned to Organizations to manage jobs for the organization (Create/Edit) and place candidates
+
+Workflow:
+
+1. Registration: User can select a Persona when registering the account - collect basic information required for login (will add Google Signup/Signin later)
+
+2. User logs in.
+
+Employer/Recruiter:
+
+1. Can update the company details
+2. Can post jobs - Job Title, Description, Type of job (Onsite, Hybrid, Remote), Location, Skills (build from Job Description), Requirements (Must Have and Nice to Have) - each requirement has weightage. If job type is Onsite/Hybrid, Location is required field and capture Distance from Location. For Hybrid, # of days in office.
+Capture LinkedIn URL of the job on LinkedIn.
+3. Provide an option to "auto source" - when that option is selected, when the job is saved, it will source candidates from the database and show user Rank and Match Score. Rank is based on whether the candidate attended Top School OR worked at Top Company (Unicorn AI Startups get highest score). For Matching, we call OpenAI sending Job Description with Must Have and Nice to Have skills and their weights along with Resume - we match and we need to capture the OpenAI explanation of why the score was arrived. The output shows key fields of the employee as a grid along with Rank and Match (Rank/Match are sorted) - provide filters.
+4. From this list, the Employer/Recruiter can contact the candidate with an email - employer can have additional questions (which will be in the email). When candidate responds, we intercept that email and if it is positive, we allow employer to schedule Interview. The status should show what state the candidate is in.
+4. AI Interview can be created for the job with AI Generated questions based on JD and Requirements + user has ability to add custom questions. Keep the questions to 10 AI Generated and upto 5 user generated.
+5. AI Interview can be assigned to one or more candidates.
+
+Recruiter - additional functionality:
+
+Recruiter can select one or more organizations they are assigned to.
+Can search for Candidates based on free form questions e.g. show me candidates with Apache Spark experience from Top schools in San Francisco Bay Area - this will search from the database and show the candidates.
+The recruiter can then match the candidate to other jobs they have and if the score is good, they can apply them to other jobs they own.
+
+Talent/Job Seeker:
+
+Can search for jobs on the platform and apply to jobs - before they apply, it does a match and tells them their Match score based on JD, Requirements and their weights.
+
+They also can select an option (premium version) to Auto Apply to jobs as they come - that way, if someone pays a subscription, they just upload their resume and forget. 
+
+All roles have Dashboards which show when they login. The dashboards show key metrics for their role. 
+
+
+
+
+
+
+
+
+
+
