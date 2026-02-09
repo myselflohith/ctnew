@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import MetricCard from "@/components/dashboard/MetricCard";
 import JobCard from "@/components/dashboard/JobCard";
+import ApplyModal from "@/components/talent/ApplyModal";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,6 +23,10 @@ import {
   ArrowRight,
   ChevronDown,
 } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useJobs } from "@/contexts/JobsContext";
+import { toast } from "sonner";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -31,44 +36,32 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
-// Mock data - will be replaced with real data
-const mockJobs = [
-  {
-    id: "1",
-    title: "Senior Frontend Developer",
-    company: "TechCorp AI",
-    location: "San Francisco, CA",
-    type: "hybrid" as const,
-    salary: "$150k - $200k",
-    postedAt: "2 days ago",
-    matchScore: 92,
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
-  },
-  {
-    id: "2",
-    title: "Full Stack Engineer",
-    company: "StartupXYZ",
-    location: "New York, NY",
-    type: "remote" as const,
-    salary: "$130k - $170k",
-    postedAt: "5 days ago",
-    matchScore: 87,
-    skills: ["Python", "React", "PostgreSQL", "Docker"],
-  },
-  {
-    id: "3",
-    title: "Backend Developer",
-    company: "Enterprise Inc",
-    location: "Austin, TX",
-    type: "onsite" as const,
-    salary: "$120k - $150k",
-    postedAt: "1 week ago",
-    matchScore: 75,
-    skills: ["Java", "Spring Boot", "Kubernetes", "MongoDB"],
-  },
-];
-
 const TalentDashboard = () => {
+  const navigate = useNavigate();
+  const { availableJobs, saveJob, applyToJob } = useJobs();
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
+
+  const topJobs = availableJobs.slice(0, 3);
+
+  const handleApplyClick = (job: typeof availableJobs[0]) => {
+    setSelectedJobForApply(job);
+    setApplyModalOpen(true);
+  };
+
+  const handleApplyWithResume = (resumeId: string) => {
+    if (selectedJobForApply) {
+      applyToJob(selectedJobForApply);
+      toast.success(`Applied to ${selectedJobForApply.title} at ${selectedJobForApply.company}`);
+      setSelectedJobForApply(null);
+    }
+  };
+
+  const handleSave = (job: typeof availableJobs[0]) => {
+    saveJob(job);
+    toast.success(`Saved ${job.title}`);
+    navigate("/talent/saved");
+  };
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
       {/* Header */}
@@ -156,17 +149,28 @@ const TalentDashboard = () => {
         </div>
 
         <div className="space-y-4">
-          {mockJobs.map((job) => (
+          {topJobs.map((job) => (
             <JobCard
               key={job.id}
               {...job}
-              onApply={() => console.log("Apply to", job.id)}
-              onSave={() => console.log("Save", job.id)}
+              onApply={() => handleApplyClick(job)}
+              onSave={() => handleSave(job)}
               onView={() => console.log("View", job.id)}
             />
           ))}
         </div>
       </div>
+
+      {/* Apply Modal */}
+      {selectedJobForApply && (
+        <ApplyModal
+          open={applyModalOpen}
+          onOpenChange={setApplyModalOpen}
+          jobTitle={selectedJobForApply.title}
+          company={selectedJobForApply.company}
+          onApply={handleApplyWithResume}
+        />
+      )}
 
     </DashboardLayout>
   );
