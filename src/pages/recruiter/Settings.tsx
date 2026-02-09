@@ -13,6 +13,7 @@ import {
   Bell,
   Shield,
   CreditCard,
+  Linkedin,
 } from "lucide-react";
 
 const navItems = [
@@ -88,6 +89,13 @@ const RecruiterSettings = () => {
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
                 <Input id="phone" type="tel" defaultValue="+1 (555) 123-4567" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="linkedin" className="flex items-center gap-2">
+                  <Linkedin className="w-4 h-4" />
+                  LinkedIn URL
+                </Label>
+                <Input id="linkedin" type="url" placeholder="https://linkedin.com/in/yourprofile" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="company">Company</Label>
