@@ -3,6 +3,7 @@ import JobCard from "@/components/dashboard/JobCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   LayoutDashboard,
   Search,
@@ -11,6 +12,7 @@ import {
   Settings,
   Filter,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useJobs } from "@/contexts/JobsContext";
@@ -27,22 +29,46 @@ const navItems = [
 const TalentJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
+  const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const { availableJobs, removeFromAvailable, saveJob, applyToJob } = useJobs();
 
   const handleApply = (job: typeof availableJobs[0]) => {
     applyToJob(job);
+    setSelectedJobs((prev) => prev.filter((id) => id !== job.id));
     toast.success(`Applied to ${job.title} at ${job.company}`);
   };
 
-  const handleRemove = (jobId: string) => {
-    removeFromAvailable(jobId);
-    toast.info("Job removed from list");
+  const handleToggleSelect = (jobId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedJobs((prev) => [...prev, jobId]);
+    } else {
+      setSelectedJobs((prev) => prev.filter((id) => id !== jobId));
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedJobs(availableJobs.map((job) => job.id));
+    } else {
+      setSelectedJobs([]);
+    }
+  };
+
+  const handleRemoveSelected = () => {
+    selectedJobs.forEach((jobId) => {
+      removeFromAvailable(jobId);
+    });
+    toast.info(`Removed ${selectedJobs.length} job(s) from list`);
+    setSelectedJobs([]);
   };
 
   const handleSave = (job: typeof availableJobs[0]) => {
     saveJob(job);
     toast.success(`Saved ${job.title} to your saved jobs`);
   };
+
+  const allSelected = availableJobs.length > 0 && selectedJobs.length === availableJobs.length;
+  const someSelected = selectedJobs.length > 0;
 
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
@@ -92,11 +118,31 @@ const TalentJobs = () => {
         </div>
       </div>
 
-      {/* Results */}
+      {/* Results Header with Select All */}
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-muted-foreground">
-          Showing {availableJobs.length} jobs sorted by match score
-        </p>
+        <div className="flex items-center gap-4">
+          {availableJobs.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="select-all"
+                checked={allSelected}
+                onCheckedChange={handleSelectAll}
+              />
+              <label htmlFor="select-all" className="text-sm text-muted-foreground cursor-pointer">
+                Select All
+              </label>
+            </div>
+          )}
+          <p className="text-muted-foreground">
+            Showing {availableJobs.length} jobs sorted by match score
+          </p>
+        </div>
+        {someSelected && (
+          <Button variant="outline" size="sm" onClick={handleRemoveSelected}>
+            <Trash2 className="w-4 h-4 mr-2" />
+            Remove Selected ({selectedJobs.length})
+          </Button>
+        )}
       </div>
 
       {availableJobs.length > 0 ? (
@@ -106,9 +152,10 @@ const TalentJobs = () => {
               key={job.id}
               {...job}
               showRemove={true}
+              isSelected={selectedJobs.includes(job.id)}
+              onToggleSelect={(checked) => handleToggleSelect(job.id, checked)}
               onApply={() => handleApply(job)}
               onSave={() => handleSave(job)}
-              onRemove={() => handleRemove(job.id)}
               onView={() => console.log("View", job.id)}
             />
           ))}
