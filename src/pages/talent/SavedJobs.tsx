@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import JobCard from "@/components/dashboard/JobCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   LayoutDashboard,
   Search,
@@ -9,6 +10,7 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
+import { useState } from "react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -55,6 +57,8 @@ const mockSavedJobs = [
 ];
 
 const TalentSavedJobs = () => {
+  const [searchQuery, setSearchQuery] = useState("");
+
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
       <div className="mb-8 flex items-center justify-between">
@@ -70,6 +74,19 @@ const TalentSavedJobs = () => {
           <Trash2 className="w-4 h-4 mr-2" />
           Clear All
         </Button>
+      </div>
+
+      {/* Search */}
+      <div className="glass rounded-2xl p-4 mb-8">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            placeholder="Search saved jobs..."
+            className="pl-12 h-12"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       {mockSavedJobs.length > 0 ? (

@@ -9,7 +9,6 @@ import {
   Settings,
   LogOut,
   Bell,
-  Search,
   User,
   Building2,
   MessageSquare,
@@ -19,7 +18,6 @@ import {
 } from "lucide-react";
 import cardinalLogo from "@/assets/cardinal-logo.png";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -129,16 +127,7 @@ const DashboardLayout = ({
       {/* Main Content */}
       <div className="flex-1 ml-64">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center px-6">
-          <div className="flex-1 flex items-center gap-4">
-            <div className="relative w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search..."
-                className="pl-9 bg-secondary/50 border-transparent"
-              />
-            </div>
-          </div>
+        <header className="sticky top-0 z-30 h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-end px-6">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="w-5 h-5" />
