@@ -1,18 +1,12 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import JobCard from "@/components/dashboard/JobCard";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
   Search,
   FileText,
   Heart,
   Settings,
-  Filter,
-  MapPin,
 } from "lucide-react";
-import { useState } from "react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -81,9 +75,6 @@ const mockJobs = [
 ];
 
 const TalentJobs = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [locationQuery, setLocationQuery] = useState("");
-
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
       <div className="mb-8">
@@ -93,43 +84,6 @@ const TalentJobs = () => {
         <p className="text-muted-foreground">
           Discover opportunities matched to your skills and preferences.
         </p>
-      </div>
-
-      {/* Search */}
-      <div className="glass rounded-2xl p-6 mb-8">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input
-              placeholder="Job title, skills, or company..."
-              className="pl-12 h-12"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="relative flex-1">
-            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input
-              placeholder="Location..."
-              className="pl-12 h-12"
-              value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
-            />
-          </div>
-          <Button variant="hero" size="lg">
-            Search
-          </Button>
-          <Button variant="outline" size="lg">
-            <Filter className="w-4 h-4 mr-2" />
-            Filters
-          </Button>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4">
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">Remote</Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">Hybrid</Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">$150K+</Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">90%+ Match</Badge>
-        </div>
       </div>
 
       {/* Results */}
