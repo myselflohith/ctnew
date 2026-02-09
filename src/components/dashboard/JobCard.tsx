@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MapPin, Clock, Building2, DollarSign, Bookmark, ExternalLink } from "lucide-react";
 
 interface JobCardProps {
@@ -15,6 +16,8 @@ interface JobCardProps {
   onApply?: () => void;
   onSave?: () => void;
   onView?: () => void;
+  onRemove?: () => void;
+  showRemove?: boolean;
 }
 
 const JobCard = ({
@@ -30,6 +33,8 @@ const JobCard = ({
   onApply,
   onSave,
   onView,
+  onRemove,
+  showRemove = false,
 }: JobCardProps) => {
   const getMatchVariant = (score: number) => {
     if (score >= 85) return "excellent";
@@ -40,27 +45,47 @@ const JobCard = ({
   return (
     <div className="job-card group">
       <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="font-semibold text-lg text-foreground group-hover:text-primary transition-colors">
-              {title}
-            </h3>
-            {matchScore && (
-              <Badge variant={getMatchVariant(matchScore)}>
-                {matchScore}% Match
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Building2 className="w-4 h-4" />
-              {company}
-            </span>
-            <span className="flex items-center gap-1">
-              <MapPin className="w-4 h-4" />
-              {location}
-            </span>
-            <Badge variant={type}>{type}</Badge>
+        <div className="flex items-start gap-4 flex-1">
+          {showRemove && (
+            <div className="flex items-center gap-2 pt-1">
+              <Checkbox
+                id={`remove-${id}`}
+                onCheckedChange={(checked) => {
+                  if (checked && onRemove) {
+                    onRemove();
+                  }
+                }}
+              />
+              <label
+                htmlFor={`remove-${id}`}
+                className="text-sm text-muted-foreground cursor-pointer"
+              >
+                Remove
+              </label>
+            </div>
+          )}
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h3 className="font-semibold text-lg text-foreground group-hover:text-primary transition-colors">
+                {title}
+              </h3>
+              {matchScore && (
+                <Badge variant={getMatchVariant(matchScore)}>
+                  {matchScore}% Match
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Building2 className="w-4 h-4" />
+                {company}
+              </span>
+              <span className="flex items-center gap-1">
+                <MapPin className="w-4 h-4" />
+                {location}
+              </span>
+              <Badge variant={type}>{type}</Badge>
+            </div>
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={onSave}>

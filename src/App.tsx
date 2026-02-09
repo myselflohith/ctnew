@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { JobsProvider } from "@/contexts/JobsContext";
 
 // Pages
 import Index from "./pages/Index";
@@ -46,50 +47,52 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<Index />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/jobs" element={<Jobs />} />
-          <Route path="/employers" element={<Employers />} />
-          <Route path="/about" element={<About />} />
-          
-          {/* Talent routes */}
-          <Route path="/talent/dashboard" element={<TalentDashboard />} />
-          <Route path="/talent/jobs" element={<TalentJobs />} />
-          <Route path="/talent/applications" element={<TalentApplications />} />
-          <Route path="/talent/saved" element={<TalentSavedJobs />} />
-          <Route path="/talent/settings" element={<TalentSettings />} />
-          
-          {/* Employer routes */}
-          <Route path="/employer/dashboard" element={<EmployerDashboard />} />
-          <Route path="/employer/jobs" element={<EmployerJobs />} />
-          <Route path="/employer/jobs/new" element={<NewJob />} />
-          <Route path="/employer/candidates" element={<EmployerCandidates />} />
-          <Route path="/employer/company" element={<EmployerCompany />} />
-          <Route path="/employer/settings" element={<EmployerSettings />} />
-          
-          {/* Recruiter routes */}
-          <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
-          <Route path="/recruiter/jobs" element={<RecruiterJobs />} />
-          <Route path="/recruiter/candidates" element={<RecruiterCandidates />} />
-          <Route path="/recruiter/clients" element={<RecruiterClients />} />
-          <Route path="/recruiter/settings" element={<RecruiterSettings />} />
-          
-          {/* Admin routes */}
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          <Route path="/admin/organizations" element={<AdminOrganizations />} />
-          <Route path="/admin/users" element={<AdminUsers />} />
-          <Route path="/admin/security" element={<AdminSecurity />} />
-          <Route path="/admin/settings" element={<AdminSettings />} />
-          
-          {/* Catch-all */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <JobsProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/jobs" element={<Jobs />} />
+            <Route path="/employers" element={<Employers />} />
+            <Route path="/about" element={<About />} />
+            
+            {/* Talent routes */}
+            <Route path="/talent/dashboard" element={<TalentDashboard />} />
+            <Route path="/talent/jobs" element={<TalentJobs />} />
+            <Route path="/talent/applications" element={<TalentApplications />} />
+            <Route path="/talent/saved" element={<TalentSavedJobs />} />
+            <Route path="/talent/settings" element={<TalentSettings />} />
+            
+            {/* Employer routes */}
+            <Route path="/employer/dashboard" element={<EmployerDashboard />} />
+            <Route path="/employer/jobs" element={<EmployerJobs />} />
+            <Route path="/employer/jobs/new" element={<NewJob />} />
+            <Route path="/employer/candidates" element={<EmployerCandidates />} />
+            <Route path="/employer/company" element={<EmployerCompany />} />
+            <Route path="/employer/settings" element={<EmployerSettings />} />
+            
+            {/* Recruiter routes */}
+            <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
+            <Route path="/recruiter/jobs" element={<RecruiterJobs />} />
+            <Route path="/recruiter/candidates" element={<RecruiterCandidates />} />
+            <Route path="/recruiter/clients" element={<RecruiterClients />} />
+            <Route path="/recruiter/settings" element={<RecruiterSettings />} />
+            
+            {/* Admin routes */}
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/organizations" element={<AdminOrganizations />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/security" element={<AdminSecurity />} />
+            <Route path="/admin/settings" element={<AdminSettings />} />
+            
+            {/* Catch-all */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </JobsProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

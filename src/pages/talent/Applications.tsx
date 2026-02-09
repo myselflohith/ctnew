@@ -14,6 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useState } from "react";
+import { useJobs } from "@/contexts/JobsContext";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -21,45 +22,6 @@ const navItems = [
   { icon: FileText, label: "Applications", path: "/talent/applications" },
   { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
   { icon: Settings, label: "Settings", path: "/talent/settings" },
-];
-
-const mockApplications = [
-  {
-    id: "1",
-    jobTitle: "Senior Frontend Developer",
-    company: "TechCorp AI",
-    location: "San Francisco, CA",
-    appliedAt: "2 days ago",
-    status: "Interview Scheduled",
-    matchScore: 92,
-  },
-  {
-    id: "2",
-    jobTitle: "Full Stack Engineer",
-    company: "StartupXYZ",
-    location: "New York, NY",
-    appliedAt: "5 days ago",
-    status: "Under Review",
-    matchScore: 87,
-  },
-  {
-    id: "3",
-    jobTitle: "Backend Developer",
-    company: "Enterprise Inc",
-    location: "Austin, TX",
-    appliedAt: "1 week ago",
-    status: "Application Sent",
-    matchScore: 75,
-  },
-  {
-    id: "4",
-    jobTitle: "React Developer",
-    company: "WebFlow Co",
-    location: "Remote",
-    appliedAt: "2 weeks ago",
-    status: "Rejected",
-    matchScore: 68,
-  },
 ];
 
 const getStatusVariant = (status: string) => {
@@ -79,6 +41,12 @@ const getStatusVariant = (status: string) => {
 
 const TalentApplications = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const { applications } = useJobs();
+
+  const totalApplications = applications.length;
+  const inProgress = applications.filter(a => a.status === "Under Review" || a.status === "Application Sent").length;
+  const interviews = applications.filter(a => a.status === "Interview Scheduled").length;
+  const rejected = applications.filter(a => a.status === "Rejected").length;
 
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
@@ -107,64 +75,77 @@ const TalentApplications = () => {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="glass rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-foreground">8</p>
+          <p className="text-2xl font-bold text-foreground">{totalApplications}</p>
           <p className="text-sm text-muted-foreground">Total Applications</p>
         </div>
         <div className="glass rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-primary">3</p>
+          <p className="text-2xl font-bold text-primary">{inProgress}</p>
           <p className="text-sm text-muted-foreground">In Progress</p>
         </div>
         <div className="glass rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-green-500">2</p>
+          <p className="text-2xl font-bold text-emerald-500">{interviews}</p>
           <p className="text-sm text-muted-foreground">Interviews</p>
         </div>
         <div className="glass rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-muted-foreground">1</p>
+          <p className="text-2xl font-bold text-muted-foreground">{rejected}</p>
           <p className="text-sm text-muted-foreground">Rejected</p>
         </div>
       </div>
 
       {/* Applications List */}
-      <div className="glass rounded-2xl p-6">
-        <div className="space-y-4">
-          {mockApplications.map((application) => (
-            <div
-              key={application.id}
-              className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer gap-4"
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center shrink-0">
-                  <Building2 className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-foreground">{application.jobTitle}</h3>
-                  <p className="text-sm text-muted-foreground">{application.company}</p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {application.location}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      Applied {application.appliedAt}
-                    </span>
+      {applications.length > 0 ? (
+        <div className="glass rounded-2xl p-6">
+          <div className="space-y-4">
+            {applications.map((application) => (
+              <div
+                key={application.id}
+                className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer gap-4"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center shrink-0">
+                    <Building2 className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-foreground">{application.jobTitle}</h3>
+                    <p className="text-sm text-muted-foreground">{application.company}</p>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {application.location}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Applied {application.appliedAt}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <div className="flex items-center gap-4">
+                  <Badge variant="secondary">{application.matchScore}% Match</Badge>
+                  <Badge variant={getStatusVariant(application.status)}>
+                    {application.status}
+                  </Badge>
+                  <Button variant="ghost" size="sm" className="group">
+                    View
+                    <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <Badge variant="secondary">{application.matchScore}% Match</Badge>
-                <Badge variant={getStatusVariant(application.status)}>
-                  {application.status}
-                </Badge>
-                <Button variant="ghost" size="sm" className="group">
-                  View
-                  <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="glass rounded-2xl p-12 text-center">
+          <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+            No applications yet
+          </h3>
+          <p className="text-muted-foreground mb-6">
+            Start applying to jobs to see them here.
+          </p>
+          <Button variant="hero">Find Jobs</Button>
+        </div>
+      )}
     </DashboardLayout>
   );
 };
