@@ -133,7 +133,7 @@ const TalentJobs = () => {
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           {availableJobs.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pl-6">
               <Checkbox
                 id="select-all"
                 checked={allSelected}
