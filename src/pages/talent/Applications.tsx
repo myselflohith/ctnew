@@ -14,6 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 
 const navItems = [
@@ -40,6 +41,7 @@ const getStatusVariant = (status: string) => {
 };
 
 const TalentApplications = () => {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const { applications } = useJobs();
 
@@ -143,7 +145,7 @@ const TalentApplications = () => {
           <p className="text-muted-foreground mb-6">
             Start applying to jobs to see them here.
           </p>
-          <Button variant="hero">Find Jobs</Button>
+          <Button variant="hero" onClick={() => navigate("/talent/jobs")}>Find Jobs</Button>
         </div>
       )}
     </DashboardLayout>
