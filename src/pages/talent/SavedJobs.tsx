@@ -101,7 +101,7 @@ const TalentSavedJobs = () => {
       {/* Select All & Remove Selected */}
       {savedJobs.length > 0 && (
         <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pl-6">
             <Checkbox
               id="select-all-saved"
               checked={allSelected}
