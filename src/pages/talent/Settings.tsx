@@ -5,6 +5,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   LayoutDashboard,
   Search,
   FileText,
@@ -147,21 +154,35 @@ const TalentSettings = () => {
               </div>
               <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/30">
                 <div>
-                  <p className="font-medium text-foreground">Remote Jobs Only</p>
+                  <p className="font-medium text-foreground">Job Type</p>
                   <p className="text-sm text-muted-foreground">
-                    Only auto-apply to remote positions
+                    Filter by work location preference
                   </p>
                 </div>
-                <Switch />
+                <Select defaultValue="remote">
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="remote">Remote Only</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="onsite">Onsite</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/30">
                 <div>
-                  <p className="font-medium text-foreground">Salary Minimum</p>
+                  <p className="font-medium text-foreground">Minimum Salary Expectations</p>
                   <p className="text-sm text-muted-foreground">
-                    Only auto-apply to jobs above $120K
+                    Only auto-apply to jobs above this amount
                   </p>
                 </div>
-                <Switch defaultChecked />
+                <Input 
+                  type="text" 
+                  placeholder="e.g. $120,000" 
+                  defaultValue="$120,000"
+                  className="w-[160px]"
+                />
               </div>
             </div>
             <Button variant="hero" className="w-full mt-6">
