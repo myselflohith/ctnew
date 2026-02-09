@@ -3,6 +3,12 @@ import MetricCard from "@/components/dashboard/MetricCard";
 import JobCard from "@/components/dashboard/JobCard";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   LayoutDashboard,
   Search,
   FileText,
@@ -14,6 +20,7 @@ import {
   Clock,
   Star,
   ArrowRight,
+  ChevronDown,
 } from "lucide-react";
 
 const navItems = [
@@ -65,13 +72,37 @@ const TalentDashboard = () => {
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-          Welcome back, John! 👋
-        </h1>
-        <p className="text-muted-foreground">
-          Here's what's happening with your job search.
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-bold text-foreground mb-2">
+            Welcome back, John! 👋
+          </h1>
+          <p className="text-muted-foreground">
+            Here's what's happening with your job search.
+          </p>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              Quick Actions
+              <ChevronDown className="w-4 h-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem className="cursor-pointer">
+              <FileText className="w-4 h-4 mr-2 text-primary" />
+              Update Resume
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer">
+              <Search className="w-4 h-4 mr-2 text-amber" />
+              Browse Jobs
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer">
+              <Star className="w-4 h-4 mr-2 text-gold" />
+              Upgrade to Premium
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Metrics */}
@@ -137,24 +168,6 @@ const TalentDashboard = () => {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="glass rounded-2xl p-6">
-        <h3 className="font-semibold text-foreground mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Button variant="outline" className="h-auto py-4 flex-col gap-2">
-            <FileText className="w-6 h-6 text-primary" />
-            <span>Update Resume</span>
-          </Button>
-          <Button variant="outline" className="h-auto py-4 flex-col gap-2">
-            <Search className="w-6 h-6 text-amber" />
-            <span>Browse Jobs</span>
-          </Button>
-          <Button variant="outline" className="h-auto py-4 flex-col gap-2">
-            <Star className="w-6 h-6 text-gold" />
-            <span>Upgrade to Premium</span>
-          </Button>
-        </div>
-      </div>
     </DashboardLayout>
   );
 };
