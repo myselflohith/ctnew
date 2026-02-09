@@ -1,0 +1,29 @@
+1. When I apply to a job, it moves the job to Saved Jobs - it should not move the jobs that I applied for to Saved Jobs
+
+2. The Job Name should be a hyperlink which opens the Job Description as a popup -- this should be done on all pages (Find Jobs, Dashboard, Applications and Saved Jobs)
+
+3. Remove the View Details on Find Jobs, Saved Jobs & Dashbaord - this is replaced by making the job name a hyperlink to Job Description
+
+4. On Applications, remove View and the arrow next to it --> This is replaced by the hyperlink of the job name
+
+5. Under Settings, Resume, it should list the resumes I uploaded - give an option to Delete, Download and Make Default
+
+6. The Enable Auto Apply should only be clickable after upgrading to Premium
+
+7. On Dashboard, the "Applications Sent" should take you to the Applications page and the count on the dashboard should match what is in the applications page
+
+8. Interviews Scheduled - we do not have a component to show the interviews scheduled - let us build it right after Applications.
+
+9. Move Saved Jobs to right after Find Jobs on the left side menu
+
+10. Remove Quick Actions altogether on the Dashboard
+
+11. We are not saving the Jobs Saved, Applications and Interviews per user. These tables do not exist - call them ct_jobs_saved, ct_job_applications, ct_interviews.
+
+12. We do not have Jobs saved - call it ct_job and put all the fields from JOB component
+
+13. When I remove a Job from Saved Jobs, it should move it back to Jobs
+
+14. Once I apply to a job from Saved Jobs, it should remove from Saved Jobs.
+
+15. Dashboard - Interviews Scheduled should go to Interviews component and the number should match.

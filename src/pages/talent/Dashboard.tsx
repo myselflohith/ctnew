@@ -2,13 +2,8 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import MetricCard from "@/components/dashboard/MetricCard";
 import JobCard from "@/components/dashboard/JobCard";
 import ApplyModal from "@/components/talent/ApplyModal";
+import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard,
   Search,
@@ -21,7 +16,7 @@ import {
   Clock,
   Star,
   ArrowRight,
-  ChevronDown,
+  Calendar,
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -31,16 +26,19 @@ import { toast } from "sonner";
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
   { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
   { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
+  { icon: FileText, label: "Applications", path: "/talent/applications" },
+  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
 const TalentDashboard = () => {
   const navigate = useNavigate();
-  const { availableJobs, saveJob, applyToJob } = useJobs();
+  const { availableJobs, saveJob, applyToJob, applications, loading } = useJobs();
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
+  const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
+  const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
 
   const topJobs = availableJobs.slice(0, 3);
 
@@ -49,10 +47,9 @@ const TalentDashboard = () => {
     setApplyModalOpen(true);
   };
 
-  const handleApplyWithResume = (resumeId: string) => {
+  const handleApplyWithResume = async (resumeId: string) => {
     if (selectedJobForApply) {
-      applyToJob(selectedJobForApply);
-      toast.success(`Applied to ${selectedJobForApply.title} at ${selectedJobForApply.company}`);
+      await applyToJob(selectedJobForApply, resumeId);
       setSelectedJobForApply(null);
     }
   };
@@ -62,10 +59,16 @@ const TalentDashboard = () => {
     toast.success(`Saved ${job.title}`);
     navigate("/talent/saved");
   };
+
+  const handleViewJob = (job: typeof availableJobs[0]) => {
+    setSelectedJobForView(job);
+    setJobDescriptionOpen(true);
+  };
+
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-8">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">
             Welcome back, John! 👋
@@ -74,28 +77,6 @@ const TalentDashboard = () => {
             Here's what's happening with your job search.
           </p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline">
-              Quick Actions
-              <ChevronDown className="w-4 h-4 ml-2" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem className="cursor-pointer">
-              <FileText className="w-4 h-4 mr-2 text-primary" />
-              Update Resume
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer">
-              <Search className="w-4 h-4 mr-2 text-amber" />
-              Browse Jobs
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer">
-              <Star className="w-4 h-4 mr-2 text-gold" />
-              Upgrade to Premium
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {/* Metrics */}
@@ -110,19 +91,23 @@ const TalentDashboard = () => {
         />
         <MetricCard
           title="Applications Sent"
-          value={8}
+          value={applications.length}
           change="3 this week"
           changeType="neutral"
           icon={<FileText className="w-6 h-6" />}
           variant="amber"
+          onClick={() => navigate("/talent/applications")}
+          className="cursor-pointer"
         />
         <MetricCard
           title="Interviews Scheduled"
-          value={3}
+          value={applications.filter(a => a.status === "Interview Scheduled").length}
           change="+2 new"
           changeType="positive"
           icon={<Clock className="w-6 h-6" />}
           variant="success"
+          onClick={() => navigate("/talent/interviews")}
+          className="cursor-pointer"
         />
         <MetricCard
           title="Profile Strength"
@@ -155,7 +140,7 @@ const TalentDashboard = () => {
               {...job}
               onApply={() => handleApplyClick(job)}
               onSave={() => handleSave(job)}
-              onView={() => console.log("View", job.id)}
+              onView={() => handleViewJob(job)}
             />
           ))}
         </div>
@@ -171,6 +156,13 @@ const TalentDashboard = () => {
           onApply={handleApplyWithResume}
         />
       )}
+
+      {/* Job Description Dialog */}
+      <JobDescriptionDialog
+        open={jobDescriptionOpen}
+        onOpenChange={setJobDescriptionOpen}
+        job={selectedJobForView}
+      />
 
     </DashboardLayout>
   );

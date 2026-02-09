@@ -20,12 +20,14 @@ import TalentDashboard from "./pages/talent/Dashboard";
 import TalentJobs from "./pages/talent/Jobs";
 import TalentApplications from "./pages/talent/Applications";
 import TalentSavedJobs from "./pages/talent/SavedJobs";
+import TalentInterviews from "./pages/talent/Interviews";
 import TalentSettings from "./pages/talent/Settings";
 
 // Employer pages
 import EmployerDashboard from "./pages/employer/Dashboard";
 import EmployerJobs from "./pages/employer/Jobs";
 import EmployerCandidates from "./pages/employer/Candidates";
+import EmployerInterviews from "./pages/employer/Interviews";
 import EmployerCompany from "./pages/employer/Company";
 import EmployerSettings from "./pages/employer/Settings";
 import NewJob from "./pages/employer/NewJob";
@@ -68,6 +70,7 @@ const App = () => (
             <Route path="/talent/jobs" element={<TalentJobs />} />
             <Route path="/talent/applications" element={<TalentApplications />} />
             <Route path="/talent/saved" element={<TalentSavedJobs />} />
+            <Route path="/talent/interviews" element={<TalentInterviews />} />
             <Route path="/talent/settings" element={<TalentSettings />} />
             
             {/* Employer routes */}
@@ -75,6 +78,7 @@ const App = () => (
             <Route path="/employer/jobs" element={<EmployerJobs />} />
             <Route path="/employer/jobs/new" element={<NewJob />} />
             <Route path="/employer/candidates" element={<EmployerCandidates />} />
+            <Route path="/employer/interviews" element={<EmployerInterviews />} />
             <Route path="/employer/company" element={<EmployerCompany />} />
             <Route path="/employer/settings" element={<EmployerSettings />} />
             

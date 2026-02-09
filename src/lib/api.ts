@@ -32,7 +32,7 @@ class ApiClient {
     return this.token;
   }
 
-  private async request<T>(
+  async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
@@ -170,6 +170,120 @@ class ApiClient {
 
   getResumeDownloadUrl(resumeId: string): string {
     return `${API_BASE_URL}/resumes/${resumeId}/download`;
+  }
+
+  // Job endpoints
+  async getAvailableJobs() {
+    return this.request('/jobs/available');
+  }
+
+  async getAllJobs() {
+    return this.request('/jobs');
+  }
+
+  async getJobById(jobId: string) {
+    return this.request(`/jobs/${jobId}`);
+  }
+
+  async saveJob(jobId: string) {
+    return this.request(`/jobs/${jobId}/save`, {
+      method: 'POST',
+    });
+  }
+
+  async getSavedJobs() {
+    return this.request('/jobs/saved/list');
+  }
+
+  async removeSavedJob(jobId: string) {
+    return this.request(`/jobs/saved/${jobId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async applyToJob(jobId: string, resumeId: string) {
+    return this.request(`/jobs/${jobId}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ resumeId }),
+    });
+  }
+
+  async getApplications() {
+    return this.request('/jobs/applications/list');
+  }
+
+  async getInterviews() {
+    return this.request('/jobs/interviews/list');
+  }
+
+  async createJob(jobData: {
+    title: string;
+    company: string;
+    location: string;
+    type: 'remote' | 'hybrid' | 'onsite';
+    salary?: string;
+    match_score?: number;
+    skills?: string[];
+    description?: string;
+  }) {
+    return this.request('/jobs', {
+      method: 'POST',
+      body: JSON.stringify(jobData),
+    });
+  }
+
+  async updateJob(jobId: string, jobData: any) {
+    return this.request(`/jobs/${jobId}`, {
+      method: 'PUT',
+      body: JSON.stringify(jobData),
+    });
+  }
+
+  async updateJobStatus(jobId: string, status: 'active' | 'paused' | 'closed', statusReason?: string) {
+    return this.request(`/jobs/${jobId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, status_reason: statusReason }),
+    });
+  }
+
+  async getJobApplications(jobId: string) {
+    return this.request(`/jobs/${jobId}/applications`);
+  }
+
+  // Organization endpoints
+  async getOrganization(companyName: string) {
+    return this.request(`/organizations/${companyName}`);
+  }
+
+  async saveOrganization(orgData: any) {
+    return this.request('/organizations', {
+      method: 'POST',
+      body: JSON.stringify(orgData),
+    });
+  }
+
+  async getOrganizationRequirements(companyName: string) {
+    return this.request(`/organizations/${companyName}/requirements`);
+  }
+
+  async addOrganizationRequirement(companyName: string, requirement: { requirement_text: string; requirement_type: string; weight: number }) {
+    return this.request(`/organizations/${companyName}/requirements`, {
+      method: 'POST',
+      body: JSON.stringify(requirement),
+    });
+  }
+
+  async updateOrganizationRequirement(requirementId: string, requirement: { requirement_text: string; requirement_type: string; weight: number }) {
+    return this.request(`/organizations/requirements/${requirementId}`, {
+      method: 'PUT',
+      body: JSON.stringify(requirement),
+    });
+  }
+
+  async deleteOrganizationRequirement(requirementId: string) {
+    return this.request(`/organizations/requirements/${requirementId}`, {
+      method: 'DELETE',
+    });
   }
 }
 

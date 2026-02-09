@@ -1,4 +1,7 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { apiClient } from "@/lib/api";
+import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
 
 interface Job {
   id: string;
@@ -10,6 +13,7 @@ interface Job {
   postedAt: string;
   matchScore: number;
   skills: string[];
+  description?: string;
 }
 
 interface Application {
@@ -20,131 +24,223 @@ interface Application {
   appliedAt: string;
   status: string;
   matchScore: number;
+  type?: "remote" | "hybrid" | "onsite";
+  salary?: string;
+  postedAt?: string;
+  skills?: string[];
+  description?: string;
 }
 
 interface JobsContextType {
   availableJobs: Job[];
   savedJobs: Job[];
   applications: Application[];
+  loading: boolean;
   removeFromAvailable: (jobId: string) => void;
-  removeFromSaved: (jobId: string) => void;
-  saveJob: (job: Job) => void;
-  applyToJob: (job: Job) => void;
+  removeFromSaved: (jobId: string) => Promise<void>;
+  saveJob: (job: Job) => Promise<void>;
+  applyToJob: (job: Job, resumeId: string) => Promise<void>;
   isJobSaved: (jobId: string) => boolean;
   isJobApplied: (jobId: string) => boolean;
+  refetch: () => Promise<void>;
 }
-
-const initialJobs: Job[] = [
-  {
-    id: "1",
-    title: "Senior Frontend Developer",
-    company: "TechCorp AI",
-    location: "San Francisco, CA",
-    type: "hybrid",
-    salary: "$150k - $200k",
-    postedAt: "2 days ago",
-    matchScore: 92,
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
-  },
-  {
-    id: "2",
-    title: "Full Stack Engineer",
-    company: "StartupXYZ",
-    location: "New York, NY",
-    type: "remote",
-    salary: "$130k - $170k",
-    postedAt: "5 days ago",
-    matchScore: 87,
-    skills: ["Python", "React", "PostgreSQL", "Docker"],
-  },
-  {
-    id: "3",
-    title: "Backend Developer",
-    company: "Enterprise Inc",
-    location: "Austin, TX",
-    type: "onsite",
-    salary: "$120k - $150k",
-    postedAt: "1 week ago",
-    matchScore: 75,
-    skills: ["Java", "Spring Boot", "Kubernetes", "MongoDB"],
-  },
-  {
-    id: "4",
-    title: "DevOps Engineer",
-    company: "CloudScale",
-    location: "Seattle, WA",
-    type: "remote",
-    salary: "$140k - $180k",
-    postedAt: "3 days ago",
-    matchScore: 82,
-    skills: ["AWS", "Terraform", "Docker", "Kubernetes"],
-  },
-  {
-    id: "5",
-    title: "ML Engineer",
-    company: "AI Labs",
-    location: "Boston, MA",
-    type: "hybrid",
-    salary: "$160k - $210k",
-    postedAt: "1 day ago",
-    matchScore: 68,
-    skills: ["Python", "PyTorch", "TensorFlow", "MLOps"],
-  },
-];
-
-const initialSavedJobs: Job[] = [
-  {
-    id: "1",
-    title: "Senior Frontend Developer",
-    company: "TechCorp AI",
-    location: "San Francisco, CA",
-    type: "hybrid",
-    salary: "$150k - $200k",
-    postedAt: "2 days ago",
-    matchScore: 92,
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
-  },
-  {
-    id: "2",
-    title: "Full Stack Engineer",
-    company: "StartupXYZ",
-    location: "New York, NY",
-    type: "remote",
-    salary: "$130k - $170k",
-    postedAt: "5 days ago",
-    matchScore: 87,
-    skills: ["Python", "React", "PostgreSQL", "Docker"],
-  },
-];
 
 const JobsContext = createContext<JobsContextType | undefined>(undefined);
 
+// Helper to convert API job to frontend format
+const convertApiJobToJob = (apiJob: any): Job => {
+  return {
+    id: apiJob.id,
+    title: apiJob.title,
+    company: apiJob.company,
+    location: apiJob.location,
+    type: apiJob.type,
+    salary: apiJob.salary || "",
+    postedAt: apiJob.posted_at 
+      ? formatDistanceToNow(new Date(apiJob.posted_at), { addSuffix: true })
+      : "Recently",
+    matchScore: apiJob.match_score || 0,
+    skills: apiJob.skills || [],
+    description: apiJob.description,
+  };
+};
+
+// Helper to convert API application to frontend format
+const convertApiApplicationToApplication = (apiApp: any): Application => {
+  const job = apiApp.job || {};
+  return {
+    id: apiApp.id,
+    jobTitle: job.title || "",
+    company: job.company || "",
+    location: job.location || "",
+    appliedAt: apiApp.applied_at
+      ? formatDistanceToNow(new Date(apiApp.applied_at), { addSuffix: true })
+      : "Just now",
+    status: apiApp.status || "Application Sent",
+    matchScore: job.match_score || 0,
+    type: job.type,
+    salary: job.salary,
+    postedAt: job.posted_at
+      ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
+      : undefined,
+    skills: job.skills || [],
+    description: job.description,
+  };
+};
+
 export const JobsProvider = ({ children }: { children: ReactNode }) => {
-  const [availableJobs, setAvailableJobs] = useState<Job[]>(initialJobs);
-  const [savedJobs, setSavedJobs] = useState<Job[]>(initialSavedJobs);
+  const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
+  const [savedJobs, setSavedJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    const token = apiClient.getToken();
+    if (!token) {
+      setLoading(false);
+      setAvailableJobs([]);
+      setSavedJobs([]);
+      setApplications([]);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Fetch all data in parallel
+      const [availableResponse, savedResponse, applicationsResponse] = await Promise.all([
+        apiClient.getAvailableJobs().catch((err) => {
+          console.error("Error fetching available jobs:", err);
+          return { success: false, data: [], error: err.message };
+        }),
+        apiClient.getSavedJobs().catch((err) => {
+          console.error("Error fetching saved jobs:", err);
+          return { success: false, data: [], error: err.message };
+        }),
+        apiClient.getApplications().catch((err) => {
+          console.error("Error fetching applications:", err);
+          return { success: false, data: [], error: err.message };
+        }),
+      ]);
+
+      if (availableResponse.success && availableResponse.data) {
+        setAvailableJobs(availableResponse.data.map(convertApiJobToJob));
+      } else {
+        // If no data or failed, set empty array
+        setAvailableJobs([]);
+        if (availableResponse.error && !availableResponse.error.includes("Authentication")) {
+          console.warn("Failed to load available jobs:", availableResponse.error);
+        }
+      }
+
+      if (savedResponse.success && savedResponse.data) {
+        setSavedJobs(
+          savedResponse.data
+            .map((item: any) => item.job)
+            .filter(Boolean)
+            .map(convertApiJobToJob)
+        );
+      } else {
+        setSavedJobs([]);
+      }
+
+      if (applicationsResponse.success && applicationsResponse.data) {
+        setApplications(applicationsResponse.data.map(convertApiApplicationToApplication));
+      } else {
+        setApplications([]);
+      }
+    } catch (error: any) {
+      console.error("Error fetching jobs data:", error);
+      setAvailableJobs([]);
+      setSavedJobs([]);
+      setApplications([]);
+      if (error.message && !error.message.includes("Authentication")) {
+        toast.error("Failed to load jobs data");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const removeFromAvailable = (jobId: string) => {
     setAvailableJobs((prev) => prev.filter((job) => job.id !== jobId));
   };
 
-  const removeFromSaved = (jobId: string) => {
-    setSavedJobs((prev) => prev.filter((job) => job.id !== jobId));
-  };
+  const removeFromSaved = async (jobId: string) => {
+    try {
+      const token = apiClient.getToken();
+      if (!token) {
+        toast.error("Please sign in to remove saved jobs");
+        return;
+      }
 
-  const saveJob = (job: Job) => {
-    if (!savedJobs.find((j) => j.id === job.id)) {
-      setSavedJobs((prev) => [...prev, job]);
+      await apiClient.removeSavedJob(jobId);
+      
+      // Remove from saved and add back to available
+      const jobToRestore = savedJobs.find((j) => j.id === jobId);
+      if (jobToRestore) {
+        setSavedJobs((prev) => prev.filter((job) => job.id !== jobId));
+        setAvailableJobs((prev) => {
+          // Only add if not already in available
+          if (!prev.find((j) => j.id === jobId)) {
+            return [...prev, jobToRestore];
+          }
+          return prev;
+        });
+      }
+      
+      toast.success("Job removed from saved");
+    } catch (error: any) {
+      console.error("Error removing saved job:", error);
+      toast.error(error.message || "Failed to remove saved job");
     }
   };
 
-  const applyToJob = (job: Job) => {
-    // Remove from available and saved
-    setAvailableJobs((prev) => prev.filter((j) => j.id !== job.id));
-    setSavedJobs((prev) => prev.filter((j) => j.id !== job.id));
+  const saveJob = async (job: Job) => {
+    try {
+      const token = apiClient.getToken();
+      if (!token) {
+        toast.error("Please sign in to save jobs");
+        return;
+      }
 
-    // Add to applications if not already applied
-    if (!applications.find((a) => a.id === job.id)) {
+      await apiClient.saveJob(job.id);
+      
+      // Remove from available and add to saved
+      setAvailableJobs((prev) => prev.filter((j) => j.id !== job.id));
+      setSavedJobs((prev) => {
+        if (!prev.find((j) => j.id === job.id)) {
+          return [...prev, job];
+        }
+        return prev;
+      });
+      
+      toast.success(`Saved ${job.title}`);
+    } catch (error: any) {
+      console.error("Error saving job:", error);
+      toast.error(error.message || "Failed to save job");
+    }
+  };
+
+  const applyToJob = async (job: Job, resumeId: string) => {
+    try {
+      const token = apiClient.getToken();
+      if (!token) {
+        toast.error("Please sign in to apply to jobs");
+        return;
+      }
+
+      await apiClient.applyToJob(job.id, resumeId);
+      
+      // Remove from available and saved
+      setAvailableJobs((prev) => prev.filter((j) => j.id !== job.id));
+      setSavedJobs((prev) => prev.filter((j) => j.id !== job.id));
+
+      // Add to applications
       const newApplication: Application = {
         id: job.id,
         jobTitle: job.title,
@@ -153,8 +249,27 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
         appliedAt: "Just now",
         status: "Application Sent",
         matchScore: job.matchScore,
+        type: job.type,
+        salary: job.salary,
+        postedAt: job.postedAt,
+        skills: job.skills,
+        description: job.description,
       };
-      setApplications((prev) => [...prev, newApplication]);
+      
+      setApplications((prev) => {
+        if (!prev.find((a) => a.id === job.id)) {
+          return [...prev, newApplication];
+        }
+        return prev;
+      });
+      
+      toast.success(`Applied to ${job.title} at ${job.company}`);
+      
+      // Refetch to get updated data
+      await fetchData();
+    } catch (error: any) {
+      console.error("Error applying to job:", error);
+      toast.error(error.message || "Failed to apply to job");
     }
   };
 
@@ -172,12 +287,14 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
         availableJobs,
         savedJobs,
         applications,
+        loading,
         removeFromAvailable,
         removeFromSaved,
         saveJob,
         applyToJob,
         isJobSaved,
         isJobApplied,
+        refetch: fetchData,
       }}
     >
       {children}

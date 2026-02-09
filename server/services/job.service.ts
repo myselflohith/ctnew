@@ -1,0 +1,644 @@
+import { query } from '../database/connection.js';
+
+export interface Job {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  type: 'remote' | 'hybrid' | 'onsite';
+  salary?: string;
+  posted_at: Date;
+  match_score?: number;
+  skills?: string[];
+  description?: string;
+  status?: 'active' | 'paused' | 'closed';
+  status_reason?: string;
+  paused_at?: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface SavedJob {
+  id: string;
+  user_id: string;
+  job_id: string;
+  created_at: Date;
+  job?: Job;
+}
+
+export interface JobApplication {
+  id: string;
+  user_id: string;
+  job_id: string;
+  resume_id?: string;
+  status: 'Application Sent' | 'Under Review' | 'Interview Scheduled' | 'Rejected' | 'Accepted';
+  applied_at: Date;
+  updated_at: Date;
+  job?: Job;
+  candidate_name?: string;
+  candidate_email?: string;
+}
+
+export interface Interview {
+  id: string;
+  user_id: string;
+  application_id: string;
+  interview_type: 'Video' | 'Phone' | 'Onsite';
+  scheduled_date?: Date;
+  scheduled_time?: string;
+  interviewer?: string;
+  status: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+  notes?: string;
+  created_at: Date;
+  updated_at: Date;
+  application?: JobApplication;
+}
+
+// Get all available jobs (not saved by user and not applied to)
+export async function getAvailableJobs(userId: string): Promise<Job[]> {
+  const result = await query(
+    `SELECT j.* 
+     FROM ct_job j
+     WHERE j.id NOT IN (
+       SELECT job_id FROM ct_jobs_saved WHERE user_id = $1
+     )
+     AND j.id NOT IN (
+       SELECT job_id FROM ct_job_applications WHERE user_id = $1
+     )
+     ORDER BY j.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+// Get all jobs (for admin/employer)
+export async function getAllJobs(): Promise<Job[]> {
+  const result = await query(
+    'SELECT * FROM ct_job ORDER BY created_at DESC'
+  );
+  return result.rows;
+}
+
+// Get job by ID
+export async function getJobById(jobId: string): Promise<Job | null> {
+  const result = await query(
+    'SELECT * FROM ct_job WHERE id = $1',
+    [jobId]
+  );
+  return result.rows[0] || null;
+}
+
+// Create a new job
+export async function createJob(jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'>): Promise<Job> {
+  const result = await query(
+    `INSERT INTO ct_job (title, company, location, type, salary, match_score, skills, description, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [
+      jobData.title,
+      jobData.company,
+      jobData.location,
+      jobData.type,
+      jobData.salary || null,
+      jobData.match_score || null,
+      jobData.skills || [],
+      jobData.description || null,
+      'active',
+    ]
+  );
+  return result.rows[0];
+}
+
+// Update job
+export async function updateJob(
+  jobId: string,
+  jobData: Partial<Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'>>
+): Promise<Job> {
+  const updates: string[] = [];
+  const values: any[] = [];
+  let paramCount = 1;
+
+  if (jobData.title !== undefined) {
+    updates.push(`title = $${paramCount++}`);
+    values.push(jobData.title);
+  }
+  if (jobData.company !== undefined) {
+    updates.push(`company = $${paramCount++}`);
+    values.push(jobData.company);
+  }
+  if (jobData.location !== undefined) {
+    updates.push(`location = $${paramCount++}`);
+    values.push(jobData.location);
+  }
+  if (jobData.type !== undefined) {
+    updates.push(`type = $${paramCount++}`);
+    values.push(jobData.type);
+  }
+  if (jobData.salary !== undefined) {
+    updates.push(`salary = $${paramCount++}`);
+    values.push(jobData.salary);
+  }
+  if (jobData.match_score !== undefined) {
+    updates.push(`match_score = $${paramCount++}`);
+    values.push(jobData.match_score);
+  }
+  if (jobData.skills !== undefined) {
+    updates.push(`skills = $${paramCount++}`);
+    values.push(jobData.skills);
+  }
+  if (jobData.description !== undefined) {
+    updates.push(`description = $${paramCount++}`);
+    values.push(jobData.description);
+  }
+
+  if (updates.length === 0) {
+    throw new Error('No fields to update');
+  }
+
+  values.push(jobId);
+  const result = await query(
+    `UPDATE ct_job SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`,
+    values
+  );
+  return result.rows[0];
+}
+
+// Update job status
+export async function updateJobStatus(
+  jobId: string,
+  status: 'active' | 'paused' | 'closed',
+  statusReason?: string
+): Promise<Job> {
+  const updates: string[] = ['status = $1', 'updated_at = CURRENT_TIMESTAMP'];
+  const values: any[] = [status];
+
+  if (status === 'paused') {
+    updates.push('paused_at = CURRENT_TIMESTAMP');
+  } else if (status === 'closed') {
+    updates.push('paused_at = NULL');
+  }
+
+  if (statusReason !== undefined) {
+    updates.push('status_reason = $2');
+    values.push(statusReason);
+  }
+
+  values.push(jobId);
+  const result = await query(
+    `UPDATE ct_job SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
+    values
+  );
+  return result.rows[0];
+}
+
+// Get applications for a specific job
+export async function getApplicationsForJob(jobId: string): Promise<JobApplication[]> {
+  const result = await query(
+    `SELECT 
+       a.id as application_id,
+       a.user_id,
+       a.job_id,
+       a.resume_id,
+       a.status,
+       a.applied_at,
+       a.updated_at as application_updated_at,
+       j.id as job_id,
+       j.title,
+       j.company,
+       j.location,
+       j.type,
+       j.salary,
+       j.posted_at,
+       j.match_score,
+       j.skills,
+       j.description,
+       j.created_at as job_created_at,
+       j.updated_at as job_updated_at,
+       u.first_name,
+       u.last_name,
+       u.email
+     FROM ct_job_applications a
+     JOIN ct_job j ON a.job_id = j.id
+     LEFT JOIN users u ON a.user_id = u.id
+     WHERE a.job_id = $1
+     ORDER BY a.applied_at DESC`,
+    [jobId]
+  );
+  return result.rows.map(row => ({
+    id: row.application_id,
+    user_id: row.user_id,
+    job_id: row.job_id,
+    resume_id: row.resume_id,
+    status: row.status,
+    applied_at: row.applied_at,
+    updated_at: row.application_updated_at,
+    job: {
+      id: row.job_id,
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      type: row.type,
+      salary: row.salary,
+      posted_at: row.posted_at,
+      match_score: row.match_score,
+      skills: row.skills,
+      description: row.description,
+      created_at: row.job_created_at,
+      updated_at: row.job_updated_at,
+    },
+    candidate_name: row.first_name && row.last_name 
+      ? `${row.first_name} ${row.last_name}` 
+      : row.email || 'Unknown',
+    candidate_email: row.email,
+  }));
+}
+
+// Save a job for a user
+export async function saveJobForUser(userId: string, jobId: string): Promise<SavedJob> {
+  const result = await query(
+    `INSERT INTO ct_jobs_saved (user_id, job_id)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, job_id) DO NOTHING
+     RETURNING *`,
+    [userId, jobId]
+  );
+  return result.rows[0];
+}
+
+// Get saved jobs for a user
+export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
+  const result = await query(
+    `SELECT 
+       js.id as saved_job_id,
+       js.user_id,
+       js.job_id,
+       js.created_at as saved_at,
+       j.id as job_id,
+       j.title,
+       j.company,
+       j.location,
+       j.type,
+       j.salary,
+       j.posted_at,
+       j.match_score,
+       j.skills,
+       j.description,
+       j.created_at,
+       j.updated_at
+     FROM ct_jobs_saved js
+     JOIN ct_job j ON js.job_id = j.id
+     WHERE js.user_id = $1
+     ORDER BY js.created_at DESC`,
+    [userId]
+  );
+  return result.rows.map(row => ({
+    id: row.saved_job_id,
+    user_id: row.user_id,
+    job_id: row.job_id,
+    created_at: row.saved_at,
+    job: {
+      id: row.job_id,
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      type: row.type,
+      salary: row.salary,
+      posted_at: row.posted_at,
+      match_score: row.match_score,
+      skills: row.skills,
+      description: row.description,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    },
+  }));
+}
+
+// Remove a saved job (move back to available)
+export async function removeSavedJob(userId: string, jobId: string): Promise<void> {
+  await query(
+    'DELETE FROM ct_jobs_saved WHERE user_id = $1 AND job_id = $2',
+    [userId, jobId]
+  );
+}
+
+// Apply to a job
+export async function applyToJob(
+  userId: string,
+  jobId: string,
+  resumeId: string
+): Promise<JobApplication> {
+  // Remove from saved jobs if exists
+  await query(
+    'DELETE FROM ct_jobs_saved WHERE user_id = $1 AND job_id = $2',
+    [userId, jobId]
+  );
+
+  // Create application
+  const result = await query(
+    `INSERT INTO ct_job_applications (user_id, job_id, resume_id, status)
+     VALUES ($1, $2, $3, 'Application Sent')
+     ON CONFLICT (user_id, job_id) DO UPDATE
+     SET resume_id = EXCLUDED.resume_id, updated_at = CURRENT_TIMESTAMP
+     RETURNING *`,
+    [userId, jobId, resumeId]
+  );
+  return result.rows[0];
+}
+
+// Get applications for jobs created by an employer (by company name)
+export async function getApplicationsForEmployer(companyName: string): Promise<JobApplication[]> {
+  const result = await query(
+    `SELECT 
+       a.id as application_id,
+       a.user_id,
+       a.job_id,
+       a.resume_id,
+       a.status,
+       a.applied_at,
+       a.updated_at as application_updated_at,
+       j.id as job_id,
+       j.title,
+       j.company,
+       j.location,
+       j.type,
+       j.salary,
+       j.posted_at,
+       j.match_score,
+       j.skills,
+       j.description,
+       j.created_at as job_created_at,
+       j.updated_at as job_updated_at
+     FROM ct_job_applications a
+     JOIN ct_job j ON a.job_id = j.id
+     WHERE j.company = $1
+     ORDER BY a.applied_at DESC`,
+    [companyName]
+  );
+  return result.rows.map(row => ({
+    id: row.application_id,
+    user_id: row.user_id,
+    job_id: row.job_id,
+    resume_id: row.resume_id,
+    status: row.status,
+    applied_at: row.applied_at,
+    updated_at: row.application_updated_at,
+    job: {
+      id: row.job_id,
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      type: row.type,
+      salary: row.salary,
+      posted_at: row.posted_at,
+      match_score: row.match_score,
+      skills: row.skills,
+      description: row.description,
+      created_at: row.job_created_at,
+      updated_at: row.job_updated_at,
+    },
+  }));
+}
+
+// Get applications for a user
+export async function getUserApplications(userId: string): Promise<JobApplication[]> {
+  const result = await query(
+    `SELECT 
+       a.id as application_id,
+       a.user_id,
+       a.job_id,
+       a.resume_id,
+       a.status,
+       a.applied_at,
+       a.updated_at as application_updated_at,
+       j.id as job_id,
+       j.title,
+       j.company,
+       j.location,
+       j.type,
+       j.salary,
+       j.posted_at,
+       j.match_score,
+       j.skills,
+       j.description,
+       j.created_at as job_created_at,
+       j.updated_at as job_updated_at
+     FROM ct_job_applications a
+     JOIN ct_job j ON a.job_id = j.id
+     WHERE a.user_id = $1
+     ORDER BY a.applied_at DESC`,
+    [userId]
+  );
+  return result.rows.map(row => ({
+    id: row.application_id,
+    user_id: row.user_id,
+    job_id: row.job_id,
+    resume_id: row.resume_id,
+    status: row.status,
+    applied_at: row.applied_at,
+    updated_at: row.application_updated_at,
+    job: {
+      id: row.job_id,
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      type: row.type,
+      salary: row.salary,
+      posted_at: row.posted_at,
+      match_score: row.match_score,
+      skills: row.skills,
+      description: row.description,
+      created_at: row.job_created_at,
+      updated_at: row.job_updated_at,
+    },
+  }));
+}
+
+// Get interviews for a user
+export async function getUserInterviews(userId: string): Promise<Interview[]> {
+  const result = await query(
+    `SELECT 
+       i.id as interview_id,
+       i.user_id,
+       i.application_id,
+       i.interview_type,
+       i.scheduled_date,
+       i.scheduled_time,
+       i.interviewer,
+       i.status as interview_status,
+       i.notes,
+       i.created_at as interview_created_at,
+       i.updated_at as interview_updated_at,
+       a.id as application_id,
+       a.user_id as application_user_id,
+       a.job_id,
+       a.resume_id,
+       a.status as application_status,
+       a.applied_at,
+       a.updated_at as application_updated_at,
+       j.id as job_id,
+       j.title,
+       j.company,
+       j.location,
+       j.type,
+       j.salary,
+       j.posted_at,
+       j.match_score,
+       j.skills,
+       j.description,
+       j.created_at as job_created_at,
+       j.updated_at as job_updated_at
+     FROM ct_interviews i
+     JOIN ct_job_applications a ON i.application_id = a.id
+     JOIN ct_job j ON a.job_id = j.id
+     WHERE i.user_id = $1
+     ORDER BY i.scheduled_date DESC, i.scheduled_time DESC`,
+    [userId]
+  );
+  return result.rows.map(row => ({
+    id: row.interview_id,
+    user_id: row.user_id,
+    application_id: row.application_id,
+    interview_type: row.interview_type,
+    scheduled_date: row.scheduled_date,
+    scheduled_time: row.scheduled_time,
+    interviewer: row.interviewer,
+    status: row.interview_status,
+    notes: row.notes,
+    created_at: row.interview_created_at,
+    updated_at: row.interview_updated_at,
+    application: {
+      id: row.application_id,
+      user_id: row.application_user_id,
+      job_id: row.job_id,
+      resume_id: row.resume_id,
+      status: row.application_status,
+      applied_at: row.applied_at,
+      updated_at: row.application_updated_at,
+      job: {
+        id: row.job_id,
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        type: row.type,
+        salary: row.salary,
+        posted_at: row.posted_at,
+        match_score: row.match_score,
+        skills: row.skills,
+        description: row.description,
+        created_at: row.job_created_at,
+        updated_at: row.job_updated_at,
+      },
+    },
+  }));
+}
+
+// Get interviews for an employer (interviews for candidates who applied to their jobs)
+export async function getInterviewsForEmployer(companyName: string): Promise<Interview[]> {
+  const result = await query(
+    `SELECT 
+       i.id as interview_id,
+       i.user_id,
+       i.application_id,
+       i.interview_type,
+       i.scheduled_date,
+       i.scheduled_time,
+       i.interviewer,
+       i.status as interview_status,
+       i.notes,
+       i.created_at as interview_created_at,
+       i.updated_at as interview_updated_at,
+       a.id as application_id,
+       a.user_id as application_user_id,
+       a.job_id,
+       a.resume_id,
+       a.status as application_status,
+       a.applied_at,
+       a.updated_at as application_updated_at,
+       j.id as job_id,
+       j.title,
+       j.company,
+       j.location,
+       j.type,
+       j.salary,
+       j.posted_at,
+       j.match_score,
+       j.skills,
+       j.description,
+       j.created_at as job_created_at,
+       j.updated_at as job_updated_at,
+       u.first_name,
+       u.last_name,
+       u.email
+     FROM ct_interviews i
+     JOIN ct_job_applications a ON i.application_id = a.id
+     JOIN ct_job j ON a.job_id = j.id
+     LEFT JOIN users u ON a.user_id = u.id
+     WHERE j.company = $1
+     ORDER BY i.scheduled_date DESC, i.scheduled_time DESC`,
+    [companyName]
+  );
+  return result.rows.map(row => ({
+    id: row.interview_id,
+    user_id: row.user_id,
+    application_id: row.application_id,
+    interview_type: row.interview_type,
+    scheduled_date: row.scheduled_date,
+    scheduled_time: row.scheduled_time,
+    interviewer: row.interviewer,
+    status: row.interview_status,
+    notes: row.notes,
+    created_at: row.interview_created_at,
+    updated_at: row.interview_updated_at,
+    application: {
+      id: row.application_id,
+      user_id: row.application_user_id,
+      job_id: row.job_id,
+      resume_id: row.resume_id,
+      status: row.application_status,
+      applied_at: row.applied_at,
+      updated_at: row.application_updated_at,
+      job: {
+        id: row.job_id,
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        type: row.type,
+        salary: row.salary,
+        posted_at: row.posted_at,
+        match_score: row.match_score,
+        skills: row.skills,
+        description: row.description,
+        created_at: row.job_created_at,
+        updated_at: row.job_updated_at,
+      },
+      candidate_name: row.first_name && row.last_name 
+        ? `${row.first_name} ${row.last_name}` 
+        : row.email || 'Unknown',
+      candidate_email: row.email,
+    },
+  }));
+}
+
+// Create interview
+export async function createInterview(
+  userId: string,
+  applicationId: string,
+  interviewData: Omit<Interview, 'id' | 'user_id' | 'application_id' | 'created_at' | 'updated_at'>
+): Promise<Interview> {
+  const result = await query(
+    `INSERT INTO ct_interviews (user_id, application_id, interview_type, scheduled_date, scheduled_time, interviewer, status, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      userId,
+      applicationId,
+      interviewData.interview_type,
+      interviewData.scheduled_date || null,
+      interviewData.scheduled_time || null,
+      interviewData.interviewer || null,
+      interviewData.status,
+      interviewData.notes || null,
+    ]
+  );
+  return result.rows[0];
+}

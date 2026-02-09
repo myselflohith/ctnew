@@ -12,6 +12,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   LayoutDashboard,
   Search,
   FileText,
@@ -23,17 +33,78 @@ import {
   Zap,
   Upload,
   Linkedin,
+  Download,
+  Trash2,
+  Star,
+  Calendar,
 } from "lucide-react";
+import { useState, useRef } from "react";
+import { useResumes } from "@/hooks/useResumes";
+import { apiClient } from "@/lib/api";
+import { format } from "date-fns";
+import { toast } from "sonner";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
   { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
   { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
+  { icon: FileText, label: "Applications", path: "/talent/applications" },
+  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
 const TalentSettings = () => {
+  const { resumes, loading, uploadResume, setDefaultResume, deleteResume } = useResumes();
+  const [isPremium, setIsPremium] = useState(false);
+  const [autoApplyEnabled, setAutoApplyEnabled] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [resumeToDelete, setResumeToDelete] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Please upload a PDF, DOC, or DOCX file");
+      return;
+    }
+
+    await uploadResume(file);
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    if (!resumeToDelete) return;
+    
+    const resume = resumes.find(r => r.id === resumeToDelete);
+    if (resume) {
+      await deleteResume(resume);
+      setDeleteDialogOpen(false);
+      setResumeToDelete(null);
+    }
+  };
+
+  const handleDownloadResume = (resumeId: string) => {
+    const url = apiClient.getResumeDownloadUrl(resumeId);
+    window.open(url, '_blank');
+  };
+
+  const formatFileSize = (bytes: number | null) => {
+    if (!bytes) return "";
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  };
+
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
       <div className="mb-8">
@@ -116,17 +187,90 @@ const TalentSettings = () => {
             <h2 className="font-display text-xl font-semibold text-foreground mb-6">
               Resume
             </h2>
-            <div className="border-2 border-dashed border-border rounded-xl p-8 text-center">
+            
+            {/* Upload Area */}
+            <div className="border-2 border-dashed border-border rounded-xl p-8 text-center mb-6">
               <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-4" />
               <p className="text-foreground font-medium mb-2">Upload your resume</p>
               <p className="text-sm text-muted-foreground mb-4">
                 PDF, DOC, or DOCX up to 5MB
               </p>
-              <Button variant="outline">Choose File</Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                Choose File
+              </Button>
             </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              Current: resume_john_doe.pdf (uploaded 2 weeks ago)
-            </p>
+
+            {/* Resume List */}
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading resumes...</p>
+            ) : resumes.length > 0 ? (
+              <div className="space-y-3">
+                {resumes.map((resume) => (
+                  <div
+                    key={resume.id}
+                    className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 border border-border"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <FileText className="w-8 h-8 text-primary" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">
+                          {resume.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatFileSize(resume.file_size)} •{" "}
+                          {format(new Date(resume.created_at), "MMM d, yyyy")}
+                          {resume.is_default && (
+                            <span className="ml-2 text-primary">• Default</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!resume.is_default && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDefaultResume(resume.id)}
+                          title="Make Default"
+                        >
+                          <Star className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDownloadResume(resume.id)}
+                        title="Download"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setResumeToDelete(resume.id);
+                          setDeleteDialogOpen(true);
+                        }}
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No resumes uploaded yet
+              </p>
+            )}
           </div>
 
           {/* Auto Apply */}
@@ -150,7 +294,11 @@ const TalentSettings = () => {
                     We'll apply to jobs with 85%+ match score
                   </p>
                 </div>
-                <Switch />
+                <Switch 
+                  checked={autoApplyEnabled} 
+                  onCheckedChange={setAutoApplyEnabled}
+                  disabled={!isPremium}
+                />
               </div>
               <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/30">
                 <div>
@@ -191,6 +339,24 @@ const TalentSettings = () => {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Resume</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this resume? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteResume} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };

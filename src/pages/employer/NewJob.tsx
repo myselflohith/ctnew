@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/api";
+import { toast as sonnerToast } from "sonner";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
@@ -66,6 +68,40 @@ const NewJob = () => {
     "mustHave"
   );
   const [requirementWeight, setRequirementWeight] = useState(5);
+  const [orgRequirements, setOrgRequirements] = useState<Requirement[]>([]);
+  const [requirementsLoaded, setRequirementsLoaded] = useState(false);
+
+  // Load organization requirements on mount
+  useEffect(() => {
+    const loadOrgRequirements = async () => {
+      try {
+        const userResponse = await apiClient.getCurrentUser();
+        if (userResponse.success && userResponse.user?.company_name) {
+          const companyName = userResponse.user.company_name;
+          const reqResponse = await apiClient.getOrganizationRequirements(companyName);
+          if (reqResponse.success && reqResponse.data) {
+            const orgReqs = reqResponse.data.map((req: any) => ({
+              id: req.id,
+              text: req.requirement_text,
+              type: req.requirement_type,
+              weight: req.weight,
+            }));
+            setOrgRequirements(orgReqs);
+            // Automatically add must-have requirements to the job
+            const mustHaveReqs = orgReqs.filter((r: Requirement) => r.type === "mustHave");
+            if (mustHaveReqs.length > 0) {
+              setRequirements(mustHaveReqs);
+            }
+            setRequirementsLoaded(true);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading organization requirements:", error);
+        setRequirementsLoaded(true);
+      }
+    };
+    loadOrgRequirements();
+  }, []);
 
   const addSkill = () => {
     if (skillInput && !skills.includes(skillInput)) {
@@ -99,13 +135,32 @@ const NewJob = () => {
   };
 
   const extractSkillsFromDescription = () => {
-    // Mock AI extraction - will be replaced with actual AI
-    const mockSkills = ["React", "TypeScript", "Node.js", "PostgreSQL", "AWS"];
-    setSkills([...new Set([...skills, ...mockSkills])]);
-    toast({
-      title: "Skills Extracted",
-      description: `Added ${mockSkills.length} skills from job description.`,
-    });
+    // Placeholder for AI extraction - will be replaced with actual AI service
+    // For now, this is a simple keyword-based extraction
+    const commonTechKeywords = [
+      "React", "Vue", "Angular", "TypeScript", "JavaScript", "Node.js", 
+      "Python", "Java", "C++", "Go", "Rust", "PostgreSQL", "MongoDB", 
+      "AWS", "Azure", "GCP", "Docker", "Kubernetes", "GraphQL", "REST"
+    ];
+    
+    const descriptionLower = formData.description.toLowerCase();
+    const extractedSkills = commonTechKeywords.filter(keyword => 
+      descriptionLower.includes(keyword.toLowerCase())
+    );
+    
+    if (extractedSkills.length > 0) {
+      setSkills([...new Set([...skills, ...extractedSkills])]);
+      toast({
+        title: "Skills Extracted",
+        description: `Added ${extractedSkills.length} skill${extractedSkills.length !== 1 ? 's' : ''} from job description.`,
+      });
+    } else {
+      toast({
+        title: "No Skills Found",
+        description: "Could not extract skills from description. Please add skills manually.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -133,14 +188,55 @@ const NewJob = () => {
       return;
     }
 
-    toast({
-      title: "Job Posted!",
-      description: formData.autoSource
-        ? "Sourcing candidates automatically..."
-        : "Your job is now live.",
-    });
+    try {
+      // Get company name from user or use default
+      const token = apiClient.getToken();
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please sign in to post jobs.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    navigate("/employer/dashboard");
+      // Get current user to get company name
+      const userResponse = await apiClient.getCurrentUser();
+      const companyName = userResponse.user?.company_name || "Company";
+
+      // Prepare job data
+      const jobData = {
+        title: formData.title,
+        company: companyName,
+        location: formData.jobType === "remote" ? "Remote" : (formData.location || "Not specified"),
+        type: formData.jobType as 'remote' | 'hybrid' | 'onsite',
+        salary: undefined, // Can be added later if needed
+        match_score: undefined, // Can be calculated later
+        skills: skills,
+        description: formData.description,
+      };
+
+      // Create the job via API
+      const response = await apiClient.createJob(jobData);
+
+      if (response.success) {
+        sonnerToast.success("Job Posted!", {
+          description: formData.autoSource
+            ? "Sourcing candidates automatically..."
+            : "Your job is now live.",
+        });
+        navigate("/employer/dashboard");
+      } else {
+        throw new Error(response.error || "Failed to create job");
+      }
+    } catch (error: any) {
+      console.error("Error creating job:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to post job. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import {
   Building2,
   MapPin,
   Clock,
-  ArrowRight,
+  Calendar,
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -20,8 +21,9 @@ import { useJobs } from "@/contexts/JobsContext";
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
   { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
   { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
+  { icon: FileText, label: "Applications", path: "/talent/applications" },
+  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
@@ -43,12 +45,32 @@ const getStatusVariant = (status: string) => {
 const TalentApplications = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
+  const [selectedJobForView, setSelectedJobForView] = useState<any>(null);
   const { applications } = useJobs();
 
   const totalApplications = applications.length;
   const inProgress = applications.filter(a => a.status === "Under Review" || a.status === "Application Sent").length;
   const interviews = applications.filter(a => a.status === "Interview Scheduled").length;
   const rejected = applications.filter(a => a.status === "Rejected").length;
+
+  const handleViewJob = (application: typeof applications[0]) => {
+    // Convert application to job format for the dialog
+    const jobForView = {
+      id: application.id,
+      title: application.jobTitle,
+      company: application.company,
+      location: application.location,
+      type: application.type || "remote" as const,
+      salary: application.salary,
+      postedAt: application.postedAt || application.appliedAt,
+      matchScore: application.matchScore,
+      skills: application.skills || [],
+      description: application.description,
+    };
+    setSelectedJobForView(jobForView);
+    setJobDescriptionOpen(true);
+  };
 
   return (
     <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
@@ -108,7 +130,12 @@ const TalentApplications = () => {
                     <Building2 className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-medium text-foreground">{application.jobTitle}</h3>
+                    <h3 
+                      className="font-medium text-foreground cursor-pointer hover:text-primary underline-offset-4 hover:underline"
+                      onClick={() => handleViewJob(application)}
+                    >
+                      {application.jobTitle}
+                    </h3>
                     <p className="text-sm text-muted-foreground">{application.company}</p>
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -127,10 +154,6 @@ const TalentApplications = () => {
                   <Badge variant={getStatusVariant(application.status)}>
                     {application.status}
                   </Badge>
-                  <Button variant="ghost" size="sm" className="group">
-                    View
-                    <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                  </Button>
                 </div>
               </div>
             ))}
@@ -148,6 +171,13 @@ const TalentApplications = () => {
           <Button variant="hero" onClick={() => navigate("/talent/jobs")}>Find Jobs</Button>
         </div>
       )}
+
+      {/* Job Description Dialog */}
+      <JobDescriptionDialog
+        open={jobDescriptionOpen}
+        onOpenChange={setJobDescriptionOpen}
+        job={selectedJobForView}
+      />
     </DashboardLayout>
   );
 };

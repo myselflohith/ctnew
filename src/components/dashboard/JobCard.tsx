@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MapPin, Clock, Building2, DollarSign, Bookmark, ExternalLink } from "lucide-react";
+import { MapPin, Clock, Building2, DollarSign, Bookmark } from "lucide-react";
 
 interface JobCardProps {
   id: string;
@@ -13,6 +13,7 @@ interface JobCardProps {
   postedAt: string;
   matchScore?: number;
   skills?: string[];
+  description?: string;
   onApply?: () => void;
   onSave?: () => void;
   onView?: () => void;
@@ -32,6 +33,7 @@ const JobCard = ({
   postedAt,
   matchScore,
   skills = [],
+  description,
   onApply,
   onSave,
   onView,
@@ -64,7 +66,10 @@ const JobCard = ({
           )}
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <h3 className="font-semibold text-lg text-foreground group-hover:text-primary transition-colors">
+              <h3 
+                className="font-semibold text-lg text-foreground group-hover:text-primary transition-colors cursor-pointer underline-offset-4 hover:underline"
+                onClick={onView}
+              >
                 {title}
               </h3>
               {matchScore && (
@@ -122,10 +127,6 @@ const JobCard = ({
           </span>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onView}>
-            View Details
-            <ExternalLink className="w-4 h-4 ml-1" />
-          </Button>
           {onApply && (
             <Button variant="default" size="sm" onClick={onApply}>
               Apply Now

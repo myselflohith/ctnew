@@ -7,6 +7,8 @@ interface MetricCardProps {
   changeType?: "positive" | "negative" | "neutral";
   icon: ReactNode;
   variant?: "cardinal" | "amber" | "success" | "default";
+  onClick?: () => void;
+  className?: string;
 }
 
 const MetricCard = ({
@@ -16,6 +18,8 @@ const MetricCard = ({
   changeType = "neutral",
   icon,
   variant = "default",
+  onClick,
+  className = "",
 }: MetricCardProps) => {
   const borderColors = {
     cardinal: "border-l-primary",
@@ -32,7 +36,8 @@ const MetricCard = ({
 
   return (
     <div
-      className={`metric-card border-l-4 ${borderColors[variant]} hover:scale-[1.02] transition-transform duration-200`}
+      className={`metric-card border-l-4 ${borderColors[variant]} hover:scale-[1.02] transition-transform duration-200 ${className}`}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div>

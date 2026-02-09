@@ -6,6 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth.routes.js';
 import resumeRoutes from './routes/resume.routes.js';
+import jobRoutes from './routes/job.routes.js';
+import organizationRoutes from './routes/organization.routes.js';
 import pool, { closePool } from './database/connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +46,8 @@ app.get('/api/health', (req: Request, res: Response) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/resumes', resumeRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/organizations', organizationRoutes);
 
 // Serve uploaded files (in production, use a CDN or object storage)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -72,6 +76,8 @@ const server = app.listen(PORT, () => {
   console.log(`🟢 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🔒 Auth endpoints: http://localhost:${PORT}/api/auth`);
   console.log(`📄 Resume endpoints: http://localhost:${PORT}/api/resumes`);
+  console.log(`💼 Job endpoints: http://localhost:${PORT}/api/jobs`);
+  console.log(`🏢 Organization endpoints: http://localhost:${PORT}/api/organizations`);
   console.log('='.repeat(60) + '\n');
 });
 

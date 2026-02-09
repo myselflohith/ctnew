@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import JobCard from "@/components/dashboard/JobCard";
 import ApplyModal from "@/components/talent/ApplyModal";
+import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,6 +12,7 @@ import {
   Heart,
   Settings,
   Trash2,
+  Calendar,
 } from "lucide-react";
 import { useState } from "react";
 import { useJobs } from "@/contexts/JobsContext";
@@ -19,8 +21,9 @@ import { toast } from "sonner";
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
   { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
   { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
+  { icon: FileText, label: "Applications", path: "/talent/applications" },
+  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
@@ -29,6 +32,8 @@ const TalentSavedJobs = () => {
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof savedJobs[0] | null>(null);
+  const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
+  const [selectedJobForView, setSelectedJobForView] = useState<typeof savedJobs[0] | null>(null);
   const { savedJobs, removeFromSaved, applyToJob } = useJobs();
 
   const handleApplyClick = (job: typeof savedJobs[0]) => {
@@ -36,11 +41,10 @@ const TalentSavedJobs = () => {
     setApplyModalOpen(true);
   };
 
-  const handleApplyWithResume = (resumeId: string) => {
+  const handleApplyWithResume = async (resumeId: string) => {
     if (selectedJobForApply) {
-      applyToJob(selectedJobForApply);
+      await applyToJob(selectedJobForApply, resumeId);
       setSelectedJobs((prev) => prev.filter((id) => id !== selectedJobForApply.id));
-      toast.success(`Applied to ${selectedJobForApply.title} at ${selectedJobForApply.company}`);
       setSelectedJobForApply(null);
     }
   };
@@ -61,12 +65,16 @@ const TalentSavedJobs = () => {
     }
   };
 
-  const handleRemoveSelected = () => {
-    selectedJobs.forEach((jobId) => {
-      removeFromSaved(jobId);
-    });
-    toast.info(`Removed ${selectedJobs.length} job(s) from saved`);
+  const handleRemoveSelected = async () => {
+    for (const jobId of selectedJobs) {
+      await removeFromSaved(jobId);
+    }
     setSelectedJobs([]);
+  };
+
+  const handleViewJob = (job: typeof savedJobs[0]) => {
+    setSelectedJobForView(job);
+    setJobDescriptionOpen(true);
   };
 
   const allSelected = savedJobs.length > 0 && selectedJobs.length === savedJobs.length;
@@ -130,7 +138,7 @@ const TalentSavedJobs = () => {
               isSelected={selectedJobs.includes(job.id)}
               onToggleSelect={(checked) => handleToggleSelect(job.id, checked)}
               onApply={() => handleApplyClick(job)}
-              onView={() => console.log("View", job.id)}
+              onView={() => handleViewJob(job)}
             />
           ))}
         </div>
@@ -157,6 +165,13 @@ const TalentSavedJobs = () => {
           onApply={handleApplyWithResume}
         />
       )}
+
+      {/* Job Description Dialog */}
+      <JobDescriptionDialog
+        open={jobDescriptionOpen}
+        onOpenChange={setJobDescriptionOpen}
+        job={selectedJobForView}
+      />
     </DashboardLayout>
   );
 };

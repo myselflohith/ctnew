@@ -1,0 +1,20 @@
+1. The Job should be a hyperlink on all the pages
+
+2. On Jobs, the number of applicants should be hyperlink to take you to the applicants for this job
+
+3. The actions on Jobs against each job (View Candidates, Edit Job, Pause Job, Close Job ) do not do anything - View Candidates should take you to Candidates page filtered by Job. Edit Job should show the job in a modal for editing. Close job should show a popup asking for Reason for closing the job (should be stored as Status and Status rEason on ct_job table), Pause job should put the job status to "Paused" with date.
+
+4. On jobs page, the summary at top (1 Active, 1 Total Applicatns, 1 New this week) - they should be relevant hyperlinks
+
+5. On Candidates page, View Profile should show a modal of Person description and link to resume
+
+6. On Company details, add "Must Have Job Requirements" -- these should automatically get copied to every job that gets created --> The company should be stored under organizations table and the requirements should be under ct_org_job_requirements table.
+
+7. The Dashboard summary at the top should take you to the respective tables with correct data.
+
+8. Dashboard - View All should show all Jobs and All Candidates that match the job.
+
+9. Remove Active Jobs on the Dashboard - the Total jobs covers this
+
+10. The Interviews Scheduled should take you to the Interviews Component (new)
+

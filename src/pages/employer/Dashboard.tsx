@@ -15,6 +15,7 @@ import {
   Eye,
   ArrowRight,
   MoreVertical,
+  Calendar,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,75 +24,137 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { apiClient } from "@/lib/api";
+import { formatDistanceToNow } from "date-fns";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
   { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
   { icon: Users, label: "Candidates", path: "/employer/candidates" },
+  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
   { icon: Building2, label: "Company", path: "/employer/company" },
   { icon: Settings, label: "Settings", path: "/employer/settings" },
 ];
 
-// Mock data
-const mockJobs = [
-  {
-    id: "1",
-    title: "Senior Frontend Developer",
-    status: "active",
-    applicants: 45,
-    newApplicants: 8,
-    views: 234,
-    postedAt: "3 days ago",
-  },
-  {
-    id: "2",
-    title: "Product Manager",
-    status: "active",
-    applicants: 32,
-    newApplicants: 5,
-    views: 189,
-    postedAt: "1 week ago",
-  },
-  {
-    id: "3",
-    title: "UX Designer",
-    status: "paused",
-    applicants: 28,
-    newApplicants: 0,
-    views: 156,
-    postedAt: "2 weeks ago",
-  },
-];
+interface Job {
+  id: string;
+  title: string;
+  status: string;
+  applicants: number;
+  newApplicants: number;
+  views: number;
+  postedAt: string;
+}
 
-const mockCandidates = [
-  {
-    id: "1",
-    name: "Sarah Chen",
-    role: "Senior Frontend Developer",
-    matchScore: 95,
-    rank: 1,
-    status: "Interview Scheduled",
-  },
-  {
-    id: "2",
-    name: "Michael Park",
-    role: "Senior Frontend Developer",
-    matchScore: 91,
-    rank: 2,
-    status: "Under Review",
-  },
-  {
-    id: "3",
-    name: "Emily Johnson",
-    role: "Product Manager",
-    matchScore: 88,
-    rank: 1,
-    status: "New",
-  },
-];
+interface Candidate {
+  id: string;
+  name: string;
+  role: string;
+  matchScore: number;
+  rank: number;
+  status: string;
+}
 
 const EmployerDashboard = () => {
   const navigate = useNavigate();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [allJobs, setAllJobs] = useState<Job[]>([]);
+  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAllJobs, setShowAllJobs] = useState(false);
+  const [showAllCandidates, setShowAllCandidates] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const token = apiClient.getToken();
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        
+        // Fetch jobs
+        const jobsResponse = await apiClient.getAllJobs();
+        if (jobsResponse.success && jobsResponse.data) {
+          // Get applications to calculate stats
+          const applicationsResponse = await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
+          const applications = applicationsResponse.success ? applicationsResponse.data : [];
+          
+          const applicationsByJob: Record<string, any[]> = {};
+          applications.forEach((app: any) => {
+            const jobId = app.job_id || app.job?.id;
+            if (jobId) {
+              if (!applicationsByJob[jobId]) {
+                applicationsByJob[jobId] = [];
+              }
+              applicationsByJob[jobId].push(app);
+            }
+          });
+          
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          
+          const allJobsWithStats = jobsResponse.data.map((job: any) => {
+            const jobApplications = applicationsByJob[job.id] || [];
+            const newApplicants = jobApplications.filter((app: any) => {
+              const appliedDate = new Date(app.applied_at || app.appliedAt);
+              return appliedDate >= oneWeekAgo;
+            }).length;
+            
+            return {
+              id: job.id,
+              title: job.title,
+              status: job.status || "active",
+              applicants: jobApplications.length,
+              newApplicants: newApplicants,
+              views: 0,
+              postedAt: job.posted_at 
+                ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
+                : "Recently",
+            };
+          });
+          
+          setAllJobs(allJobsWithStats);
+          setJobs(allJobsWithStats.slice(0, 3));
+        }
+        
+        // Fetch candidates (from applications for employer's jobs)
+        const applicationsResponse = await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
+        if (applicationsResponse.success && applicationsResponse.data) {
+          // Sort by match score and get all candidates
+          const sortedApplications = [...applicationsResponse.data].sort((a: any, b: any) => {
+            const scoreA = a.job?.match_score || 0;
+            const scoreB = b.job?.match_score || 0;
+            return scoreB - scoreA;
+          });
+          
+          const allCandidatesData = sortedApplications.map((app: any, index: number) => ({
+            id: app.id,
+            name: app.candidate_name || `Candidate ${index + 1}`,
+            role: app.job?.title || "Unknown",
+            matchScore: app.job?.match_score || 0,
+            rank: index + 1,
+            status: app.status || "New",
+          }));
+          
+          setAllCandidates(allCandidatesData);
+          setCandidates(allCandidatesData.slice(0, 3));
+        }
+      } catch (error: any) {
+        console.error("Error fetching dashboard data:", error);
+        setJobs([]);
+        setCandidates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   return (
     <DashboardLayout
@@ -117,38 +180,36 @@ const EmployerDashboard = () => {
       </div>
 
       {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <MetricCard
-          title="Active Jobs"
-          value={12}
-          change="+2 this month"
-          changeType="positive"
-          icon={<Briefcase className="w-6 h-6" />}
-          variant="cardinal"
-        />
-        <MetricCard
-          title="Total Applicants"
-          value={284}
-          change="+48 this week"
-          changeType="positive"
-          icon={<Users className="w-6 h-6" />}
-          variant="amber"
-        />
-        <MetricCard
-          title="Interviews Scheduled"
-          value={8}
-          change="3 today"
-          changeType="neutral"
-          icon={<Clock className="w-6 h-6" />}
-          variant="success"
-        />
-        <MetricCard
-          title="Hires This Month"
-          value={4}
-          change="+1 from last month"
-          changeType="positive"
-          icon={<CheckCircle className="w-6 h-6" />}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <button onClick={() => navigate("/employer/candidates")} className="text-left">
+          <MetricCard
+            title="Total Applicants"
+            value={loading ? "..." : jobs.reduce((sum, j) => sum + j.applicants, 0)}
+            change=""
+            changeType="neutral"
+            icon={<Users className="w-6 h-6" />}
+            variant="amber"
+          />
+        </button>
+        <button onClick={() => navigate("/employer/interviews")} className="text-left">
+          <MetricCard
+            title="Interviews Scheduled"
+            value={loading ? "..." : candidates.filter(c => c.status === "Interview Scheduled").length}
+            change=""
+            changeType="neutral"
+            icon={<Clock className="w-6 h-6" />}
+            variant="success"
+          />
+        </button>
+        <button onClick={() => navigate("/employer/jobs")} className="text-left">
+          <MetricCard
+            title="Total Jobs"
+            value={loading ? "..." : jobs.length}
+            change=""
+            changeType="neutral"
+            icon={<CheckCircle className="w-6 h-6" />}
+          />
+        </button>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-8">
@@ -158,14 +219,22 @@ const EmployerDashboard = () => {
             <h2 className="font-display text-xl font-semibold text-foreground">
               Your Jobs
             </h2>
-            <Button variant="ghost" size="sm" className="group">
-              View All
-              <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="group" 
+              onClick={() => setShowAllJobs(!showAllJobs)}
+            >
+              {showAllJobs ? "Show Less" : "View All"}
+              <ArrowRight className={`w-4 h-4 ml-1 transition-transform ${showAllJobs ? 'rotate-90' : 'group-hover:translate-x-1'}`} />
             </Button>
           </div>
 
           <div className="space-y-4">
-            {mockJobs.map((job) => (
+            {loading ? (
+              <p className="text-muted-foreground text-center py-4">Loading jobs...</p>
+            ) : (showAllJobs ? allJobs : jobs).length > 0 ? (
+              (showAllJobs ? allJobs : jobs).map((job) => (
               <div
                 key={job.id}
                 className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors"
@@ -206,7 +275,10 @@ const EmployerDashboard = () => {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No jobs posted yet</p>
+            )}
           </div>
         </div>
 
@@ -216,14 +288,22 @@ const EmployerDashboard = () => {
             <h2 className="font-display text-xl font-semibold text-foreground">
               Top Candidates
             </h2>
-            <Button variant="ghost" size="sm" className="group">
-              View All
-              <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="group" 
+              onClick={() => setShowAllCandidates(!showAllCandidates)}
+            >
+              {showAllCandidates ? "Show Less" : "View All"}
+              <ArrowRight className={`w-4 h-4 ml-1 transition-transform ${showAllCandidates ? 'rotate-90' : 'group-hover:translate-x-1'}`} />
             </Button>
           </div>
 
           <div className="space-y-4">
-            {mockCandidates.map((candidate) => (
+            {loading ? (
+              <p className="text-muted-foreground text-center py-4">Loading candidates...</p>
+            ) : (showAllCandidates ? allCandidates : candidates).length > 0 ? (
+              (showAllCandidates ? allCandidates : candidates).map((candidate) => (
               <div
                 key={candidate.id}
                 className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer"
@@ -257,7 +337,10 @@ const EmployerDashboard = () => {
                   <Badge variant="outline">{candidate.status}</Badge>
                 </div>
               </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No candidates yet</p>
+            )}
           </div>
         </div>
       </div>
