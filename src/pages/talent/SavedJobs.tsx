@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import JobCard from "@/components/dashboard/JobCard";
+import ApplyModal from "@/components/talent/ApplyModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,12 +27,22 @@ const navItems = [
 const TalentSavedJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [selectedJobForApply, setSelectedJobForApply] = useState<typeof savedJobs[0] | null>(null);
   const { savedJobs, removeFromSaved, applyToJob } = useJobs();
 
-  const handleApply = (job: typeof savedJobs[0]) => {
-    applyToJob(job);
-    setSelectedJobs((prev) => prev.filter((id) => id !== job.id));
-    toast.success(`Applied to ${job.title} at ${job.company}`);
+  const handleApplyClick = (job: typeof savedJobs[0]) => {
+    setSelectedJobForApply(job);
+    setApplyModalOpen(true);
+  };
+
+  const handleApplyWithResume = (resumeId: string) => {
+    if (selectedJobForApply) {
+      applyToJob(selectedJobForApply);
+      setSelectedJobs((prev) => prev.filter((id) => id !== selectedJobForApply.id));
+      toast.success(`Applied to ${selectedJobForApply.title} at ${selectedJobForApply.company}`);
+      setSelectedJobForApply(null);
+    }
   };
 
   const handleToggleSelect = (jobId: string, checked: boolean) => {
@@ -118,7 +129,7 @@ const TalentSavedJobs = () => {
               showRemove={true}
               isSelected={selectedJobs.includes(job.id)}
               onToggleSelect={(checked) => handleToggleSelect(job.id, checked)}
-              onApply={() => handleApply(job)}
+              onApply={() => handleApplyClick(job)}
               onView={() => console.log("View", job.id)}
             />
           ))}
@@ -134,6 +145,17 @@ const TalentSavedJobs = () => {
           </p>
           <Button variant="hero">Browse Jobs</Button>
         </div>
+      )}
+
+      {/* Apply Modal */}
+      {selectedJobForApply && (
+        <ApplyModal
+          open={applyModalOpen}
+          onOpenChange={setApplyModalOpen}
+          jobTitle={selectedJobForApply.title}
+          company={selectedJobForApply.company}
+          onApply={handleApplyWithResume}
+        />
       )}
     </DashboardLayout>
   );
