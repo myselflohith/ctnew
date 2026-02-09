@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import JobCard from "@/components/dashboard/JobCard";
+import ApplyModal from "@/components/talent/ApplyModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,12 +31,22 @@ const TalentJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
   const { availableJobs, removeFromAvailable, saveJob, applyToJob } = useJobs();
 
-  const handleApply = (job: typeof availableJobs[0]) => {
-    applyToJob(job);
-    setSelectedJobs((prev) => prev.filter((id) => id !== job.id));
-    toast.success(`Applied to ${job.title} at ${job.company}`);
+  const handleApplyClick = (job: typeof availableJobs[0]) => {
+    setSelectedJobForApply(job);
+    setApplyModalOpen(true);
+  };
+
+  const handleApplyWithResume = (resumeId: string) => {
+    if (selectedJobForApply) {
+      applyToJob(selectedJobForApply);
+      setSelectedJobs((prev) => prev.filter((id) => id !== selectedJobForApply.id));
+      toast.success(`Applied to ${selectedJobForApply.title} at ${selectedJobForApply.company}`);
+      setSelectedJobForApply(null);
+    }
   };
 
   const handleToggleSelect = (jobId: string, checked: boolean) => {
@@ -154,7 +165,7 @@ const TalentJobs = () => {
               showRemove={true}
               isSelected={selectedJobs.includes(job.id)}
               onToggleSelect={(checked) => handleToggleSelect(job.id, checked)}
-              onApply={() => handleApply(job)}
+              onApply={() => handleApplyClick(job)}
               onSave={() => handleSave(job)}
               onView={() => console.log("View", job.id)}
             />
@@ -170,6 +181,17 @@ const TalentJobs = () => {
             Check back later for new opportunities.
           </p>
         </div>
+      )}
+
+      {/* Apply Modal */}
+      {selectedJobForApply && (
+        <ApplyModal
+          open={applyModalOpen}
+          onOpenChange={setApplyModalOpen}
+          jobTitle={selectedJobForApply.title}
+          company={selectedJobForApply.company}
+          onApply={handleApplyWithResume}
+        />
       )}
     </DashboardLayout>
   );
