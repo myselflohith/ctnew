@@ -285,6 +285,15 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Admin endpoints
+  async getAllOrganizations() {
+    return this.request('/organizations/all');
+  }
+
+  async getAllUsers() {
+    return this.request('/auth/all');
+  }
 }
 
 export const apiClient = new ApiClient();

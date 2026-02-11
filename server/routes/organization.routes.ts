@@ -6,6 +6,7 @@ import {
   addOrganizationRequirement,
   deleteOrganizationRequirement,
   updateOrganizationRequirement,
+  getAllOrganizations,
 } from '../services/organization.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
@@ -198,6 +199,27 @@ router.delete('/requirements/:id', authenticateToken, async (req: Request, res: 
   } catch (error: any) {
     console.error('Delete requirement error:', error);
     res.status(500).json({ error: error.message || 'Failed to delete requirement' });
+  }
+});
+
+// Get all organizations (admin only)
+router.get('/all', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const organizations = await getAllOrganizations();
+    res.json({ success: true, data: organizations });
+  } catch (error: any) {
+    console.error('Get all organizations error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get organizations' });
   }
 });
 

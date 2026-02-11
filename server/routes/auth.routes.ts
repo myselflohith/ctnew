@@ -6,6 +6,7 @@ import {
   requestPasswordReset,
   resetPassword,
   getUserById,
+  getAllUsers,
 } from '../services/auth.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
@@ -167,6 +168,27 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Password reset error:', error);
     res.status(400).json({ error: error.message || 'Password reset failed' });
+  }
+});
+
+// Get all users (admin only)
+router.get('/all', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const users = await getAllUsers();
+    res.json({ success: true, data: users });
+  } catch (error: any) {
+    console.error('Get all users error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get users' });
   }
 });
 

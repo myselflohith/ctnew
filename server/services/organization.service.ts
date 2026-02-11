@@ -17,6 +17,8 @@ export interface Organization {
   logo_path?: string;
   created_at: Date;
   updated_at: Date;
+  user_count?: number;
+  job_count?: number;
 }
 
 export interface JobRequirement {
@@ -125,4 +127,38 @@ export async function updateOrganizationRequirement(
     [requirementText, requirementType, weight, requirementId]
   );
   return result.rows[0];
+}
+
+// Get all organizations (for admin)
+export async function getAllOrganizations(): Promise<(Organization & { user_count: number; job_count: number })[]> {
+  const result = await query(
+    `SELECT o.*, 
+            COUNT(DISTINCT u.id)::int as user_count,
+            COUNT(DISTINCT j.id)::int as job_count
+     FROM organizations o
+     LEFT JOIN users u ON u.company_name = o.company_name
+     LEFT JOIN ct_job j ON j.company = o.company_name
+     GROUP BY o.id
+     ORDER BY o.created_at DESC`
+  );
+  return result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    company_name: row.company_name,
+    industry: row.industry,
+    size: row.size,
+    founded: row.founded,
+    headquarters: row.headquarters,
+    description: row.description,
+    website: row.website,
+    linkedin_url: row.linkedin_url,
+    twitter_url: row.twitter_url,
+    benefits: row.benefits,
+    culture: row.culture,
+    logo_path: row.logo_path,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    user_count: parseInt(row.user_count) || 0,
+    job_count: parseInt(row.job_count) || 0,
+  }));
 }

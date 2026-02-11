@@ -76,6 +76,21 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
 
   const user = result.rows[0];
 
+  // If employer, create organization entry
+  if (userRole === 'employer' && companyName) {
+    try {
+      await query(
+        `INSERT INTO organizations (name, company_name)
+         VALUES ($1, $2)
+         ON CONFLICT (company_name) DO NOTHING`,
+        [companyName, companyName]
+      );
+    } catch (error) {
+      // Log error but don't fail registration if organization creation fails
+      console.error('Error creating organization:', error);
+    }
+  }
+
   // Generate JWT token
   const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, {
     expiresIn: '7d',
@@ -236,4 +251,37 @@ export async function getUserById(userId: string): Promise<User | null> {
   );
 
   return result.rows.length > 0 ? result.rows[0] : null;
+}
+
+// Get all users (admin only)
+export async function getAllUsers(): Promise<any[]> {
+  const result = await query(
+    `SELECT 
+       u.id,
+       u.email,
+       u.first_name,
+       u.last_name,
+       u.company_name,
+       u.role,
+       u.email_verified,
+       u.created_at,
+       u.updated_at,
+       MAX(s.created_at) as last_active
+     FROM users u
+     LEFT JOIN sessions s ON s.user_id = u.id
+     GROUP BY u.id
+     ORDER BY u.created_at DESC`
+  );
+  return result.rows.map(row => ({
+    id: row.id,
+    email: row.email,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    company_name: row.company_name,
+    role: row.role,
+    email_verified: row.email_verified,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    last_active: row.last_active,
+  }));
 }
