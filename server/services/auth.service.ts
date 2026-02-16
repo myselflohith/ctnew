@@ -7,6 +7,53 @@ import { sendPasswordResetEmail } from './email.service.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const SALT_ROUNDS = 10;
 
+// Role enum mapping - matches ch-job-marketplace
+// Only supporting: admin=3, talent=4, employer=5
+const ROLE_ENUM: { [key: string]: number } = {
+  admin: 3,
+  talent: 4,
+  employer: 5,
+};
+
+// Reverse mapping
+const ROLE_ID_TO_STRING: { [key: number]: string } = {
+  3: 'admin',
+  4: 'talent',
+  5: 'employer',
+};
+
+function getRoleId(roleString: string): number {
+  const normalizedRole = roleString.toLowerCase().trim();
+  const roleId = ROLE_ENUM[normalizedRole];
+  if (roleId === undefined) {
+    throw new Error(`Invalid role: "${roleString}". Valid roles are: ${Object.keys(ROLE_ENUM).join(', ')}`);
+  }
+  return roleId;
+}
+
+function getRoleString(roleId: number): string {
+  const roleString = ROLE_ID_TO_STRING[roleId];
+  if (!roleString) {
+    throw new Error(`Invalid role ID: ${roleId}`);
+  }
+  return roleString;
+}
+
+// Helper function to format user object for API response
+function formatUserResponse(userRow: any): User {
+  return {
+    id: userRow.id.toString(),
+    email: userRow.email,
+    first_name: userRow.first_name,
+    last_name: userRow.last_name,
+    company_name: userRow.company_name,
+    role: getRoleString(userRow.role) as any,
+    email_verified: userRow.email_verified,
+    created_at: userRow.created_at,
+    updated_at: userRow.updated_at,
+  };
+}
+
 export interface User {
   id: string;
   email: string;
@@ -25,7 +72,7 @@ export interface RegisterData {
   firstName?: string;
   lastName?: string;
   companyName?: string;
-  role: 'talent' | 'employer' | 'recruiter';
+  role: string | number;
 }
 
 export interface LoginData {
@@ -36,6 +83,16 @@ export interface LoginData {
 // Register a new user
 export async function registerUser(data: RegisterData): Promise<{ user: User; token: string }> {
   const { email, password, firstName, lastName, companyName, role } = data;
+
+  // Validate email
+  if (!email || typeof email !== 'string') {
+    throw new Error('Valid email is required');
+  }
+
+  // Validate password
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
 
   // Check if user already exists
   const existingUser = await query(
@@ -55,7 +112,26 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
 
   // Check if email is admin email
   const isAdmin = email.toLowerCase() === 'admin@cardinaltalent.com';
-  const userRole = isAdmin ? 'admin' : role;
+  
+  let roleId: number;
+  try {
+    if (isAdmin) {
+      roleId = ROLE_ENUM['admin'];
+    } else if (typeof role === 'number') {
+      if (ROLE_ID_TO_STRING[role] === undefined) {
+        throw new Error(`Invalid role ID: ${role}. Valid IDs are: 0-14`);
+      }
+      roleId = role;
+    } else if (typeof role === 'string') {
+      roleId = getRoleId(role);
+    } else {
+      throw new Error('Role must be a string or number');
+    }
+  } catch (error: any) {
+    throw new Error(`Role validation failed: ${error.message}`);
+  }
+  
+  const userRole = getRoleString(roleId);
 
   // Insert user
   const result = await query(
@@ -68,7 +144,7 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
       firstName || null,
       lastName || null,
       companyName || null,
-      userRole,
+      roleId,
       verificationToken,
       isAdmin, // Auto-verify admin
     ]
@@ -91,8 +167,8 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
     }
   }
 
-  // Generate JWT token
-  const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, {
+  const formattedUser = formatUserResponse(user);
+  const token = jwt.sign({ userId: user.id, email: user.email, role: formattedUser.role }, JWT_SECRET, {
     expiresIn: '7d',
   });
 
@@ -105,7 +181,7 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
     [user.id, token, expiresAt]
   );
 
-  return { user, token };
+  return { user: formattedUser, token };
 }
 
 // Login user
@@ -134,8 +210,10 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
   // Remove password_hash from user object
   delete user.password_hash;
 
+  const formattedUser = formatUserResponse(user);
+
   // Generate JWT token
-  const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, {
+  const token = jwt.sign({ userId: user.id, email: user.email, role: formattedUser.role }, JWT_SECRET, {
     expiresIn: '7d',
   });
 
@@ -148,7 +226,7 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
     [user.id, token, expiresAt]
   );
 
-  return { user, token };
+  return { user: formattedUser, token };
 }
 
 // Verify JWT token
@@ -177,7 +255,7 @@ export async function verifyToken(token: string): Promise<User | null> {
       return null;
     }
 
-    return userResult.rows[0];
+    return formatUserResponse(userResult.rows[0]);
   } catch (error) {
     return null;
   }

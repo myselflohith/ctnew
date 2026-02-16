@@ -23,6 +23,13 @@ import { useToast } from "@/hooks/use-toast";
 type Role = "talent" | "employer" | "recruiter" | "admin";
 type AuthMode = "signin" | "signup";
 
+// Role mapping to integers
+const roleMap: Record<Exclude<Role, "admin">, number> = {
+  talent: 4,
+  employer: 5,
+  recruiter: 6,
+};
+
 // Public roles (Admin is assigned internally based on email)
 const publicRoles: { id: Exclude<Role, "admin">; icon: React.ElementType; label: string; description: string }[] = [
   {
@@ -60,6 +67,7 @@ const Auth = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -72,6 +80,75 @@ const Auth = () => {
 
   const handleRoleChange = (role: string) => {
     setSelectedRole(role as Exclude<Role, "admin">);
+  };
+
+  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!allowedTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Only PDF, DOC, and DOCX files are allowed.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Resume must be less than 5MB.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setResumeFile(file);
+    }
+  };
+
+  const handleResumeUpload = async (token: string): Promise<boolean> => {
+    if (!resumeFile) return true; // Resume is optional
+
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('file', resumeFile);
+
+      const response = await fetch('/api/resumes/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formDataToSend,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        toast({
+          title: "Upload failed",
+          description: error.error || "Failed to upload resume.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      toast({
+        title: "Resume uploaded",
+        description: "Your resume has been uploaded successfully.",
+      });
+
+      return true;
+    } catch (error: any) {
+      toast({
+        title: "Upload error",
+        description: error.message || "Failed to upload resume.",
+        variant: "destructive",
+      });
+      return false;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,8 +175,32 @@ const Auth = () => {
           firstName: formData.firstName,
           lastName: formData.lastName,
           companyName: formData.companyName,
-          role: selectedRole,
+          role: roleMap[selectedRole],
         });
+
+        // Get token from response (it's stored in cookies and localStorage)
+        // Check localStorage first using the correct key
+        let token = localStorage.getItem('auth_token');
+        
+        // If no token in localStorage, try to login to get one for resume upload
+        if (!token && selectedRole === "talent" && resumeFile) {
+          try {
+            const { login } = await import("@/lib/auth");
+            await login(formData.email, formData.password);
+            token = localStorage.getItem('auth_token') || '';
+          } catch (error) {
+            console.warn('Could not auto-login for resume upload:', error);
+          }
+        }
+
+        // Upload resume if talent role and file is selected
+        if (selectedRole === "talent" && resumeFile && token) {
+          const uploadSuccess = await handleResumeUpload(token);
+          if (!uploadSuccess) {
+            // Resume upload failed but we'll continue
+            console.warn('Resume upload failed, but account creation succeeded');
+          }
+        }
 
         toast({
           title: "Account created!",
@@ -231,33 +332,35 @@ const Auth = () => {
                   : "Enter your credentials to continue"}
               </p>
 
-              {/* Role Selection */}
-              <div className="mb-6">
-                <Label className="text-sm font-medium mb-3 block">I am a...</Label>
-                <RadioGroup
-                  value={selectedRole}
-                  onValueChange={handleRoleChange}
-                  className="flex flex-col gap-3"
-                >
-                  {publicRoles.map((role) => (
-                    <label
-                      key={role.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        selectedRole === role.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value={role.id} id={role.id} />
-                      <role.icon className="w-5 h-5 text-primary" />
-                      <div className="flex-1">
-                        <span className="font-medium text-foreground">{role.label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">— {role.description}</span>
-                      </div>
-                    </label>
-                  ))}
-                </RadioGroup>
-              </div>
+              {/* Role Selection - Only show in signup */}
+              {mode === "signup" && (
+                <div className="mb-6">
+                  <Label className="text-sm font-medium mb-3 block">I am a...</Label>
+                  <RadioGroup
+                    value={selectedRole}
+                    onValueChange={handleRoleChange}
+                    className="flex flex-col gap-3"
+                  >
+                    {publicRoles.map((role) => (
+                      <label
+                        key={role.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          selectedRole === role.id
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        }`}
+                      >
+                        <RadioGroupItem value={role.id} id={role.id} />
+                        <role.icon className="w-5 h-5 text-primary" />
+                        <div className="flex-1">
+                          <span className="font-medium text-foreground">{role.label}</span>
+                          <span className="text-xs text-muted-foreground ml-2">— {role.description}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </div>
+              )}
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 {mode === "signup" && (
@@ -355,15 +458,21 @@ const Auth = () => {
                 {mode === "signup" && selectedRole === "talent" && (
                   <div className="space-y-2">
                     <Label>Resume (Optional)</Label>
-                    <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
+                    <label className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors cursor-pointer block">
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={handleResumeChange}
+                        className="hidden"
+                      />
                       <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
                       <p className="text-sm text-muted-foreground">
-                        Drop your resume here or click to upload
+                        {resumeFile ? resumeFile.name : "Drop your resume here or click to upload"}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         PDF, DOC, DOCX (Max 5MB)
                       </p>
-                    </div>
+                    </label>
                   </div>
                 )}
 

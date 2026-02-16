@@ -10,6 +10,14 @@ import {
 } from '../services/auth.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
+// Import ROLE_ENUM for validation
+// Only supporting: admin=3, talent=4, employer=5
+const ROLE_ENUM: { [key: string]: number } = {
+  admin: 3,
+  talent: 4,
+  employer: 5,
+};
+
 const router = Router();
 
 // Register new user
@@ -18,14 +26,26 @@ router.post('/register', async (req: Request, res: Response) => {
     const { email, password, firstName, lastName, companyName, role } = req.body;
 
     // Validate required fields
-    if (!email || !password || !role) {
-      res.status(400).json({ error: 'Email, password, and role are required' });
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
       return;
     }
 
-    // Validate role
-    if (!['talent', 'employer', 'recruiter'].includes(role)) {
-      res.status(400).json({ error: 'Invalid role' });
+    if (role === undefined || role === null || role === '') {
+      res.status(400).json({ error: 'Role is required' });
+      return;
+    }
+
+    // Validate role - accept both string and integer formats
+    let validRole = false;
+    if (typeof role === 'string') {
+      validRole = ['talent', 'employer', 'admin'].includes(role.toLowerCase());
+    } else if (typeof role === 'number') {
+      validRole = Object.values(ROLE_ENUM).includes(role);
+    }
+
+    if (!validRole) {
+      res.status(400).json({ error: 'Invalid role. Must be: talent (4), employer (5), or admin (3)' });
       return;
     }
 

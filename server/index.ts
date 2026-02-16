@@ -4,14 +4,30 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 import authRoutes from './routes/auth.routes.js';
 import resumeRoutes from './routes/resume.routes.js';
 import jobRoutes from './routes/job.routes.js';
 import organizationRoutes from './routes/organization.routes.js';
+import interviewRoutes from './routes/interview.routes.js';
 import pool, { closePool } from './database/connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, '../uploads/interviews');
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +64,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/resumes', resumeRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/organizations', organizationRoutes);
+app.use('/api/interviews', interviewRoutes(upload));
 
 // Serve uploaded files (in production, use a CDN or object storage)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -78,6 +95,7 @@ const server = app.listen(PORT, () => {
   console.log(`📄 Resume endpoints: http://localhost:${PORT}/api/resumes`);
   console.log(`💼 Job endpoints: http://localhost:${PORT}/api/jobs`);
   console.log(`🏢 Organization endpoints: http://localhost:${PORT}/api/organizations`);
+  console.log(`🎬 Interview endpoints: http://localhost:${PORT}/api/interviews`);
   console.log('='.repeat(60) + '\n');
 });
 

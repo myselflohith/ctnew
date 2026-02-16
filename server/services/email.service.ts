@@ -1,75 +1,186 @@
 import nodemailer from 'nodemailer';
+import aws from '@aws-sdk/client-ses';
+import { SendRawEmailCommand } from '@aws-sdk/client-ses';
+import { createTransport } from 'nodemailer';
 
-// Email configuration (using console for development, configure SMTP for production)
-const transporter = nodemailer.createTransport({
-  // For development, we'll log to console
-  // In production, configure with actual SMTP settings
-  streamTransport: true,
-  newline: 'unix',
-  buffer: true,
+const ses = new aws.SES({
+  apiVersion: '2010-12-01',
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY || '', // Use AWS_ACCESS_KEY
+    secretAccessKey: process.env.AWS_SECRET_KEY || '', // Use AWS_SECRET_KEY
+  },
 });
+
+const transporter = createTransport({
+  SES: { ses, aws },
+});
+
+// Helper function to generate the common email HTML structure
+function generateEmailHtml(title: string, headerContent: string, bodyContent: string, footerContent: string): string {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${title}</title>
+        <style>
+            body {
+                font-family: 'Inter', 'Outfit', sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #e9ecef; /* Lighter background */
+                -webkit-text-size-adjust: 100%;
+                -ms-text-size-adjust: 100%;
+                width: 100% !important;
+            }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+            }
+            td {
+                padding: 0;
+            }
+            .container {
+                max-width: 600px;
+                margin: 30px auto; /* Add vertical margin */
+                background-color: #ffffff;
+                border-radius: 12px; /* Slightly more rounded corners */
+                overflow: hidden;
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1); /* More prominent shadow */
+            }
+            .header {
+                background: linear-gradient(135deg, hsl(349 78% 44%), hsl(38 92% 50%)); /* Cardinal DEFAULT to Amber DEFAULT */
+                padding: 30px 20px; /* Increased padding */
+                text-align: center;
+                color: #ffffff;
+            }
+            .header h1 {
+                margin: 10px 0 0; /* Adjusted margin */
+                font-size: 32px; /* Larger font size */
+                font-family: 'Outfit', sans-serif;
+                font-weight: 700; /* Bolder */
+                color: hsl(38 92% 50%); /* Amber DEFAULT for text logo */
+            }
+            .content {
+                padding: 40px 30px; /* Increased padding */
+                color: #333333;
+                line-height: 1.8; /* Improved line height */
+                font-size: 16px; /* Slightly larger font size */
+            }
+            .content h2 {
+                color: hsl(349 78% 44%); /* Cardinal DEFAULT */
+                font-family: 'Outfit', sans-serif;
+                font-size: 26px; /* Larger font size */
+                margin-top: 0;
+                margin-bottom: 20px; /* Added bottom margin */
+                font-weight: 600;
+            }
+            .button {
+                display: inline-block;
+                background-color: hsl(38 92% 50%); /* Amber DEFAULT */
+                color: #ffffff;
+                padding: 15px 30px; /* Larger padding */
+                border-radius: 8px; /* More rounded button */
+                text-decoration: none;
+                font-weight: bold;
+                margin-top: 25px; /* Increased top margin */
+                font-size: 16px;
+                transition: background-color 0.3s ease; /* Smooth transition */
+            }
+            .button:hover {
+                background-color: hsl(43 96% 56%); /* Amber light on hover */
+            }
+            .footer {
+                background-color: #f0f0f0; /* Slightly darker footer background */
+                padding: 25px 20px; /* Increased padding */
+                text-align: center;
+                font-size: 13px; /* Slightly larger font size */
+                color: #666666; /* Darker text color */
+                border-top: 1px solid #e0e0e0; /* Darker border */
+            }
+            .footer a {
+                color: hsl(349 78% 44%); /* Cardinal DEFAULT */
+                text-decoration: none;
+                font-weight: 500;
+            }
+            .footer a:hover {
+                text-decoration: underline;
+            }
+        </style>
+    </head>
+    <body>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+            <tr>
+                <td align="center">
+                    <table role="presentation" class="container" width="100%" cellspacing="0" cellpadding="0">
+                        <tr>
+                            <td class="header">
+                                ${headerContent}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="content">
+                                ${bodyContent}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="footer">
+                                ${footerContent}
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+  `;
+}
 
 export async function sendPasswordResetEmail(
   email: string,
   name: string,
   resetToken: string
 ): Promise<void> {
-  const resetUrl = `${process.env.APP_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+  const resetUrl = `${process.env.APP_URL || 'http://172.17.252.184:5173'}/reset-password?token=${resetToken}`;
+
+  const headerContent = `
+    <h1>CardinalTalent</h1>
+  `;
+
+  const bodyContent = `
+    <h2 style="text-align: center;">Password Reset Request</h2>
+    <p>Hello ${name},</p>
+    <p>We received a request to reset the password for your CardinalTalent account. If you made this request, please click the button below to set a new password:</p>
+    <p style="text-align: center; margin: 30px 0;">
+        <a href="${resetUrl}" class="button">Reset Your Password</a>
+    </p>
+    <p>If you did not request a password reset, please ignore this email. Your password will remain unchanged.</p>
+    <p>If you have any questions or concerns, please don't hesitate to contact our support team.</p>
+    <p>Best regards,<br>The CardinalTalent Team</p>
+  `;
+
+  const footerContent = `
+    <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
+    <p>
+        <a href="${process.env.APP_URL || 'http://172.17.252.184:5173'}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+    </p>
+  `;
 
   const mailOptions = {
     from: process.env.EMAIL_FROM || 'noreply@cardinaltalent.com',
     to: email,
     subject: 'Password Reset Request - CardinalTalent',
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #b91c1c 0%, #f59e0b 100%); color: white; padding: 20px; text-align: center; }
-          .content { padding: 30px; background: #f9f9f9; }
-          .button { display: inline-block; padding: 12px 30px; background: #b91c1c; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>CardinalTalent</h1>
-          </div>
-          <div class="content">
-            <h2>Password Reset Request</h2>
-            <p>Hi ${name},</p>
-            <p>We received a request to reset your password. Click the button below to create a new password:</p>
-            <a href="${resetUrl}" class="button">Reset Password</a>
-            <p>Or copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; color: #666;">${resetUrl}</p>
-            <p>This link will expire in 1 hour.</p>
-            <p>If you didn't request a password reset, you can safely ignore this email.</p>
-          </div>
-          <div class="footer">
-            <p>© ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
+    html: generateEmailHtml('CardinalTalent Password Reset', headerContent, bodyContent, footerContent),
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    
-    // For development, log the email instead of sending
-    console.log('\n' + '='.repeat(80));
-    console.log('📧 PASSWORD RESET EMAIL (Development Mode)');
-    console.log('='.repeat(80));
-    console.log(`To: ${email}`);
-    console.log(`Subject: ${mailOptions.subject}`);
-    console.log(`Reset URL: ${resetUrl}`);
-    console.log('='.repeat(80) + '\n');
+    await transporter.sendMail(mailOptions);
+    console.log(`Password reset email sent to ${email}`);
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending password reset email:', error);
     throw new Error('Failed to send password reset email');
   }
 }
@@ -79,51 +190,87 @@ export async function sendVerificationEmail(
   name: string,
   verificationToken: string
 ): Promise<void> {
-  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
+  const verifyUrl = `${process.env.APP_URL || 'http://172.17.252.184:5173'}/verify-email?token=${verificationToken}`;
+
+  const headerContent = `
+    <h1>CardinalTalent</h1>
+  `;
+
+  const bodyContent = `
+    <h2 style="text-align: center;">Welcome to CardinalTalent!</h2>
+    <p>Hello ${name},</p>
+    <p>Thank you for registering with CardinalTalent. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+    <p style="text-align: center; margin: 30px 0;">
+        <a href="${verifyUrl}" class="button">Verify Your Email</a>
+    </p>
+    <p>If you did not register for an account, please ignore this email or contact support if you have concerns.</p>
+    <p>Best regards,<br>The CardinalTalent Team</p>
+  `;
+
+  const footerContent = `
+    <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
+    <p>
+        <a href="${process.env.APP_URL || 'http://172.17.252.184:5173'}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+    </p>
+  `;
 
   const mailOptions = {
     from: process.env.EMAIL_FROM || 'noreply@cardinaltalent.com',
     to: email,
     subject: 'Verify Your Email - CardinalTalent',
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #b91c1c 0%, #f59e0b 100%); color: white; padding: 20px; text-align: center; }
-          .content { padding: 30px; background: #f9f9f9; }
-          .button { display: inline-block; padding: 12px 30px; background: #b91c1c; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>CardinalTalent</h1>
-          </div>
-          <div class="content">
-            <h2>Welcome to CardinalTalent!</h2>
-            <p>Hi ${name},</p>
-            <p>Thank you for registering with CardinalTalent. Please verify your email address by clicking the button below:</p>
-            <a href="${verifyUrl}" class="button">Verify Email</a>
-            <p>Or copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; color: #666;">${verifyUrl}</p>
-          </div>
-          <div class="footer">
-            <p>© ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
+    html: generateEmailHtml('CardinalTalent Email Verification', headerContent, bodyContent, footerContent),
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log('\n📧 Verification email sent (logged in development mode)');
+    console.log(`Verification email sent to ${email}`);
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending verification email:', error);
+    throw new Error('Failed to send verification email');
+  }
+}
+
+export async function sendInterviewInviteEmail(
+  candidateEmail: string,
+  candidateName: string,
+  interviewTitle: string,
+  interviewLink: string
+): Promise<void> {
+  const headerContent = `
+    <h1>CardinalTalent</h1>
+  `;
+
+  const bodyContent = `
+    <h2 style="text-align: center;">You're Invited to an Interview!</h2>
+    <p>Hello ${candidateName},</p>
+    <p>You have been invited to participate in an AI interview: <strong>${interviewTitle}</strong></p>
+    <p>Please click the button below to access your interview:</p>
+    <p style="text-align: center; margin: 30px 0;">
+        <a href="${interviewLink}" class="button">Start Interview</a>
+    </p>
+    <p>If you have any questions or need technical assistance, please contact our support team.</p>
+    <p>Best regards,<br>The CardinalTalent Team</p>
+  `;
+
+  const footerContent = `
+    <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
+    <p>
+        <a href="${process.env.APP_URL || 'http://172.17.252.184:5173'}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+    </p>
+  `;
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || 'noreply@cardinaltalent.com',
+    to: candidateEmail,
+    subject: `Interview Invitation - ${interviewTitle} - CardinalTalent`,
+    html: generateEmailHtml('CardinalTalent Interview Invitation', headerContent, bodyContent, footerContent),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Interview invite email sent to ${candidateEmail}`);
+  } catch (error) {
+    console.error('Error sending interview invite email:', error);
+    throw new Error('Failed to send interview invite email');
   }
 }

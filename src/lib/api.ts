@@ -213,7 +213,7 @@ class ApiClient {
   }
 
   async getInterviews() {
-    return this.request('/jobs/interviews/list');
+    return this.request('/interviews/list');
   }
 
   async createJob(jobData: {

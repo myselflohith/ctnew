@@ -9,6 +9,7 @@ import {
   Users,
   Building2,
   Settings,
+  Calendar,
   User,
   Bell,
   Shield,
@@ -20,6 +21,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
   { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
   { icon: Users, label: "Candidates", path: "/employer/candidates" },
+  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
   { icon: Building2, label: "Company", path: "/employer/company" },
   { icon: Settings, label: "Settings", path: "/employer/settings" },
 ];

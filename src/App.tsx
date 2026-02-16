@@ -21,16 +21,22 @@ import TalentJobs from "./pages/talent/Jobs";
 import TalentApplications from "./pages/talent/Applications";
 import TalentSavedJobs from "./pages/talent/SavedJobs";
 import TalentInterviews from "./pages/talent/Interviews";
+import InterviewScreeningPage from "./pages/talent/InterviewScreeningPage";
 import TalentSettings from "./pages/talent/Settings";
+
+// Public/Interview pages - consolidated into InterviewScreeningPage
 
 // Employer pages
 import EmployerDashboard from "./pages/employer/Dashboard";
 import EmployerJobs from "./pages/employer/Jobs";
 import EmployerCandidates from "./pages/employer/Candidates";
 import EmployerInterviews from "./pages/employer/Interviews";
+import InterviewDetails from "./pages/employer/InterviewDetails";
+import InviteCandidates from "./pages/employer/InviteCandidates";
 import EmployerCompany from "./pages/employer/Company";
 import EmployerSettings from "./pages/employer/Settings";
 import NewJob from "./pages/employer/NewJob";
+import SetupInterview from "./pages/employer/SetupInterview";
 
 // Recruiter pages
 import RecruiterDashboard from "./pages/recruiter/Dashboard";
@@ -65,12 +71,16 @@ const App = () => (
             <Route path="/employers" element={<Employers />} />
             <Route path="/about" element={<About />} />
             
+            {/* Public interview access by email link - single unified route */}
+            <Route path="/interview/:token" element={<InterviewScreeningPage />} />
+            
             {/* Talent routes */}
             <Route path="/talent/dashboard" element={<TalentDashboard />} />
             <Route path="/talent/jobs" element={<TalentJobs />} />
             <Route path="/talent/applications" element={<TalentApplications />} />
             <Route path="/talent/saved" element={<TalentSavedJobs />} />
             <Route path="/talent/interviews" element={<TalentInterviews />} />
+            <Route path="/interview/:token" element={<InterviewScreeningPage />} />
             <Route path="/talent/settings" element={<TalentSettings />} />
             
             {/* Employer routes */}
@@ -79,6 +89,9 @@ const App = () => (
             <Route path="/employer/jobs/new" element={<NewJob />} />
             <Route path="/employer/candidates" element={<EmployerCandidates />} />
             <Route path="/employer/interviews" element={<EmployerInterviews />} />
+            <Route path="/employer/interviews/setup" element={<SetupInterview />} />
+            <Route path="/employer/interviews/:id" element={<InterviewDetails />} />
+            <Route path="/employer/interviews/:id/invite" element={<InviteCandidates />} />
             <Route path="/employer/company" element={<EmployerCompany />} />
             <Route path="/employer/settings" element={<EmployerSettings />} />
             

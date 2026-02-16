@@ -14,11 +14,14 @@ import {
   Clock,
   Video,
   Phone,
+  Play,
+  CheckCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 import { apiClient } from "@/lib/api";
+import { StartInterviewModal, type CandidateInfo } from "@/components/interview/StartInterviewModal";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -35,6 +38,8 @@ const TalentInterviews = () => {
   const [interviews, setInterviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { applications } = useJobs();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedInterview, setSelectedInterview] = useState<any>(null);
 
   useEffect(() => {
     const fetchInterviews = async () => {
@@ -46,36 +51,45 @@ const TalentInterviews = () => {
 
       try {
         setLoading(true);
-        const response = await apiClient.getInterviews();
+        // Fetch scheduled interviews for talent
+        const response = await apiClient.request('/interviews/talent/scheduled');
         if (response.success && response.data) {
-          setInterviews(response.data.map((interview: any) => ({
+          setInterviews((response.data as any[]).map((interview: any) => ({
             id: interview.id,
-            jobTitle: interview.application?.job?.title || "Unknown",
-            company: interview.application?.job?.company || "Unknown",
-            location: interview.application?.job?.location || "Unknown",
-            interviewType: interview.interview_type,
-            scheduledDate: interview.scheduled_date 
-              ? new Date(interview.scheduled_date).toLocaleDateString()
+            inviteId: interview.invite_id,
+            jobTitle: interview.job_title || interview.interview_title || "Interview",
+            company: interview.company || "Company",
+            location: interview.location || "Remote",
+            interviewType: interview.type_of_interview || "Practice",
+            scheduledDate: interview.invite_created_at 
+              ? new Date(interview.invite_created_at).toLocaleDateString()
               : "TBD",
-            scheduledTime: interview.scheduled_time || "TBD",
-            interviewer: interview.interviewer || "TBD",
-            status: interview.status,
+            inviteStatus: interview.invite_status || "Pending",
+            completed: interview.completed > 0,
+            uniqueLink: interview.unique_interview_link,
+            interviewTitle: interview.interview_title,
+            interviewCategory: interview.interview_category || "General",
+            candidateEmail: interview.candidate_email,
+            candidateName: interview.candidate_name,
+            phoneNum: interview.phone_num,
           })));
+        } else {
+          setInterviews([]);
         }
       } catch (error: any) {
         console.error("Error fetching interviews:", error);
         setInterviews([]);
-        // Don't show error toast if it's just authentication
-        if (error.message && !error.message.includes("Authentication")) {
-          // Could show a toast here if needed
-        }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchInterviews();
-  }, [applications]);
+    if (apiClient.getToken()) {
+      fetchInterviews();
+    } else {
+      setLoading(false);
+    }
+  }, []);
 
   // Filter interviews based on search query
   const filteredInterviews = interviews.filter((interview) => {
@@ -97,6 +111,35 @@ const TalentInterviews = () => {
       default:
         return <Calendar className="w-4 h-4" />;
     }
+  };
+
+  const getStatusBadge = (status: string, completed: boolean) => {
+    if (completed) {
+      return <Badge className="bg-green-600">Completed</Badge>;
+    }
+    switch (status?.toLowerCase()) {
+      case 'pending':
+        return <Badge className="bg-yellow-600">Pending</Badge>;
+      case 'in progress':
+        return <Badge className="bg-blue-600">In Progress</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const handleStartInterviewClick = (interview: any) => {
+    setSelectedInterview(interview);
+    setIsModalOpen(true);
+  };
+
+  const handleStartInterview = (candidateInfo: CandidateInfo) => {
+    // Navigate to interview session using token
+    navigate(`/interview/${selectedInterview.uniqueLink}`, {
+      state: {
+        candidateInfo,
+        interviewData: selectedInterview,
+      },
+    });
   };
 
   return (
@@ -133,7 +176,7 @@ const TalentInterviews = () => {
           <div className="space-y-4">
             {filteredInterviews.map((interview) => (
               <div
-                key={interview.id}
+                key={interview.inviteId}
                 className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors gap-4"
               >
                 <div className="flex items-start gap-4">
@@ -150,7 +193,7 @@ const TalentInterviews = () => {
                       </span>
                       <span className="flex items-center gap-1">
                         {getInterviewIcon(interview.interviewType)}
-                        {interview.interviewType}
+                        {interview.interviewType || "Practice Interview"}
                       </span>
                     </div>
                   </div>
@@ -161,15 +204,31 @@ const TalentInterviews = () => {
                       {interview.scheduledDate !== "TBD" ? interview.scheduledDate : "Date TBD"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {interview.scheduledTime !== "TBD" ? interview.scheduledTime : "Time TBD"}
+                      {interview.interviewTitle || "Practice Interview"}
                     </p>
-                    {interview.interviewer !== "TBD" && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        with {interview.interviewer}
-                      </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(interview.inviteStatus, interview.completed)}
+                    {interview.completed ? (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => navigate(`/talent/interviews/${interview.id}/results/${interview.inviteId}`)}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        View Results
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        className="bg-gradient-to-r from-cardinal to-amber"
+                        onClick={() => handleStartInterviewClick(interview)}
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        Take Interview
+                      </Button>
                     )}
                   </div>
-                  <Badge variant="excellent">{interview.status}</Badge>
                 </div>
               </div>
             ))}
@@ -199,6 +258,15 @@ const TalentInterviews = () => {
             </Button>
           )}
         </div>
+      )}
+
+      {/* Start Interview Modal */}
+      {selectedInterview && (
+        <StartInterviewModal
+          isOpen={isModalOpen}
+          onOpenChange={setIsModalOpen}
+          onStartInterview={handleStartInterview}
+        />
       )}
     </DashboardLayout>
   );

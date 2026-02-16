@@ -56,11 +56,11 @@ const DashboardLayout = ({
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex overflow-hidden">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 bottom-0 w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-40">
+      <aside className="fixed left-0 top-0 bottom-0 w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
         {/* Logo */}
-        <div className="p-6 border-b border-sidebar-border">
+        <div className="p-6 border-b border-sidebar-border flex-shrink-0">
           <Link to="/" className="flex items-center gap-2">
             <img src={cardinalLogo} alt="CardinalTalent" className="w-9 h-9 object-contain" />
             <span className="font-display text-lg font-bold text-gradient">
@@ -70,20 +70,20 @@ const DashboardLayout = ({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap ${
                   isActive
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
-                <item.icon className="w-5 h-5" />
+                <item.icon className="w-5 h-5 flex-shrink-0" />
                 {item.label}
               </Link>
             );
@@ -91,7 +91,7 @@ const DashboardLayout = ({
         </nav>
 
         {/* User Section */}
-        <div className="p-4 border-t border-sidebar-border">
+        <div className="p-4 border-t border-sidebar-border flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-sidebar-accent transition-colors">
@@ -125,9 +125,9 @@ const DashboardLayout = ({
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 ml-64">
+      <div className="flex-1 ml-64 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-end px-6">
+        <header className="sticky top-0 z-40 h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-end px-6 flex-shrink-0">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="w-5 h-5" />
@@ -137,7 +137,7 @@ const DashboardLayout = ({
         </header>
 
         {/* Page Content */}
-        <main className="p-6">
+        <main className="flex-1 overflow-auto p-6">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

@@ -31,7 +31,7 @@ export async function register(data: {
   firstName?: string;
   lastName?: string;
   companyName?: string;
-  role: string;
+  role: string | number;
 }): Promise<User> {
   const response = await apiClient.register(data);
   return response.user;
