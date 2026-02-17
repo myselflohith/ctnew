@@ -135,7 +135,7 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
 
   // Insert user
   const result = await query(
-    `INSERT INTO users (email, password_hash, first_name, last_name, company_name, role, verification_token, email_verified)
+    `INSERT INTO users (email, encrypted_password, first_name, last_name, company_name, role, verification_token, email_verified)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, email, first_name, last_name, company_name, role, email_verified, created_at, updated_at`,
     [
@@ -189,7 +189,7 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
 
   // Find user
   const result = await query(
-    `SELECT id, email, password_hash, first_name, last_name, company_name, role, email_verified, created_at, updated_at
+    `SELECT id, email, encrypted_password, first_name, last_name, company_name, role, email_verified, created_at, updated_at
      FROM users WHERE email = $1`,
     [email.toLowerCase()]
   );
@@ -201,13 +201,13 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
   const user = result.rows[0];
 
   // Verify password
-  const isValidPassword = await bcrypt.compare(password, user.password_hash);
+  const isValidPassword = await bcrypt.compare(password, user.encrypted_password);
   if (!isValidPassword) {
     throw new Error('Invalid email or password');
   }
 
-  // Remove password_hash from user object
-  delete user.password_hash;
+  // Remove encrypted_password from user object
+  delete user.encrypted_password;
 
   const formattedUser = formatUserResponse(user);
 
@@ -311,7 +311,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
   // Update password and clear reset token
   await query(
-    'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
+    'UPDATE users SET encrypted_password = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
     [passwordHash, userId]
   );
 
