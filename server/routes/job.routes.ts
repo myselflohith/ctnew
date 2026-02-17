@@ -100,16 +100,19 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       return;
     }
 
-    const job = await createJob({
-      title,
-      company,
-      location,
-      type,
-      salary,
-      match_score,
-      skills,
-      description,
-    });
+    const job = await createJob(
+      {
+        title,
+        company,
+        location,
+        type,
+        salary,
+        match_score,
+        skills,
+        description,
+      },
+      req.user?.id
+    );
 
     res.status(201).json({ success: true, data: job });
   } catch (error: any) {

@@ -137,7 +137,7 @@ export async function getAllOrganizations(): Promise<(Organization & { user_coun
             COUNT(DISTINCT j.id)::int as job_count
      FROM organizations o
      LEFT JOIN users u ON u.company_name = o.company_name
-     LEFT JOIN ct_job j ON j.company = o.company_name
+     LEFT JOIN jobs j ON j.company_name = o.company_name AND j.discarded_at IS NULL
      GROUP BY o.id
      ORDER BY o.created_at DESC`
   );

@@ -1,5 +1,36 @@
 import { query } from '../database/connection.js';
 
+// Map jobs table row to Job shape (jobs uses: name, company_name, job_salary, employment_type, status int, active bool)
+const JOB_SELECT = `
+  j.id,
+  j.name AS title,
+  j.company_name AS company,
+  j.location,
+  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.job_salary AS salary,
+  j.created_at AS posted_at,
+  NULL::integer AS match_score,
+  CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
+  j.description,
+  CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
+  j.created_at,
+  j.updated_at
+`;
+// Same as JOB_SELECT but with j.id AS job_id for use in application/saved joins
+const JOB_SELECT_AS_JOB = `
+  j.id AS job_id,
+  j.name AS title,
+  j.company_name AS company,
+  j.location,
+  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.job_salary AS salary,
+  j.created_at AS posted_at,
+  NULL::integer AS match_score,
+  CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
+  j.description,
+  CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status
+`;
+
 export interface Job {
   id: string;
   title: string;
@@ -57,14 +88,15 @@ export interface Interview {
 // Get all available jobs (not saved by user and not applied to)
 export async function getAvailableJobs(userId: string): Promise<Job[]> {
   const result = await query(
-    `SELECT j.* 
-     FROM ct_job j
+    `SELECT ${JOB_SELECT}
+     FROM jobs j
      WHERE j.id NOT IN (
        SELECT job_id FROM ct_jobs_saved WHERE user_id = $1
      )
      AND j.id NOT IN (
        SELECT job_id FROM ct_job_applications WHERE user_id = $1
      )
+     AND j.discarded_at IS NULL
      ORDER BY j.created_at DESC`,
     [userId]
   );
@@ -74,7 +106,7 @@ export async function getAvailableJobs(userId: string): Promise<Job[]> {
 // Get all jobs (for admin/employer)
 export async function getAllJobs(): Promise<Job[]> {
   const result = await query(
-    'SELECT * FROM ct_job ORDER BY created_at DESC'
+    `SELECT ${JOB_SELECT} FROM jobs j WHERE j.discarded_at IS NULL ORDER BY j.created_at DESC`
   );
   return result.rows;
 }
@@ -82,31 +114,36 @@ export async function getAllJobs(): Promise<Job[]> {
 // Get job by ID
 export async function getJobById(jobId: string): Promise<Job | null> {
   const result = await query(
-    'SELECT * FROM ct_job WHERE id = $1',
+    `SELECT ${JOB_SELECT} FROM jobs j WHERE j.id = $1 AND j.discarded_at IS NULL`,
     [jobId]
   );
   return result.rows[0] || null;
 }
 
-// Create a new job
-export async function createJob(jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'>): Promise<Job> {
+// Create a new job (creatorId = logged-in user creating the job)
+export async function createJob(
+  jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'>,
+  creatorId?: string
+): Promise<Job> {
+  const skillsStr = Array.isArray(jobData.skills) ? jobData.skills.join(', ') : (jobData.skills ?? '') || null;
   const result = await query(
-    `INSERT INTO ct_job (title, company, location, type, salary, match_score, skills, description, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING *`,
+    `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, active, status, creator_id)
+     VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, true, 0, $8)
+     RETURNING id`,
     [
       jobData.title,
       jobData.company,
       jobData.location,
       jobData.type,
       jobData.salary || null,
-      jobData.match_score || null,
-      jobData.skills || [],
+      skillsStr,
       jobData.description || null,
-      'active',
+      creatorId ? parseInt(creatorId, 10) : null,
     ]
   );
-  return result.rows[0];
+  const job = await getJobById(String(result.rows[0].id));
+  if (!job) throw new Error('Failed to load created job');
+  return job;
 }
 
 // Update job
@@ -119,11 +156,11 @@ export async function updateJob(
   let paramCount = 1;
 
   if (jobData.title !== undefined) {
-    updates.push(`title = $${paramCount++}`);
+    updates.push(`name = $${paramCount++}`);
     values.push(jobData.title);
   }
   if (jobData.company !== undefined) {
-    updates.push(`company = $${paramCount++}`);
+    updates.push(`company_name = $${paramCount++}`);
     values.push(jobData.company);
   }
   if (jobData.location !== undefined) {
@@ -131,20 +168,16 @@ export async function updateJob(
     values.push(jobData.location);
   }
   if (jobData.type !== undefined) {
-    updates.push(`type = $${paramCount++}`);
+    updates.push(`employment_type = ARRAY[$${paramCount++}]::varchar[]`);
     values.push(jobData.type);
   }
   if (jobData.salary !== undefined) {
-    updates.push(`salary = $${paramCount++}`);
+    updates.push(`job_salary = $${paramCount++}`);
     values.push(jobData.salary);
-  }
-  if (jobData.match_score !== undefined) {
-    updates.push(`match_score = $${paramCount++}`);
-    values.push(jobData.match_score);
   }
   if (jobData.skills !== undefined) {
     updates.push(`skills = $${paramCount++}`);
-    values.push(jobData.skills);
+    values.push(Array.isArray(jobData.skills) ? jobData.skills.join(', ') : jobData.skills);
   }
   if (jobData.description !== undefined) {
     updates.push(`description = $${paramCount++}`);
@@ -156,39 +189,30 @@ export async function updateJob(
   }
 
   values.push(jobId);
-  const result = await query(
-    `UPDATE ct_job SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`,
+  await query(
+    `UPDATE jobs SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount}`,
     values
   );
-  return result.rows[0];
+  const job = await getJobById(jobId);
+  if (!job) throw new Error('Job not found after update');
+  return job;
 }
 
-// Update job status
+// Update job status (jobs table: active bool, status int 0=active 1=paused)
 export async function updateJobStatus(
   jobId: string,
   status: 'active' | 'paused' | 'closed',
-  statusReason?: string
+  _statusReason?: string
 ): Promise<Job> {
-  const updates: string[] = ['status = $1', 'updated_at = CURRENT_TIMESTAMP'];
-  const values: any[] = [status];
-
-  if (status === 'paused') {
-    updates.push('paused_at = CURRENT_TIMESTAMP');
-  } else if (status === 'closed') {
-    updates.push('paused_at = NULL');
-  }
-
-  if (statusReason !== undefined) {
-    updates.push('status_reason = $2');
-    values.push(statusReason);
-  }
-
-  values.push(jobId);
-  const result = await query(
-    `UPDATE ct_job SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
-    values
+  const active = status !== 'closed';
+  const statusNum = status === 'paused' ? 1 : 0;
+  await query(
+    `UPDATE jobs SET active = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+    [active, statusNum, jobId]
   );
-  return result.rows[0];
+  const job = await getJobById(jobId);
+  if (!job) throw new Error('Job not found after status update');
+  return job;
 }
 
 // Get applications for a specific job
@@ -202,23 +226,14 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
        a.status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       j.id as job_id,
-       j.title,
-       j.company,
-       j.location,
-       j.type,
-       j.salary,
-       j.posted_at,
-       j.match_score,
-       j.skills,
-       j.description,
+       ${JOB_SELECT_AS_JOB},
        j.created_at as job_created_at,
        j.updated_at as job_updated_at,
        u.first_name,
        u.last_name,
        u.email
      FROM ct_job_applications a
-     JOIN ct_job j ON a.job_id = j.id
+     JOIN jobs j ON a.job_id = j.id
      LEFT JOIN users u ON a.user_id = u.id
      WHERE a.job_id = $1
      ORDER BY a.applied_at DESC`,
@@ -273,21 +288,12 @@ export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
        js.user_id,
        js.job_id,
        js.created_at as saved_at,
-       j.id as job_id,
-       j.title,
-       j.company,
-       j.location,
-       j.type,
-       j.salary,
-       j.posted_at,
-       j.match_score,
-       j.skills,
-       j.description,
-       j.created_at,
-       j.updated_at
+       ${JOB_SELECT_AS_JOB},
+       j.created_at as job_created_at,
+       j.updated_at as job_updated_at
      FROM ct_jobs_saved js
-     JOIN ct_job j ON js.job_id = j.id
-     WHERE js.user_id = $1
+     JOIN jobs j ON js.job_id = j.id
+     WHERE js.user_id = $1 AND j.discarded_at IS NULL
      ORDER BY js.created_at DESC`,
     [userId]
   );
@@ -307,8 +313,8 @@ export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
       match_score: row.match_score,
       skills: row.skills,
       description: row.description,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
+      created_at: row.job_created_at,
+      updated_at: row.job_updated_at,
     },
   }));
 }
@@ -356,21 +362,12 @@ export async function getApplicationsForEmployer(companyName: string): Promise<J
        a.status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       j.id as job_id,
-       j.title,
-       j.company,
-       j.location,
-       j.type,
-       j.salary,
-       j.posted_at,
-       j.match_score,
-       j.skills,
-       j.description,
+       ${JOB_SELECT_AS_JOB},
        j.created_at as job_created_at,
        j.updated_at as job_updated_at
      FROM ct_job_applications a
-     JOIN ct_job j ON a.job_id = j.id
-     WHERE j.company = $1
+     JOIN jobs j ON a.job_id = j.id
+     WHERE j.company_name = $1
      ORDER BY a.applied_at DESC`,
     [companyName]
   );
@@ -410,20 +407,11 @@ export async function getUserApplications(userId: string): Promise<JobApplicatio
        a.status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       j.id as job_id,
-       j.title,
-       j.company,
-       j.location,
-       j.type,
-       j.salary,
-       j.posted_at,
-       j.match_score,
-       j.skills,
-       j.description,
+       ${JOB_SELECT_AS_JOB},
        j.created_at as job_created_at,
        j.updated_at as job_updated_at
      FROM ct_job_applications a
-     JOIN ct_job j ON a.job_id = j.id
+     JOIN jobs j ON a.job_id = j.id
      WHERE a.user_id = $1
      ORDER BY a.applied_at DESC`,
     [userId]
@@ -475,21 +463,12 @@ export async function getUserInterviews(userId: string): Promise<Interview[]> {
        a.status as application_status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       j.id as job_id,
-       j.title,
-       j.company,
-       j.location,
-       j.type,
-       j.salary,
-       j.posted_at,
-       j.match_score,
-       j.skills,
-       j.description,
+       ${JOB_SELECT_AS_JOB},
        j.created_at as job_created_at,
        j.updated_at as job_updated_at
      FROM ct_interviews i
      JOIN ct_job_applications a ON i.application_id = a.id
-     JOIN ct_job j ON a.job_id = j.id
+     JOIN jobs j ON a.job_id = j.id
      WHERE i.user_id = $1
      ORDER BY i.scheduled_date DESC, i.scheduled_time DESC`,
     [userId]
@@ -554,16 +533,7 @@ export async function getInterviewsForEmployer(companyName: string): Promise<Int
        a.status as application_status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       j.id as job_id,
-       j.title,
-       j.company,
-       j.location,
-       j.type,
-       j.salary,
-       j.posted_at,
-       j.match_score,
-       j.skills,
-       j.description,
+       ${JOB_SELECT_AS_JOB},
        j.created_at as job_created_at,
        j.updated_at as job_updated_at,
        u.first_name,
@@ -571,9 +541,9 @@ export async function getInterviewsForEmployer(companyName: string): Promise<Int
        u.email
      FROM ct_interviews i
      JOIN ct_job_applications a ON i.application_id = a.id
-     JOIN ct_job j ON a.job_id = j.id
+     JOIN jobs j ON a.job_id = j.id
      LEFT JOIN users u ON a.user_id = u.id
-     WHERE j.company = $1
+     WHERE j.company_name = $1
      ORDER BY i.scheduled_date DESC, i.scheduled_time DESC`,
     [companyName]
   );

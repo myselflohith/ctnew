@@ -15,7 +15,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "node server/scripts/migrate.js"
+    "migrate": "node server/scripts/migrate.js",
+    "m": "npm run migrate"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.967.0",
