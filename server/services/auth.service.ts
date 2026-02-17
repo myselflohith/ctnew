@@ -152,14 +152,13 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
 
   const user = result.rows[0];
 
-  // If employer, create organization entry
+  // If employer, create organization entry (new schema: name, owner_id)
   if (userRole === 'employer' && companyName) {
     try {
       await query(
-        `INSERT INTO organizations (name, company_name)
-         VALUES ($1, $2)
-         ON CONFLICT (company_name) DO NOTHING`,
-        [companyName, companyName]
+        `INSERT INTO organizations (name, owner_id)
+         VALUES ($1, $2)`,
+        [companyName, user.id]
       );
     } catch (error) {
       // Log error but don't fail registration if organization creation fails

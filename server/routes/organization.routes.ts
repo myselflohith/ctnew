@@ -47,40 +47,35 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     }
 
     const {
+      id,
       name,
-      company_name,
       industry,
-      size,
-      founded,
-      headquarters,
       description,
-      website,
-      linkedin_url,
-      twitter_url,
-      benefits,
-      culture,
-      logo_path,
+      location,
+      website_url,
+      image_url,
+      status,
+      organization_type,
+      company_size,
     } = req.body;
 
-    if (!name || !company_name) {
-      res.status(400).json({ error: 'Name and company name are required' });
+    if (!name) {
+      res.status(400).json({ error: 'Name is required' });
       return;
     }
 
     const org = await upsertOrganization({
+      id,
       name,
-      company_name,
+      owner_id: req.user?.id ? Number(req.user.id) : undefined,
       industry,
-      size,
-      founded,
-      headquarters,
       description,
-      website,
-      linkedin_url,
-      twitter_url,
-      benefits,
-      culture,
-      logo_path,
+      location,
+      website_url: website_url ?? undefined,
+      image_url: image_url ?? undefined,
+      status,
+      organization_type,
+      company_size,
     });
 
     res.json({ success: true, data: org });
