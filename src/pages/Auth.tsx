@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,17 @@ import {
   Mail,
   Lock,
   Upload,
+  Plus,
+  ChevronDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/api";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 type Role = "talent" | "employer" | "recruiter" | "admin";
 type AuthMode = "signin" | "signup";
@@ -76,7 +85,67 @@ const Auth = () => {
     firstName: "",
     lastName: "",
     companyName: "",
+    organizationId: null as string | null,
   });
+
+  // Company autocomplete (employer/recruiter signup)
+  const [companyInputValue, setCompanyInputValue] = useState("");
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const [companySuggestions, setCompanySuggestions] = useState<{ id: string; name: string }[]>([]);
+  const [companySuggestionsLoading, setCompanySuggestionsLoading] = useState(false);
+  const companySearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isEmployerOrRecruiter = selectedRole === "employer" || selectedRole === "recruiter";
+
+  useEffect(() => {
+    if (!isEmployerOrRecruiter) return;
+    const term = companyInputValue.trim();
+    if (term.length === 0) {
+      setCompanySuggestions([]);
+      return;
+    }
+    if (companySearchTimeoutRef.current) clearTimeout(companySearchTimeoutRef.current);
+    companySearchTimeoutRef.current = setTimeout(() => {
+      setCompanySuggestionsLoading(true);
+      apiClient
+        .searchOrganizations(term, 10)
+        .then((res) => {
+          if (res.success && res.data) {
+            setCompanySuggestions(
+              res.data
+                .filter((o): o is { id: string; name: string } => o.name != null)
+                .map((o) => ({ id: o.id, name: o.name as string }))
+            );
+          } else {
+            setCompanySuggestions([]);
+          }
+        })
+        .catch(() => setCompanySuggestions([]))
+        .finally(() => setCompanySuggestionsLoading(false));
+    }, 300);
+    return () => {
+      if (companySearchTimeoutRef.current) clearTimeout(companySearchTimeoutRef.current);
+    };
+  }, [companyInputValue, isEmployerOrRecruiter]);
+
+  const handleCompanySelect = (id: string, name: string) => {
+    setFormData((prev) => ({ ...prev, companyName: name, organizationId: id }));
+    setCompanyInputValue(name);
+    setCompanyDropdownOpen(false);
+  };
+
+  const handleCreateNewOrganization = () => {
+    const name = companyInputValue.trim();
+    if (name) {
+      setFormData((prev) => ({ ...prev, companyName: name, organizationId: null }));
+      setCompanyDropdownOpen(false);
+    }
+  };
+
+  const showCompanyCreateNew =
+    isEmployerOrRecruiter &&
+    companyInputValue.trim().length > 0 &&
+    !companySuggestions.some((s) => s.name.toLowerCase() === companyInputValue.trim().toLowerCase());
 
   const handleRoleChange = (role: string) => {
     setSelectedRole(role as Exclude<Role, "admin">);
@@ -153,7 +222,7 @@ const Auth = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (mode === "signup" && !acceptedTerms) {
       toast({
         title: "Terms Required",
@@ -162,7 +231,20 @@ const Auth = () => {
       });
       return;
     }
-    
+
+    if (
+      mode === "signup" &&
+      isEmployerOrRecruiter &&
+      (!formData.companyName || !formData.companyName.trim())
+    ) {
+      toast({
+        title: "Company required",
+        description: "Please select a company from the list or choose \"Create new organization\".",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -175,6 +257,7 @@ const Auth = () => {
           firstName: formData.firstName,
           lastName: formData.lastName,
           companyName: formData.companyName,
+          organizationId: formData.organizationId ?? undefined,
           role: roleMap[selectedRole],
         });
 
@@ -392,21 +475,94 @@ const Auth = () => {
                   </div>
                 )}
 
-                {mode === "signup" &&
-                  (selectedRole === "employer" || selectedRole === "recruiter") && (
-                    <div className="space-y-2">
-                      <Label htmlFor="companyName">Company Name</Label>
-                      <Input
-                        id="companyName"
-                        placeholder="Acme Inc."
-                        value={formData.companyName}
-                        onChange={(e) =>
-                          setFormData({ ...formData, companyName: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-                  )}
+                {mode === "signup" && isEmployerOrRecruiter && (
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName">Company Name</Label>
+                    <Popover
+                      open={companyDropdownOpen}
+                      onOpenChange={setCompanyDropdownOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <div className="relative">
+                          <Input
+                            id="companyName"
+                            placeholder="Type to search or create..."
+                            value={companyInputValue}
+                            onChange={(e) => {
+                              setCompanyInputValue(e.target.value);
+                              setFormData((prev) => ({ ...prev, companyName: "", organizationId: null }));
+                              setCompanyDropdownOpen(true);
+                            }}
+                            onFocus={() => setCompanyDropdownOpen(true)}
+                            autoComplete="off"
+                            className={cn(
+                              "pr-9",
+                              !formData.companyName && isEmployerOrRecruiter && "border-amber-500/50"
+                            )}
+                          />
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        </div>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-[var(--radix-popover-trigger-width)] p-0"
+                        align="start"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <div className="max-h-[280px] overflow-auto">
+                          {companySuggestionsLoading && (
+                            <div className="py-4 text-center text-sm text-muted-foreground">
+                              Searching...
+                            </div>
+                          )}
+                          {!companySuggestionsLoading &&
+                            companySuggestions.length === 0 &&
+                            companyInputValue.trim() && (
+                              <div className="py-2 px-2 text-sm text-muted-foreground">
+                                No matching organizations.
+                              </div>
+                            )}
+                          {!companySuggestionsLoading &&
+                            companySuggestions.map((org) => (
+                              <button
+                                key={org.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-accent rounded-sm flex items-center gap-2"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleCompanySelect(org.id, org.name);
+                                }}
+                              >
+                                <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                {org.name}
+                              </button>
+                            ))}
+                          {showCompanyCreateNew && (
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent rounded-sm flex items-center gap-2 border-t border-border text-primary font-medium"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleCreateNewOrganization();
+                              }}
+                            >
+                              <Plus className="h-4 w-4 shrink-0" />
+                              Create new organization
+                            </button>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    {formData.companyName ? (
+                      <p className="text-xs text-muted-foreground">
+                        Selected: {formData.companyName}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Select a company from the list or create a new one.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>

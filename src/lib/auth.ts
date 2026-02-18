@@ -7,6 +7,7 @@ export interface User {
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
+  organization_id: string | null;
   role: 'talent' | 'employer' | 'recruiter' | 'admin';
   email_verified: boolean;
   created_at: string;
@@ -31,6 +32,7 @@ export async function register(data: {
   firstName?: string;
   lastName?: string;
   companyName?: string;
+  organizationId?: string | null;
   role: string | number;
 }): Promise<User> {
   const response = await apiClient.register(data);

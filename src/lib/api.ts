@@ -73,6 +73,7 @@ class ApiClient {
     firstName?: string;
     lastName?: string;
     companyName?: string;
+    organizationId?: string | null;
     role: string;
   }) {
     const response = await this.request('/auth/register', {
@@ -251,6 +252,13 @@ class ApiClient {
   }
 
   // Organization endpoints
+  /** Public: search organizations for signup autocomplete (no auth required). */
+  async searchOrganizations(query: string, limit = 10) {
+    const params = new URLSearchParams({ q: query.trim() });
+    if (limit !== 10) params.set('limit', String(limit));
+    return this.request<{ id: string; name: string | null }[]>(`/organizations/search?${params}`);
+  }
+
   async getOrganization(companyName: string) {
     return this.request(`/organizations/${companyName}`);
   }

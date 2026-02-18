@@ -54,6 +54,27 @@ export async function getOrganizationById(id: string): Promise<Organization | nu
   return result.rows[0] || null;
 }
 
+// Search organizations for signup autocomplete: case-insensitive partial match,
+// only active/approved, limit 5–10, exclude pending/deactivated/discarded.
+export async function searchOrganizationsForSignup(term: string, limit = 10): Promise<Organization[]> {
+  if (!term || typeof term !== 'string' || term.trim().length === 0) {
+    return [];
+  }
+  const searchTerm = `%${term.trim()}%`;
+  const result = await query(
+    `SELECT * FROM organizations
+     WHERE name IS NOT NULL
+       AND TRIM(name) != ''
+       AND (discarded_at IS NULL AND (is_deleted IS NOT TRUE OR is_deleted IS NULL))
+       AND (status IS NULL OR LOWER(status) IN ('active', 'approved'))
+       AND name ILIKE $1
+     ORDER BY name
+     LIMIT $2`,
+    [searchTerm, Math.min(Math.max(limit, 5), 10)]
+  );
+  return result.rows;
+}
+
 // Get organization by name (for backward compat with routes using companyName param)
 export async function getOrganizationByName(name: string): Promise<Organization | null> {
   const result = await query(

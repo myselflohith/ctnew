@@ -39,8 +39,33 @@ interface Requirement {
   weight: number;
 }
 
+interface OrganizationData {
+  id: string;
+  name: string | null;
+  description: string | null;
+  industry: string | null;
+  location: string | null;
+  website_url: string | null;
+  image_url: string | null;
+  company_size: number | null;
+}
+
+const emptyOrg: OrganizationData = {
+  id: "",
+  name: "",
+  description: "",
+  industry: "",
+  location: "",
+  website_url: "",
+  image_url: "",
+  company_size: null,
+};
+
 const EmployerCompany = () => {
-  const [companyName, setCompanyName] = useState("TechCorp AI");
+  const [user, setUser] = useState<{ first_name?: string | null; last_name?: string | null; company_name?: string | null; organization_id?: string | null } | null>(null);
+  const [org, setOrg] = useState<OrganizationData | null>(null);
+  const [companyName, setCompanyName] = useState("");
+  const [orgIdentifier, setOrgIdentifier] = useState<string | null>(null);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [newRequirement, setNewRequirement] = useState({
     requirement_text: "",
@@ -49,26 +74,63 @@ const EmployerCompany = () => {
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [fetching, setFetching] = useState(true);
+
+  // Fields not in API – kept on frontend only, not sent to backend
+  const [localOnly, setLocalOnly] = useState({
+    founded: "",
+    headquarters: "",
+    linkedin: "",
+    twitter: "",
+    benefits: "",
+    culture: "",
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setFetching(true);
         const userResponse = await apiClient.getCurrentUser();
-        if (userResponse.success && userResponse.user?.company_name) {
-          const name = userResponse.user.company_name;
-          setCompanyName(name);
-          
-          // Fetch organization and requirements
-          const orgResponse = await apiClient.getOrganization(name);
-          if (orgResponse.success && orgResponse.data) {
-            const reqResponse = await apiClient.getOrganizationRequirements(name);
-            if (reqResponse.success && reqResponse.data) {
-              setRequirements(reqResponse.data);
-            }
-          }
+        if (!userResponse.success || !userResponse.user) {
+          setFetching(false);
+          return;
+        }
+        const u = userResponse.user;
+        setUser(u);
+        const nameOrId = u.organization_id || u.company_name || null;
+        if (!nameOrId) {
+          setCompanyName(u.company_name || "");
+          setFetching(false);
+          return;
+        }
+        setOrgIdentifier(nameOrId);
+        setCompanyName(u.company_name || "");
+
+        const orgResponse = await apiClient.getOrganization(nameOrId);
+        if (orgResponse.success && orgResponse.data) {
+          const d = orgResponse.data as Record<string, unknown>;
+          setOrg({
+            id: String(d.id ?? ""),
+            name: d.name != null ? String(d.name) : "",
+            description: d.description != null ? String(d.description) : "",
+            industry: d.industry != null ? String(d.industry) : "",
+            location: d.location != null ? String(d.location) : "",
+            website_url: d.website_url != null ? String(d.website_url) : "",
+            image_url: d.image_url != null ? String(d.image_url) : "",
+            company_size: typeof d.company_size === "number" ? d.company_size : null,
+          });
+          setCompanyName(d.name != null ? String(d.name) : u.company_name ?? "");
+        }
+
+        const reqResponse = await apiClient.getOrganizationRequirements(nameOrId);
+        if (reqResponse.success && Array.isArray(reqResponse.data)) {
+          setRequirements(reqResponse.data as Requirement[]);
         }
       } catch (error) {
         console.error("Error fetching company data:", error);
+        toast.error("Failed to load company data");
+      } finally {
+        setFetching(false);
       }
     };
     fetchData();
@@ -79,12 +141,17 @@ const EmployerCompany = () => {
       toast.error("Please enter a requirement");
       return;
     }
+    if (!orgIdentifier) {
+      toast.error("No company linked. Save company details first.");
+      return;
+    }
 
     try {
       setLoading(true);
-      const response = await apiClient.addOrganizationRequirement(companyName, newRequirement);
-      if (response.success) {
-        setRequirements([...requirements, response.data]);
+      const response = await apiClient.addOrganizationRequirement(orgIdentifier, newRequirement);
+      if (response.success && response.data) {
+        const added = response.data as Requirement;
+        setRequirements([...requirements, added]);
         setNewRequirement({ requirement_text: "", requirement_type: "mustHave", weight: 5 });
         toast.success("Requirement added");
       }
@@ -113,10 +180,27 @@ const EmployerCompany = () => {
   };
 
   const handleSaveCompany = async () => {
+    if (!org) {
+      toast.error("No company data to save");
+      return;
+    }
     try {
       setSaving(true);
-      // Save company details (this would need to be implemented)
-      toast.success("Company details saved");
+      const response = await apiClient.saveOrganization({
+        id: org.id,
+        name: org.name || companyName,
+        description: org.description || null,
+        industry: org.industry || null,
+        location: org.location || null,
+        website_url: org.website_url || null,
+        image_url: org.image_url || null,
+        company_size: org.company_size ?? null,
+      });
+      if (response.success && response.data) {
+        const data = response.data as Partial<OrganizationData>;
+        setOrg((prev) => (prev && data ? { ...prev, ...data } : prev));
+        toast.success("Company details saved");
+      }
     } catch (error: any) {
       console.error("Error saving company:", error);
       toast.error(error.message || "Failed to save company details");
@@ -125,12 +209,32 @@ const EmployerCompany = () => {
     }
   };
 
+  const updateOrg = (updates: Partial<OrganizationData>) => {
+    setOrg((prev) => (prev ? { ...prev, ...updates } : null));
+  };
+
+  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "Employer";
+  const displayCompany = companyName || org?.name || "Company";
+
+  if (fetching) {
+    return (
+      <DashboardLayout role="employer" navItems={navItems} userName={displayName} companyName={displayCompany}>
+        <div className="mb-8">
+          <h1 className="font-display text-3xl font-bold text-foreground mb-2">Company Profile</h1>
+          <p className="text-muted-foreground">Loading company data...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const orgData = org ?? emptyOrg;
+
   return (
     <DashboardLayout
       role="employer"
       navItems={navItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
+      userName={displayName}
+      companyName={displayCompany}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
@@ -148,9 +252,17 @@ const EmployerCompany = () => {
             Company Logo
           </h2>
           <div className="flex flex-col items-center">
-            <div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center mb-4">
-              <Building2 className="w-16 h-16 text-primary" />
-            </div>
+            {orgData.image_url ? (
+              <img
+                src={orgData.image_url}
+                alt="Company logo"
+                className="w-32 h-32 rounded-2xl object-cover mb-4"
+              />
+            ) : (
+              <div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center mb-4">
+                <Building2 className="w-16 h-16 text-primary" />
+              </div>
+            )}
             <Button variant="outline" size="sm">
               <Upload className="w-4 h-4 mr-2" />
               Upload Logo
@@ -170,26 +282,53 @@ const EmployerCompany = () => {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="companyName">Company Name</Label>
-                <Input id="companyName" defaultValue="TechCorp AI" />
+                <Input
+                  id="companyName"
+                  value={orgData.name ?? ""}
+                  onChange={(e) => updateOrg({ name: e.target.value })}
+                  placeholder="Your company name"
+                />
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="industry">Industry</Label>
-                  <Input id="industry" defaultValue="Artificial Intelligence" />
+                  <Input
+                    id="industry"
+                    value={orgData.industry ?? ""}
+                    onChange={(e) => updateOrg({ industry: e.target.value })}
+                    placeholder="e.g. Technology"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="size">Company Size</Label>
-                  <Input id="size" defaultValue="51-200 employees" />
+                  <Input
+                    id="size"
+                    type="number"
+                    min={1}
+                    value={orgData.company_size ?? ""}
+                    onChange={(e) => updateOrg({ company_size: e.target.value ? parseInt(e.target.value, 10) : null })}
+                    placeholder="e.g. 50"
+                  />
                 </div>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="founded">Founded</Label>
-                  <Input id="founded" defaultValue="2020" />
+                  <Input
+                    id="founded"
+                    value={localOnly.founded}
+                    onChange={(e) => setLocalOnly((p) => ({ ...p, founded: e.target.value }))}
+                    placeholder="e.g. 2020"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="headquarters">Headquarters</Label>
-                  <Input id="headquarters" defaultValue="San Francisco, CA" />
+                  <Input
+                    id="headquarters"
+                    value={orgData.location ?? ""}
+                    onChange={(e) => updateOrg({ location: e.target.value })}
+                    placeholder="e.g. San Francisco, CA"
+                  />
                 </div>
               </div>
               <div className="space-y-2">
@@ -197,7 +336,9 @@ const EmployerCompany = () => {
                 <Textarea
                   id="description"
                   rows={4}
-                  defaultValue="TechCorp AI is a leading artificial intelligence company focused on building cutting-edge solutions for enterprise customers. We're passionate about using AI to solve real-world problems."
+                  value={orgData.description ?? ""}
+                  onChange={(e) => updateOrg({ description: e.target.value })}
+                  placeholder="Describe your company..."
                 />
               </div>
             </div>
@@ -213,21 +354,37 @@ const EmployerCompany = () => {
                   <Globe className="w-4 h-4" />
                   Website
                 </Label>
-                <Input id="website" defaultValue="https://techcorp.ai" />
+                <Input
+                  id="website"
+                  type="url"
+                  value={orgData.website_url ?? ""}
+                  onChange={(e) => updateOrg({ website_url: e.target.value })}
+                  placeholder="https://..."
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="linkedin" className="flex items-center gap-2">
                   <Linkedin className="w-4 h-4" />
                   LinkedIn
                 </Label>
-                <Input id="linkedin" defaultValue="https://linkedin.com/company/techcorp-ai" />
+                <Input
+                  id="linkedin"
+                  value={localOnly.linkedin}
+                  onChange={(e) => setLocalOnly((p) => ({ ...p, linkedin: e.target.value }))}
+                  placeholder="https://linkedin.com/company/..."
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="twitter" className="flex items-center gap-2">
                   <Twitter className="w-4 h-4" />
                   Twitter
                 </Label>
-                <Input id="twitter" defaultValue="https://twitter.com/techcorpai" />
+                <Input
+                  id="twitter"
+                  value={localOnly.twitter}
+                  onChange={(e) => setLocalOnly((p) => ({ ...p, twitter: e.target.value }))}
+                  placeholder="https://twitter.com/..."
+                />
               </div>
             </div>
           </div>
@@ -242,11 +399,9 @@ const EmployerCompany = () => {
                 <Textarea
                   id="benefits"
                   rows={3}
-                  defaultValue="• Competitive salary and equity
-• Unlimited PTO
-• Health, dental, and vision insurance
-• 401(k) matching
-• Remote work flexibility"
+                  value={localOnly.benefits}
+                  onChange={(e) => setLocalOnly((p) => ({ ...p, benefits: e.target.value }))}
+                  placeholder="List benefits (e.g. health insurance, 401k, remote work...)"
                 />
               </div>
               <div className="space-y-2">
@@ -254,13 +409,15 @@ const EmployerCompany = () => {
                 <Textarea
                   id="culture"
                   rows={3}
-                  defaultValue="We're a team of curious, driven individuals who love solving hard problems. We believe in transparency, continuous learning, and work-life balance."
+                  value={localOnly.culture}
+                  onChange={(e) => setLocalOnly((p) => ({ ...p, culture: e.target.value }))}
+                  placeholder="Describe your company culture..."
                 />
               </div>
             </div>
           </div>
 
-          <Button variant="hero" size="lg" onClick={handleSaveCompany} disabled={saving}>
+          <Button variant="hero" size="lg" onClick={handleSaveCompany} disabled={saving || !org}>
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </div>

@@ -23,7 +23,7 @@ const router = Router();
 // Register new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, companyName, role } = req.body;
+    const { email, password, firstName, lastName, companyName, organizationId, role } = req.body;
 
     // Validate required fields
     if (!email || !password) {
@@ -55,6 +55,7 @@ router.post('/register', async (req: Request, res: Response) => {
       firstName,
       lastName,
       companyName,
+      organizationId: organizationId || null,
       role,
     });
 

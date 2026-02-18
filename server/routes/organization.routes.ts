@@ -7,10 +7,24 @@ import {
   deleteOrganizationRequirement,
   updateOrganizationRequirement,
   getAllOrganizations,
+  searchOrganizationsForSignup,
 } from '../services/organization.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 const router = Router();
+
+// Public: search organizations for employer/recruiter signup autocomplete (no auth)
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 5), 10);
+    const organizations = await searchOrganizationsForSignup(q, limit);
+    res.json({ success: true, data: organizations });
+  } catch (error: any) {
+    console.error('Search organizations error:', error);
+    res.status(500).json({ error: error.message || 'Failed to search organizations' });
+  }
+});
 
 // Get organization by company name
 router.get('/:companyName', authenticateToken, async (req: Request, res: Response) => {

@@ -47,6 +47,7 @@ function formatUserResponse(userRow: any): User {
     first_name: userRow.first_name,
     last_name: userRow.last_name,
     company_name: userRow.company_name,
+    organization_id: userRow.organization_id ?? null,
     role: getRoleString(userRow.role) as any,
     email_verified: userRow.email_verified,
     created_at: userRow.created_at,
@@ -60,6 +61,7 @@ export interface User {
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
+  organization_id: string | null;
   role: 'talent' | 'employer' | 'recruiter' | 'admin';
   email_verified: boolean;
   created_at: Date;
@@ -72,6 +74,7 @@ export interface RegisterData {
   firstName?: string;
   lastName?: string;
   companyName?: string;
+  organizationId?: string | null;
   role: string | number;
 }
 
@@ -82,7 +85,7 @@ export interface LoginData {
 
 // Register a new user
 export async function registerUser(data: RegisterData): Promise<{ user: User; token: string }> {
-  const { email, password, firstName, lastName, companyName, role } = data;
+  const { email, password, firstName, lastName, companyName, organizationId, role } = data;
 
   // Validate email
   if (!email || typeof email !== 'string') {
@@ -133,17 +136,19 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
   
   const userRole = getRoleString(roleId);
 
-  // Insert user
+  // Insert user (include organization_id when selecting existing org)
+  const orgIdParam = organizationId && /^[0-9a-f-]{36}$/i.test(organizationId) ? organizationId : null;
   const result = await query(
-    `INSERT INTO users (email, encrypted_password, first_name, last_name, company_name, role, verification_token, email_verified)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, email, first_name, last_name, company_name, role, email_verified, created_at, updated_at`,
+    `INSERT INTO users (email, encrypted_password, first_name, last_name, company_name, organization_id, role, verification_token, email_verified)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, email, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at`,
     [
       email.toLowerCase(),
       passwordHash,
       firstName || null,
       lastName || null,
       companyName || null,
+      orgIdParam,
       roleId,
       verificationToken,
       isAdmin, // Auto-verify admin
@@ -152,17 +157,40 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
 
   const user = result.rows[0];
 
-  // If employer, create organization entry (new schema: name, owner_id)
-  if (userRole === 'employer' && companyName) {
+  // If employer and no organization_id yet: create new organization and link user
+  if (userRole === 'employer' && companyName && !orgIdParam) {
     try {
-      await query(
-        `INSERT INTO organizations (name, owner_id)
-         VALUES ($1, $2)`,
-        [companyName, user.id]
+      const orgResult = await query(
+        `INSERT INTO organizations (name, owner_id, status)
+         VALUES ($1, $2, 'active')
+         RETURNING id`,
+        [companyName.trim(), user.id]
       );
-    } catch (error) {
-      // Log error but don't fail registration if organization creation fails
-      console.error('Error creating organization:', error);
+      const newOrgId = orgResult.rows[0]?.id;
+      if (newOrgId) {
+        await query(
+          'UPDATE users SET organization_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [newOrgId, user.id]
+        );
+        user.organization_id = newOrgId;
+      }
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        // Unique violation: org name already exists; find existing org and link user
+        const existing = await query(
+          'SELECT id FROM organizations WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND discarded_at IS NULL LIMIT 1',
+          [companyName.trim()]
+        );
+        if (existing.rows[0]?.id) {
+          await query(
+            'UPDATE users SET organization_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [existing.rows[0].id, user.id]
+          );
+          user.organization_id = existing.rows[0].id;
+        }
+      } else {
+        console.error('Error creating organization:', error);
+      }
     }
   }
 
@@ -189,7 +217,7 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
 
   // Find user
   const result = await query(
-    `SELECT id, email, encrypted_password, first_name, last_name, company_name, role, email_verified, created_at, updated_at
+    `SELECT id, email, encrypted_password, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at
      FROM users WHERE email = $1`,
     [email.toLowerCase()]
   );
@@ -245,7 +273,7 @@ export async function verifyToken(token: string): Promise<User | null> {
 
     // Get user
     const userResult = await query(
-      `SELECT id, email, first_name, last_name, company_name, role, email_verified, created_at, updated_at
+      `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
