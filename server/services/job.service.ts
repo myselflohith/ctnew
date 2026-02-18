@@ -122,13 +122,14 @@ export async function getJobById(jobId: string): Promise<Job | null> {
 
 // Create a new job (creatorId = logged-in user creating the job)
 export async function createJob(
-  jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'>,
+  jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'> & { addNotes?: string | null },
   creatorId?: string
 ): Promise<Job> {
   const skillsStr = Array.isArray(jobData.skills) ? jobData.skills.join(', ') : (jobData.skills ?? '') || null;
+  const addNotesVal = typeof jobData.addNotes === 'string' ? jobData.addNotes : null;
   const result = await query(
-    `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, active, status, creator_id)
-     VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, true, 0, $8)
+    `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, add_notes, active, status, creator_id)
+     VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, $8, true, 0, $9)
      RETURNING id`,
     [
       jobData.title,
@@ -138,6 +139,7 @@ export async function createJob(
       jobData.salary || null,
       skillsStr,
       jobData.description || null,
+      addNotesVal,
       creatorId ? parseInt(creatorId, 10) : null,
     ]
   );

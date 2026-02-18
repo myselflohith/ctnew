@@ -226,6 +226,7 @@ class ApiClient {
     match_score?: number;
     skills?: string[];
     description?: string;
+    addNotes?: string;
   }) {
     return this.request('/jobs', {
       method: 'POST',

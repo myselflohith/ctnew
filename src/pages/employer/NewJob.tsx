@@ -204,16 +204,28 @@ const NewJob = () => {
       const userResponse = await apiClient.getCurrentUser();
       const companyName = userResponse.user?.company_name || "Company";
 
+      // Format requirements into add_notes string for storage
+      const addNotes =
+        requirements.length > 0
+          ? requirements
+              .map(
+                (r) =>
+                  `${r.type === "mustHave" ? "Must have" : "Nice to have"} | ${r.text} | Weight: ${r.weight}`
+              )
+              .join("\n")
+          : undefined;
+
       // Prepare job data
       const jobData = {
         title: formData.title,
         company: companyName,
         location: formData.jobType === "remote" ? "Remote" : (formData.location || "Not specified"),
-        type: formData.jobType as 'remote' | 'hybrid' | 'onsite',
-        salary: undefined, // Can be added later if needed
-        match_score: undefined, // Can be calculated later
+        type: formData.jobType as "remote" | "hybrid" | "onsite",
+        salary: undefined,
+        match_score: undefined,
         skills: skills,
         description: formData.description,
+        addNotes,
       };
 
       // Create the job via API

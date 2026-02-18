@@ -93,7 +93,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       return;
     }
 
-    const { title, company, location, type, salary, match_score, skills, description } = req.body;
+    const { title, company, location, type, salary, match_score, skills, description, addNotes } = req.body;
 
     if (!title || !company || !location || !type) {
       res.status(400).json({ error: 'Title, company, location, and type are required' });
@@ -110,6 +110,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         match_score,
         skills,
         description,
+        addNotes,
       },
       req.user?.id
     );
