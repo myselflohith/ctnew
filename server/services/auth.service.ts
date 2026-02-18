@@ -156,21 +156,25 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
   );
 
   const user = result.rows[0];
+  const userId = typeof user.id === 'string' ? parseInt(user.id, 10) : Number(user.id);
 
-  // If employer and no organization_id yet: create new organization and link user
-  if (userRole === 'employer' && companyName && !orgIdParam) {
+  // If employer and no organization_id yet: create new organization and link user (owner_id = user id)
+  const shouldCreateOrg = userRole === 'employer' && !orgIdParam && companyName != null && String(companyName).trim() !== '';
+  const orgNameToUse = companyName != null ? String(companyName).trim() : '';
+
+  if (shouldCreateOrg && orgNameToUse) {
     try {
       const orgResult = await query(
-        `INSERT INTO organizations (name, owner_id, status)
-         VALUES ($1, $2, 'active')
+        `INSERT INTO organizations (name, owner_id, status, created_at, updated_at)
+         VALUES ($1, $2, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
          RETURNING id`,
-        [companyName.trim(), user.id]
+        [orgNameToUse, userId]
       );
       const newOrgId = orgResult.rows[0]?.id;
       if (newOrgId) {
         await query(
           'UPDATE users SET organization_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          [newOrgId, user.id]
+          [newOrgId, userId]
         );
         user.organization_id = newOrgId;
       }
@@ -179,17 +183,18 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
         // Unique violation: org name already exists; find existing org and link user
         const existing = await query(
           'SELECT id FROM organizations WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND discarded_at IS NULL LIMIT 1',
-          [companyName.trim()]
+          [orgNameToUse]
         );
         if (existing.rows[0]?.id) {
           await query(
             'UPDATE users SET organization_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            [existing.rows[0].id, user.id]
+            [existing.rows[0].id, userId]
           );
           user.organization_id = existing.rows[0].id;
         }
       } else {
         console.error('Error creating organization:', error);
+        throw new Error('Failed to create organization. Please try again.');
       }
     }
   }

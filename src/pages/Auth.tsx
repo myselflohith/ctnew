@@ -232,11 +232,9 @@ const Auth = () => {
       return;
     }
 
-    if (
-      mode === "signup" &&
-      isEmployerOrRecruiter &&
-      (!formData.companyName || !formData.companyName.trim())
-    ) {
+    const companyNameForValidation =
+      formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : "");
+    if (mode === "signup" && isEmployerOrRecruiter && !companyNameForValidation) {
       toast({
         title: "Company required",
         description: "Please select a company from the list or choose \"Create new organization\".",
@@ -251,12 +249,16 @@ const Auth = () => {
       if (mode === "signup") {
         // Register new user
         const { register } = await import("@/lib/auth");
+        // Use company name from form; if "Create new organization" was chosen, fallback to current input (state may not have flushed)
+        const companyNameToSend =
+          formData.companyName?.trim() ||
+          (isEmployerOrRecruiter ? companyInputValue.trim() : undefined);
         const user = await register({
           email: formData.email,
           password: formData.password,
           firstName: formData.firstName,
           lastName: formData.lastName,
-          companyName: formData.companyName,
+          companyName: companyNameToSend || undefined,
           organizationId: formData.organizationId ?? undefined,
           role: roleMap[selectedRole],
         });
