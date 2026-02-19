@@ -53,12 +53,12 @@ const publicRoles: { id: Exclude<Role, "admin">; icon: React.ElementType; label:
     label: "Employer",
     description: "Post jobs and hire talent",
   },
-  {
-    id: "recruiter",
-    icon: Users,
-    label: "Recruiter",
-    description: "Manage clients and placements",
-  },
+  // {
+  //   id: "recruiter",
+  //   icon: Users,
+  //   label: "Recruiter",
+  //   description: "Manage clients and placements",
+  // },
 ];
 
 const Auth = () => {
