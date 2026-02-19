@@ -355,12 +355,23 @@ export async function resetPassword(token: string, newPassword: string): Promise
 // Get user by ID
 export async function getUserById(userId: string): Promise<User | null> {
   const result = await query(
-    `SELECT id, email, first_name, last_name, company_name, role, email_verified, created_at, updated_at
+    `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at
      FROM users WHERE id = $1`,
     [userId]
   );
 
-  return result.rows.length > 0 ? result.rows[0] : null;
+  return result.rows.length > 0 ? formatUserResponse(result.rows[0]) : null;
+}
+
+// Set employer's company (organization_id and company_name). Employer only; id must be valid org.
+export async function setEmployerCompany(userId: string, organizationId: string, companyName: string): Promise<User> {
+  await query(
+    'UPDATE users SET organization_id = $1, company_name = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+    [organizationId, companyName, userId]
+  );
+  const user = await getUserById(userId);
+  if (!user) throw new Error('User not found');
+  return user;
 }
 
 // Get all users (admin only)

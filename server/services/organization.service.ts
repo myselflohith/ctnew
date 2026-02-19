@@ -75,6 +75,56 @@ export async function searchOrganizationsForSignup(term: string, limit = 10): Pr
   return result.rows;
 }
 
+/** Normalize company name: trim and collapse multiple spaces (e.g. "ABC   INC" -> "ABC INC"). */
+export function normalizeCompanyName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
+/** Extract hostname from URL (e.g. https://www.acme.com/path -> acme.com). */
+function hostFromUrl(url: string): string | null {
+  try {
+    const u = url.trim();
+    const withProtocol = u.match(/^https?:\/\//i) ? u : `https://${u}`;
+    const host = new URL(withProtocol).hostname || null;
+    return host ? host.replace(/^www\./, '').toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Get organization by email domain: match user's email domain to organization website_url host. Returns single org if exactly one match. */
+export async function getOrganizationByEmailDomain(email: string): Promise<Organization | null> {
+  const part = email.split('@')[1];
+  if (!part || !part.trim()) return null;
+  const emailDomain = part.trim().toLowerCase().replace(/^www\./, '');
+  const result = await query(
+    `SELECT * FROM organizations
+     WHERE website_url IS NOT NULL AND TRIM(website_url) != ''
+       AND (discarded_at IS NULL AND (is_deleted IS NOT TRUE OR is_deleted IS NULL))
+     ORDER BY name
+     LIMIT 50`,
+    []
+  );
+  const matching = result.rows.filter((row: { website_url: string | null }) => {
+    const host = row.website_url ? hostFromUrl(row.website_url) : null;
+    return host === emailDomain;
+  });
+  return matching.length === 1 ? matching[0] : null;
+}
+
+/** Find organization by normalized name: case-insensitive, trim, collapse spaces. */
+export async function findOrganizationByNormalizedName(normalizedName: string): Promise<Organization | null> {
+  if (!normalizedName) return null;
+  const result = await query(
+    `SELECT * FROM organizations
+     WHERE (discarded_at IS NULL AND (is_deleted IS NOT TRUE OR is_deleted IS NULL))
+       AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(name,''), '\\s+', ' ', 'g'))) = LOWER($1)
+     LIMIT 1`,
+    [normalizedName]
+  );
+  return result.rows[0] || null;
+}
+
 // Get organization by name (for backward compat with routes using companyName param)
 export async function getOrganizationByName(name: string): Promise<Organization | null> {
   const result = await query(

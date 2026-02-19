@@ -7,7 +7,13 @@ import {
   resetPassword,
   getUserById,
   getAllUsers,
+  setEmployerCompany,
 } from '../services/auth.service.js';
+import {
+  getOrganizationByEmailDomain,
+  normalizeCompanyName,
+  findOrganizationByNormalizedName,
+} from '../services/organization.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 // Import ROLE_ENUM for validation
@@ -210,6 +216,81 @@ router.get('/all', authenticateToken, async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get all users error:', error);
     res.status(500).json({ error: error.message || 'Failed to get users' });
+  }
+});
+
+// --- Employer onboarding: set company (no dropdown; only approved orgs) ---
+
+// Get suggested organization by current user's email domain (website_url match)
+router.get('/employer/suggested-org', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user || req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const email = req.user.email;
+    if (!email) {
+      res.json({ success: true, data: null });
+      return;
+    }
+    const org = await getOrganizationByEmailDomain(email);
+    if (!org) {
+      res.json({ success: true, data: null });
+      return;
+    }
+    res.json({ success: true, data: { id: org.id, name: org.name } });
+  } catch (error: any) {
+    console.error('Suggested org error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get suggested organization' });
+  }
+});
+
+// Validate company name: normalize (trim, collapse spaces), case-insensitive match. Returns org if found.
+router.post('/employer/validate-company', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user || req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { companyName } = req.body;
+    if (!companyName || typeof companyName !== 'string') {
+      res.status(400).json({ error: 'Company name is required' });
+      return;
+    }
+    const normalized = normalizeCompanyName(companyName);
+    if (!normalized) {
+      res.json({ success: true, found: false });
+      return;
+    }
+    const org = await findOrganizationByNormalizedName(normalized);
+    if (!org) {
+      res.json({ success: true, found: false });
+      return;
+    }
+    res.json({ success: true, found: true, organization: { id: org.id, name: org.name } });
+  } catch (error: any) {
+    console.error('Validate company error:', error);
+    res.status(500).json({ error: error.message || 'Failed to validate company' });
+  }
+});
+
+// Set employer's company (after validation). Requires organizationId from validate-company.
+router.post('/employer/set-company', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user || req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { organizationId, companyName } = req.body;
+    if (!organizationId || !companyName) {
+      res.status(400).json({ error: 'organizationId and companyName are required' });
+      return;
+    }
+    const user = await setEmployerCompany(req.user.id, organizationId, companyName);
+    res.json({ success: true, user });
+  } catch (error: any) {
+    console.error('Set employer company error:', error);
+    res.status(400).json({ error: error.message || 'Failed to set company' });
   }
 });
 

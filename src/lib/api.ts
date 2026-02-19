@@ -295,6 +295,23 @@ class ApiClient {
     });
   }
 
+  // Employer onboarding: suggested org by email domain, validate company name, set company
+  async getEmployerSuggestedOrg() {
+    return this.request<{ id: string; name: string | null } | null>('/auth/employer/suggested-org');
+  }
+  async validateEmployerCompany(companyName: string) {
+    return this.request<{ found: boolean; organization?: { id: string; name: string | null } }>('/auth/employer/validate-company', {
+      method: 'POST',
+      body: JSON.stringify({ companyName }),
+    });
+  }
+  async setEmployerCompany(organizationId: string, companyName: string) {
+    return this.request<{ user: unknown }>('/auth/employer/set-company', {
+      method: 'POST',
+      body: JSON.stringify({ organizationId, companyName }),
+    });
+  }
+
   // Admin endpoints
   async getAllOrganizations() {
     return this.request('/organizations/all');

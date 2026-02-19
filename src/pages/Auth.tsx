@@ -232,9 +232,11 @@ const Auth = () => {
       return;
     }
 
+    // Employer signup: company is not asked here; only Admin can create employers (company set after login).
+    const isEmployerSignup = mode === "signup" && selectedRole === "employer";
     const companyNameForValidation =
-      formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : "");
-    if (mode === "signup" && isEmployerOrRecruiter && !companyNameForValidation) {
+      isEmployerSignup ? "" : (formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : ""));
+    if (mode === "signup" && isEmployerOrRecruiter && !isEmployerSignup && !companyNameForValidation) {
       toast({
         title: "Company required",
         description: "Please select a company from the list or choose \"Create new organization\".",
@@ -251,15 +253,17 @@ const Auth = () => {
         const { register } = await import("@/lib/auth");
         // Use company name from form; if "Create new organization" was chosen, fallback to current input (state may not have flushed)
         const companyNameToSend =
-          formData.companyName?.trim() ||
-          (isEmployerOrRecruiter ? companyInputValue.trim() : undefined);
+          selectedRole === "employer"
+            ? undefined
+            : (formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : undefined));
+        const organizationIdToSend = selectedRole === "employer" ? undefined : (formData.organizationId ?? undefined);
         const user = await register({
           email: formData.email,
           password: formData.password,
           firstName: formData.firstName,
           lastName: formData.lastName,
           companyName: companyNameToSend || undefined,
-          organizationId: formData.organizationId ?? undefined,
+          organizationId: organizationIdToSend,
           role: roleMap[selectedRole],
         });
 
@@ -477,7 +481,8 @@ const Auth = () => {
                   </div>
                 )}
 
-                {mode === "signup" && isEmployerOrRecruiter && (
+                {/* Employer: company not asked on signup (set after login). Recruiter: keep company selection. */}
+                {mode === "signup" && selectedRole === "recruiter" && (
                   <div className="space-y-2">
                     <Label htmlFor="companyName">Company Name</Label>
                     <Popover
@@ -499,7 +504,7 @@ const Auth = () => {
                             autoComplete="off"
                             className={cn(
                               "pr-9",
-                              !formData.companyName && isEmployerOrRecruiter && "border-amber-500/50"
+                              !formData.companyName && "border-amber-500/50"
                             )}
                           />
                           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
