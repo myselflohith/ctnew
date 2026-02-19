@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -25,6 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getCurrentUser } from "@/lib/auth";
 
 interface NavItem {
   icon: React.ElementType;
@@ -44,14 +45,26 @@ const DashboardLayout = ({
   children,
   role,
   navItems,
-  userName = "John Doe",
-  companyName,
+  userName: userNameProp,
+  companyName: companyNameProp,
 }: DashboardLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [user, setUser] = useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
 
-  const handleLogout = () => {
-    // Will be replaced with actual logout logic
+  useEffect(() => {
+    getCurrentUser().then(setUser);
+  }, []);
+
+  const displayName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
+    userNameProp ||
+    "User";
+  const displayCompany = user?.company_name ?? companyNameProp ?? undefined;
+
+  const handleLogout = async () => {
+    const { apiClient } = await import("@/lib/api");
+    await apiClient.logout();
     navigate("/");
   };
 
@@ -96,14 +109,14 @@ const DashboardLayout = ({
             <DropdownMenuTrigger asChild>
               <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-sidebar-accent transition-colors">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white font-semibold">
-                  {userName.charAt(0)}
+                  {displayName.charAt(0)}
                 </div>
                 <div className="flex-1 text-left">
                   <p className="text-sm font-medium text-sidebar-foreground">
-                    {userName}
+                    {displayName}
                   </p>
-                  {companyName && (
-                    <p className="text-xs text-muted-foreground">{companyName}</p>
+                  {displayCompany && (
+                    <p className="text-xs text-muted-foreground">{displayCompany}</p>
                   )}
                 </div>
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
