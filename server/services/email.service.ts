@@ -1,20 +1,49 @@
-import nodemailer from 'nodemailer';
-import aws from '@aws-sdk/client-ses';
-import { SendRawEmailCommand } from '@aws-sdk/client-ses';
-import { createTransport } from 'nodemailer';
+import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 
-const ses = new aws.SES({
-  apiVersion: '2010-12-01',
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY || '', // Use AWS_ACCESS_KEY
-    secretAccessKey: process.env.AWS_SECRET_KEY || '', // Use AWS_SECRET_KEY
-  },
-});
+const EMAIL_FROM = 'cardin@cardinaltalent.ai';
 
-const transporter = createTransport({
-  SES: { ses, aws },
-});
+// Support both AWS_* and SES_* env vars (e.g. from production .env)
+const AWS_REGION = process.env.AWS_REGION || process.env.SES_REGION || 'us-east-1';
+const AWS_ACCESS_KEY = process.env.AWS_ACCESS_KEY || process.env.SES_ACCESS_KEY || '';
+const AWS_SECRET_KEY = process.env.AWS_SECRET_KEY || process.env.SES_SECRET_KEY || '';
+
+const sesClient =
+  AWS_ACCESS_KEY && AWS_SECRET_KEY
+    ? new SESClient({
+        region: AWS_REGION,
+        credentials: {
+          accessKeyId: AWS_ACCESS_KEY,
+          secretAccessKey: AWS_SECRET_KEY,
+        },
+      })
+    : null;
+
+/** Send an email via AWS SES using raw MIME. Requires AWS SES credentials in .env. */
+async function sendEmailViaSES(to: string, subject: string, html: string, fromAddress: string): Promise<void> {
+  if (!sesClient) {
+    throw new Error(
+      'AWS SES credentials not configured. Set AWS_ACCESS_KEY and AWS_SECRET_KEY (or SES_ACCESS_KEY and SES_SECRET_KEY) and AWS_REGION (or SES_REGION) in .env.'
+    );
+  }
+  const from = fromAddress;
+  const mime = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    html,
+  ].join('\r\n');
+  const command = new SendRawEmailCommand({
+    RawMessage: {
+      Data: Buffer.from(mime, 'utf-8'),
+    },
+    Source: from,
+    Destinations: [to],
+  });
+  await sesClient.send(command);
+}
 
 // Helper function to generate the common email HTML structure
 function generateEmailHtml(title: string, headerContent: string, bodyContent: string, footerContent: string): string {
@@ -169,15 +198,10 @@ export async function sendPasswordResetEmail(
     </p>
   `;
 
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@cardinaltalent.com',
-    to: email,
-    subject: 'Password Reset Request - CardinalTalent',
-    html: generateEmailHtml('CardinalTalent Password Reset', headerContent, bodyContent, footerContent),
-  };
+  const html = generateEmailHtml('CardinalTalent Password Reset', headerContent, bodyContent, footerContent);
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmailViaSES(email, 'Password Reset Request - CardinalTalent', html, EMAIL_FROM);
     console.log(`Password reset email sent to ${email}`);
   } catch (error) {
     console.error('Error sending password reset email:', error);
@@ -214,15 +238,10 @@ export async function sendVerificationEmail(
     </p>
   `;
 
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@cardinaltalent.com',
-    to: email,
-    subject: 'Verify Your Email - CardinalTalent',
-    html: generateEmailHtml('CardinalTalent Email Verification', headerContent, bodyContent, footerContent),
-  };
+  const html = generateEmailHtml('CardinalTalent Email Verification', headerContent, bodyContent, footerContent);
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmailViaSES(email, 'Verify Your Email - CardinalTalent', html, EMAIL_FROM);
     console.log(`Verification email sent to ${email}`);
   } catch (error) {
     console.error('Error sending verification email:', error);
@@ -259,15 +278,10 @@ export async function sendInterviewInviteEmail(
     </p>
   `;
 
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@cardinaltalent.com',
-    to: candidateEmail,
-    subject: `Interview Invitation - ${interviewTitle} - CardinalTalent`,
-    html: generateEmailHtml('CardinalTalent Interview Invitation', headerContent, bodyContent, footerContent),
-  };
+  const html = generateEmailHtml('CardinalTalent Interview Invitation', headerContent, bodyContent, footerContent);
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmailViaSES(candidateEmail, `Interview Invitation - ${interviewTitle} - CardinalTalent`, html, EMAIL_FROM);
     console.log(`Interview invite email sent to ${candidateEmail}`);
   } catch (error) {
     console.error('Error sending interview invite email:', error);
