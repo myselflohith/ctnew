@@ -1,10 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Mail } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, Mail, ChevronDown, X, CheckCircle2, AlertCircle } from "lucide-react";
 import { interviewsAPI } from "@/lib/api/interviews";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { employerNavItems } from "@/components/layout/navItems";
 import {
   LayoutDashboard,
   Briefcase,
@@ -12,23 +15,30 @@ import {
   Building2,
   Settings,
   Calendar,
+  User,
+  Star,
 } from "lucide-react";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
+const navItems = employerNavItems;
 
 interface InvitedCandidate {
   id: string;
-  candidate_name: string;
-  candidate_email: string;
+  candidate_name?: string;
+  candidate_email?: string;
+  name?: string;
+  email?: string;
   status: string;
   created_at: string;
+}
+
+interface CandidateReport {
+  inviteId: number;
+  candidateName: string;
+  candidateEmail: string;
+  status: string;
+  rating: string;
+  score: any;
+  aiFeedback: any;
 }
 
 export default function InterviewDetails() {
@@ -37,6 +47,8 @@ export default function InterviewDetails() {
   const [interview, setInterview] = useState<any>(null);
   const [invitedCandidates, setInvitedCandidates] = useState<InvitedCandidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [candidateReports, setCandidateReports] = useState<CandidateReport[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   useEffect(() => {
     const fetchInterviewData = async () => {
@@ -71,6 +83,101 @@ export default function InterviewDetails() {
 
     fetchInterviewData();
   }, [id, navigate]);
+
+  // Fetch candidate reports for this interview
+  const fetchCandidateReports = async () => {
+    if (!interview?.id) {
+      console.log('⚠️ No interview ID, skipping report fetch');
+      return;
+    }
+    
+    try {
+      setReportsLoading(true);
+      const token = apiClient.getToken();
+      if (!token) {
+        setCandidateReports([]);
+        return;
+      }
+
+      console.log('📡 Fetching reports for interview:', interview.id);
+
+      // Use the dedicated interview-specific endpoint
+      const url = `/api/interviews/employer/interview-reports/${interview.id}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Reports API Response:', data);
+        
+        if (data.success && Array.isArray(data.data)) {
+          console.log(`📊 Fetched ${data.data.length} reports for interview ${interview.id}`);
+          setCandidateReports(data.data);
+        } else {
+          console.warn('❌ Invalid reports response:', data);
+          setCandidateReports([]);
+        }
+      } else {
+        console.error("❌ Failed to fetch reports. Status:", response.status);
+        const errorText = await response.text();
+        console.error('Response:', errorText);
+        setCandidateReports([]);
+      }
+    } catch (error: any) {
+      console.error("❌ Error fetching candidate reports:", error);
+      setCandidateReports([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  const getRatingColor = (rating: string) => {
+    switch (rating) {
+      case "excellent":
+        return "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+      case "good":
+        return "bg-blue-500/20 text-blue-300 border-blue-500/30";
+      case "average":
+        return "bg-amber-500/20 text-amber-300 border-amber-500/30";
+      case "poor":
+        return "bg-red-500/20 text-red-300 border-red-500/30";
+      case "practice":
+        return "bg-gray-500/20 text-gray-300 border-gray-500/30";
+      default:
+        return "bg-gray-500/20 text-gray-300 border-gray-500/30";
+    }
+  };
+
+  const getRatingIcon = (rating: string) => {
+    switch (rating) {
+      case "excellent":
+        return "⭐";
+      case "good":
+        return "✅";
+      case "average":
+        return "⚠️";
+      case "poor":
+        return "❌";
+      case "practice":
+        return "📝";
+      default:
+        return "•";
+    }
+  };
+
+  // Load reports when interview is loaded
+  useEffect(() => {
+    console.log('🔄 Checking if should load reports. Interview ID:', interview?.id);
+    if (interview?.id) {
+      fetchCandidateReports();
+    }
+  }, [interview?.id]);
 
   if (loading) {
     return (
@@ -137,6 +244,7 @@ export default function InterviewDetails() {
             View interview details and invited candidates
           </p>
         </div>
+        
       </div>
 
       {/* Interview Details Card */}
@@ -150,10 +258,6 @@ export default function InterviewDetails() {
           <div>
             <p className="text-sm text-muted-foreground">Category</p>
             <p className="font-medium text-foreground">{interview.interview_category || "N/A"}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Status</p>
-            <p className="font-medium text-foreground capitalize">{interview.status || "pending"}</p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Created</p>
@@ -173,11 +277,11 @@ export default function InterviewDetails() {
         )}
       </div>
 
-      {/* Invited Candidates */}
+      {/* Invited Candidates & Reports */}
       <div className="glass rounded-2xl p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-foreground">
-            Invited Candidates ({invitedCandidates.length})
+            Candidates ({invitedCandidates.length})
           </h2>
           <Button 
             onClick={() => navigate(`/employer/interviews/${interview.id}/invite`)}
@@ -190,31 +294,82 @@ export default function InterviewDetails() {
 
         {invitedCandidates.length > 0 ? (
           <div className="space-y-3">
-            {invitedCandidates.map((candidate) => (
-              <div
-                key={candidate.id}
-                className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
-              >
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">
-                    {candidate.candidate_name || candidate.name || "N/A"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {candidate.candidate_email || candidate.email || "N/A"}
-                  </p>
+            {invitedCandidates.map((candidate) => {
+              // Find matching report for this candidate using improved matching
+              const candidateName = (candidate.candidate_name || candidate.name || '').toLowerCase().trim();
+              const candidateEmail = (candidate.candidate_email || candidate.email || '').toLowerCase().trim();
+              
+              const report = candidateReports.find((r) => {
+                // Primary match: inviteId (most reliable)
+                if (r.inviteId && candidate.id && r.inviteId.toString() === candidate.id.toString()) {
+                  return true;
+                }
+
+                // Fallback match: name/email (legacy)
+                const reportName = (r.candidateName || '').toLowerCase().trim();
+                const reportEmail = (r.candidateEmail || '').toLowerCase().trim();
+                return (reportName === candidateName && candidateName) || (reportEmail === candidateEmail && candidateEmail);
+              });
+
+              // Debug logging
+              if (report) {
+                console.log(`📋 Candidate: ${candidateName}, Invite Status: ${candidate.status}, Report Status: ${report.status}`, { candidate, report });
+              }
+
+              // Use invite status as source of truth, but if a report exists we should treat it as completed.
+              // This prevents UI from showing "Pending" when the report row exists but invite status is stale.
+              const inviteStatus =
+                candidate.status === 'Completed' || report
+                  ? 'Completed'
+                  : candidate.status || 'Pending';
+
+              return (
+                <div key={candidate.id} className="border border-slate-700 rounded-lg overflow-hidden">
+                  {/* Candidate Card */}
+                  <div className="p-4 bg-slate-800/50 flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center">
+                        <User className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {candidate.candidate_name || candidate.name || "N/A"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {candidate.candidate_email || candidate.email || "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {/* Status Badge */}
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 border text-xs font-semibold">
+                        ✅ Completed
+                      </Badge>
+
+                      {/* Report Details - Show for any Completed status */}
+                      {report && inviteStatus === "Completed" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                            onClick={() => navigate(`/employer/interviews/${interview.id}/candidate-report/${report.inviteId}`)}
+                          >
+                            View Report
+                          </Button>
+                        </>
+                      )}
+
+                      <span className="text-xs text-muted-foreground">
+                        {candidate.created_at
+                          ? new Date(candidate.created_at).toLocaleDateString()
+                          : "N/A"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-xs px-3 py-1 rounded-full bg-primary/20 text-primary capitalize">
-                    {candidate.status || "pending"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {candidate.created_at
-                      ? new Date(candidate.created_at).toLocaleDateString()
-                      : "N/A"}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-8">
@@ -228,6 +383,7 @@ export default function InterviewDetails() {
           </div>
         )}
       </div>
+
     </DashboardLayout>
   );
 }

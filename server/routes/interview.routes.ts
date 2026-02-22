@@ -6,12 +6,17 @@ import {
   createAIInterview,
   getInterviewsForEmployer,
   getInterviewDetails,
+  getInterviewQuestions,
+  getInterviewByUniqueLink,
   inviteCandidate,
   generateQuestions,
   getCandidateReports,
   submitInterviewReport,
   getInterviewReportDetails,
   getTalentInterviewSchedules,
+  getTalentReportByInviteId,
+  startInterviewReport,
+  saveInterviewAnswer,
 } from '../services/interview.service.js';
 
 const createInterviewRoutes = (upload?: Multer) => {
@@ -23,127 +28,56 @@ router.get('/public/by-link/:uniqueLink', async (req: Request, res: Response) =>
     const { uniqueLink } = req.params;
     console.log('Received request for interview with uniqueLink:', uniqueLink);
 
-    const result = await pool.query(
-      `SELECT 
-        aiv.id as invite_id,
-        aiv.interview_id,
-        aiv.candidate_name,
-        aiv.candidate_email,
-        aiv.phone_num,
-        aiv.status,
-        ai.interview_title,
-        ai.interview_category,
-        ai.type_of_interview,
-        ai.job_id
-      FROM ai_interview_invites aiv
-      LEFT JOIN ai_interviews ai ON aiv.interview_id = ai.id
-      WHERE aiv.unique_interview_link = $1 AND aiv.discarded_at IS NULL`,
-      [uniqueLink]
-    );
+    const interviewData = await getInterviewByUniqueLink(uniqueLink);
 
-    console.log('Query result rows:', result.rows.length);
-
-    if (result.rows.length === 0) {
+    if (!interviewData) {
       console.log('No interview found for uniqueLink:', uniqueLink);
-      res.status(404).json({ error: 'Interview invitation not found' });
+      res.status(404).json({ 
+        success: false,
+        error: 'Interview invitation not found' 
+      });
       return;
     }
 
-    const invite = result.rows[0];
+    // Format questions for frontend
+    const formattedQuestions = interviewData.questions.map((q: any, index: number) => ({
+      id: q.id,
+      text: q.question,
+      weight: q.question_weight || 1,
+      order: index + 1,
+      type: q.type,
+    }));
+
     res.json({
       success: true,
       data: {
-        inviteId: invite.invite_id,
-        interviewId: invite.interview_id,
-        candidateName: invite.candidate_name,
-        candidateEmail: invite.candidate_email,
-        phoneNum: invite.phone_num,
-        status: invite.status,
-        interviewTitle: invite.interview_title || 'Interview',
-        interviewCategory: invite.interview_category || 'General',
-        interviewType: invite.type_of_interview || 'Practice',
-        jobTitle: invite.job_title || invite.interview_title || 'Interview',
-        company: invite.company || 'Company',
-        location: invite.location || 'Remote',
-        jobType: invite.job_type || 'Full-time',
-        description: invite.job_description || invite.description || '',
+        inviteId: interviewData.invite_id,
+        interviewId: interviewData.interview_id,
+        candidateName: interviewData.candidate_name,
+        candidateEmail: interviewData.candidate_email,
+        interviewTitle: interviewData.interview_title,
+        interviewCategory: interviewData.interview_category,
+        interviewType: interviewData.type_of_interview,
+        jobName: interviewData.job_name || 'Position',
+        jobDescription: interviewData.job_description || '',
+        additionalSkills: interviewData.addition_skill || '',
+        company: interviewData.job_name || 'CardinalTalent',
+        inviteStatus: interviewData.invite_status,
+        questions: formattedQuestions,
+        guidelines: [
+          'Answer questions clearly and concisely',
+          'Speak naturally and avoid reading from notes',
+          'Take your time to think before answering',
+          'Be yourself and show your personality'
+        ],
       },
     });
   } catch (error: any) {
     console.error('Get interview by link error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get interview' });
-  }
-});
-
-// DEV: Check database connectivity and list all invites
-router.get('/dev/check-invites', async (req: Request, res: Response) => {
-  try {
-    const result = await pool.query(
-      `SELECT id, interview_id, candidate_name, candidate_email, unique_interview_link, created_at 
-       FROM ai_interview_invites 
-       ORDER BY created_at DESC 
-       LIMIT 10`
-    );
-    res.json({ 
-      success: true, 
-      count: result.rows.length,
-      invites: result.rows 
+    res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to get interview' 
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// DEV: Seed questions for first interview for testing
-router.get('/dev/seed-first-interview', async (req: Request, res: Response) => {
-  try {
-    // Get first interview
-    const interviewResult = await pool.query(
-      `SELECT id FROM ai_interviews LIMIT 1`
-    );
-
-    if (interviewResult.rows.length === 0) {
-      return res.status(404).json({ error: 'No interviews found' });
-    }
-
-    const interviewId = interviewResult.rows[0].id;
-
-    // Sample interview questions
-    const sampleQuestions = [
-      'Tell us about your most recent project and your role in it.',
-      'What are your strengths and how do they relate to this position?',
-      'Can you describe a challenging situation you faced at work and how you handled it?',
-      'What motivated you to apply for this position?',
-      'Where do you see yourself in 5 years?',
-      'How do you handle conflicts with team members?',
-      'Tell us about a time you showed leadership.',
-      'What is your experience with the technologies listed in the job description?',
-    ];
-
-    // Insert questions
-    let insertedCount = 0;
-    for (const question of sampleQuestions) {
-      try {
-        await pool.query(
-          `INSERT INTO ai_interview_custom_questions (ai_interview_id, question, question_weight, created_at, updated_at)
-           VALUES ($1, $2, 1, NOW(), NOW())`,
-          [interviewId, question]
-        );
-        insertedCount++;
-      } catch (e) {
-        // Question might already exist
-      }
-    }
-
-    res.json({ 
-      success: true, 
-      message: `Seeded ${insertedCount} questions for interview ${interviewId}`,
-      interview_id: interviewId,
-      questions_added: insertedCount,
-      sample_questions: sampleQuestions
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -321,14 +255,42 @@ router.post('/:id/submit_report', authenticateToken, async (req: Request, res: R
     }
 
     const { id } = req.params;
-    const { ai_interview_invite_id, interview_start_at, transcript_text, rating, score, ai_feedback, interview_video_url, report_details } = req.body;
+    let { ai_interview_invite_id, interview_start_at, transcript_text, rating, score, ai_feedback, interview_video_url, report_details } = req.body;
 
     if (!ai_interview_invite_id) {
       res.status(400).json({ error: 'ai_interview_invite_id is required' });
       return;
     }
 
-    const report = await submitInterviewReport(parseInt(id), ai_interview_invite_id, {
+    // Ensure invite ID is a number
+    const inviteIdNum = parseInt(ai_interview_invite_id);
+    if (isNaN(inviteIdNum)) {
+      res.status(400).json({ error: 'ai_interview_invite_id must be a valid number' });
+      return;
+    }
+
+    console.log('\n========== SUBMIT REPORT DEBUG ==========');
+    console.log('📤 Received submit_report request');
+    console.log('Interview ID:', id);
+    console.log('Invite ID:', inviteIdNum, '(type: number)');
+    console.log('Transcript length:', transcript_text?.length || 0);
+    console.log('Report details count:', report_details?.length || 0);
+    
+    if (report_details && report_details.length > 0) {
+      console.log('\n📋 Report Details Breakdown:');
+      report_details.forEach((detail: any, idx: number) => {
+        console.log(`\n  [Detail #${idx + 1}]`);
+        console.log(`    Question: "${detail.question?.substring(0, 80) || 'N/A'}..."`);
+        console.log(`    Answer: "${detail.transcript_text?.substring(0, 80) || 'N/A'}..."`);
+        console.log(`    Weight: ${detail.question_weight || 1}`);
+        console.log(`    Type: ${detail.que_type}`);
+      });
+    } else {
+      console.log('⚠️  WARNING: No report_details received!');
+    }
+    console.log('=========================================\n');
+
+    const report = await submitInterviewReport(parseInt(id), inviteIdNum, {
       interview_start_at,
       transcript_text,
       rating,
@@ -338,6 +300,18 @@ router.post('/:id/submit_report', authenticateToken, async (req: Request, res: R
       report_details,
     });
 
+    // Extra safety: ensure invite status is Completed even if downstream logic changes.
+    // (submitInterviewReport already does this, but we enforce it here too.)
+    try {
+      await pool.query(
+        `UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2`,
+        ['Completed', inviteIdNum]
+      );
+    } catch (e) {
+      console.warn('Failed to force invite status Completed:', e);
+    }
+
+    console.log('✅ Report saved successfully:', report.id);
     res.json({ success: true, data: report });
   } catch (error: any) {
     console.error('Submit report error:', error);
@@ -345,7 +319,7 @@ router.post('/:id/submit_report', authenticateToken, async (req: Request, res: R
   }
 });
 
-// Get interview report details
+// Get interview report details by reportId
 router.get('/reports/:reportId', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
@@ -368,6 +342,94 @@ router.get('/reports/:reportId', authenticateToken, async (req: Request, res: Re
   }
 });
 
+// Get interview report by inviteId (for employer candidate reports)
+router.get('/employer/report-by-invite/:inviteId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { inviteId } = req.params;
+
+    const result = await pool.query(
+      `SELECT 
+        air.*,
+        aii.candidate_name,
+        aii.candidate_email,
+        aii.interview_id,
+        ai.interview_title,
+        ai.interview_category
+       FROM ai_interview_reports air
+       INNER JOIN ai_interview_invites aii ON air.ai_interview_invite_id = aii.id
+       INNER JOIN ai_interviews ai ON air.interview_id = ai.id
+       WHERE air.ai_interview_invite_id = $1
+       LIMIT 1`,
+      [parseInt(inviteId)]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Report not found for this invite' });
+      return;
+    }
+
+    const report = result.rows[0];
+    
+    // Fetch report details
+    const detailsResult = await pool.query(
+      `SELECT * FROM ai_interview_report_details 
+       WHERE ai_interview_report_id = $1 
+       ORDER BY id ASC`,
+      [report.id]
+    );
+
+    const safeJsonParse = (value: any) => {
+      if (!value) return null;
+      if (typeof value !== "string") return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        // Some rows may contain plain text like "Awaiting processing" instead of JSON.
+        return value;
+      }
+    };
+
+    const formattedReport = {
+      id: report.id,
+      interview_id: report.interview_id,
+      ai_interview_invite_id: report.ai_interview_invite_id,
+      interview_start_at: report.interview_start_at,
+      transcript_text: report.transcript_text,
+      interview_video_url: report.interview_video_url,
+      rating: report.rating,
+      score: safeJsonParse(report.score),
+      ai_feedback: safeJsonParse(report.ai_feedback),
+      candidate_name: report.candidate_name,
+      candidate_email: report.candidate_email,
+      interview_title: report.interview_title,
+      interview_category: report.interview_category,
+      details: detailsResult.rows.map((row: any) => ({
+        id: row.id,
+        question: row.question,
+        transcript_text: row.transcript_text,
+        video_url: row.video_url,
+        score: safeJsonParse(row.score),
+        rating: row.rating,
+        ai_feedback: safeJsonParse(row.ai_feedback),
+        que_type: row.que_type,
+        created_at: row.created_at,
+      })),
+      created_at: report.created_at,
+      updated_at: report.updated_at,
+    };
+
+    res.json({ success: true, data: formattedReport });
+  } catch (error: any) {
+    console.error('Get report by invite error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to get report' });
+  }
+});
+
 // Get scheduled interviews for talent
 router.get('/talent/scheduled', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -384,8 +446,194 @@ router.get('/talent/scheduled', authenticateToken, async (req: Request, res: Res
   }
 });
 
+// Get interview report for talent by invite ID
+router.get('/talent/report/:inviteId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { inviteId } = req.params;
+    const report = await getTalentReportByInviteId(parseInt(inviteId));
+
+    if (!report) {
+      res.status(404).json({ success: false, error: 'Report not found' });
+      return;
+    }
+
+    res.json({ success: true, data: report });
+  } catch (error: any) {
+    console.error('Get talent report error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to get report' });
+  }
+});
+
+// Get interview reports for employer (by job_id)
+router.get('/employer/reports/:jobId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { jobId } = req.params;
+    const { interviewId } = req.query;
+
+    let query = `SELECT 
+        aii.id as invite_id,
+        aii.candidate_name,
+        aii.candidate_email,
+        aii.status,
+        aii.created_at as invited_at,
+        air.id as report_id,
+        air.rating,
+        air.score,
+        air.ai_feedback,
+        ai.interview_title,
+        ai.id as interview_id
+       FROM ai_interview_invites aii
+       INNER JOIN ai_interviews ai ON aii.interview_id = ai.id
+       LEFT JOIN ai_interview_reports air ON aii.id = air.ai_interview_invite_id
+       WHERE `;
+
+    let params: any[] = [];
+
+    if (interviewId) {
+      // Filter by specific interview
+      query += `ai.id = $1`;
+      params = [interviewId];
+    } else {
+      // Filter by job_id
+      query += `ai.job_id = $1`;
+      params = [jobId];
+    }
+
+    query += ` ORDER BY aii.created_at DESC`;
+
+    // Get all completed interviews for this job/interview with reports
+    const result = await pool.query(query, params);
+
+    const reports = result.rows.map((row: any) => {
+      let parsedScore = null;
+      let parsedFeedback = null;
+
+      // Safely parse score
+      if (row.score) {
+        try {
+          parsedScore = typeof row.score === 'string' ? JSON.parse(row.score) : row.score;
+        } catch (e) {
+          console.warn('Failed to parse score:', row.score);
+          parsedScore = null;
+        }
+      }
+
+      // Safely parse feedback
+      if (row.ai_feedback) {
+        try {
+          parsedFeedback = typeof row.ai_feedback === 'string' ? JSON.parse(row.ai_feedback) : row.ai_feedback;
+        } catch (e) {
+          console.warn('Failed to parse feedback:', row.ai_feedback);
+          parsedFeedback = null;
+        }
+      }
+
+      return {
+        inviteId: row.invite_id,
+        candidateName: row.candidate_name,
+        candidateEmail: row.candidate_email,
+        status: row.status,
+        invitedAt: row.invited_at,
+        reportId: row.report_id,
+        rating: row.rating,
+        score: parsedScore,
+        aiFeedback: parsedFeedback,
+        interviewTitle: row.interview_title,
+        interviewId: row.interview_id,
+      };
+    });
+
+    res.json({ success: true, data: reports });
+  } catch (error: any) {
+    console.error('Get employer reports error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get reports' });
+  }
+});
+
+// Get interview reports by interview ID (for employer)
+router.get('/employer/interview-reports/:interviewId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { interviewId } = req.params;
+
+    const result = await pool.query(
+      `SELECT 
+        aii.id as invite_id,
+        aii.candidate_name,
+        aii.candidate_email,
+        aii.status,
+        aii.created_at as invited_at,
+        air.id as report_id,
+        air.rating,
+        air.score,
+        air.ai_feedback,
+        ai.interview_title
+       FROM ai_interview_invites aii
+       INNER JOIN ai_interviews ai ON aii.interview_id = ai.id
+       LEFT JOIN ai_interview_reports air ON aii.id = air.ai_interview_invite_id
+       WHERE ai.id = $1
+       ORDER BY aii.created_at DESC`,
+      [interviewId]
+    );
+
+    const reports = result.rows.map((row: any) => {
+      let parsedScore = null;
+      let parsedFeedback = null;
+
+      if (row.score) {
+        try {
+          parsedScore = typeof row.score === 'string' ? JSON.parse(row.score) : row.score;
+        } catch (e) {
+          parsedScore = null;
+        }
+      }
+
+      if (row.ai_feedback) {
+        try {
+          parsedFeedback = typeof row.ai_feedback === 'string' ? JSON.parse(row.ai_feedback) : row.ai_feedback;
+        } catch (e) {
+          parsedFeedback = null;
+        }
+      }
+
+      return {
+        inviteId: row.invite_id,
+        candidateName: row.candidate_name,
+        candidateEmail: row.candidate_email,
+        status: row.status,
+        invitedAt: row.invited_at,
+        reportId: row.report_id,
+        rating: row.rating,
+        score: parsedScore,
+        aiFeedback: parsedFeedback,
+        interviewTitle: row.interview_title,
+      };
+    });
+
+    console.log(`📊 Fetched ${reports.length} reports for interview ${interviewId}`);
+    res.json({ success: true, data: reports });
+  } catch (error: any) {
+    console.error('Get interview reports error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get reports' });
+  }
+});
+
 // OpenAI Text-to-Speech endpoint
-router.post('/openai_speak', authenticateToken, async (req: Request, res: Response) => {
+router.post('/openai_speak', async (req: Request, res: Response) => {
   try {
     const { text } = req.body;
     
@@ -431,7 +679,7 @@ router.post('/openai_speak', authenticateToken, async (req: Request, res: Respon
 });
 
 // Transcription endpoint using OpenAI Whisper
-router.post('/transcribe', authenticateToken, async (req: Request, res: Response) => {
+router.post('/transcribe', async (req: Request, res: Response) => {
   try {
     const file = req.file;
     
@@ -536,39 +784,64 @@ router.get('/fetch_questions/:interviewId/:inviteId', async (req: Request, res: 
     const interview = interviewResult.rows[0];
     const jobId = interview.job_id;
 
-    // Try to get interview-specific custom questions first
+    // Fetch questions in the same way as /public/by-link:
+    // include BOTH custom + generated (and only fall back to job-level if both are empty)
     let questionsResult = await pool.query(
-      `SELECT id, question as question_text, question_weight, 'custom' as source
-       FROM ai_interview_custom_questions 
+      `
+      (SELECT id, question as question_text, question_weight, 'custom' as source
+       FROM ai_interview_custom_questions
        WHERE ai_interview_id = $1 AND discarded_at IS NULL
-       ORDER BY created_at ASC`,
+       ORDER BY created_at ASC)
+      UNION ALL
+      (SELECT id, question as question_text, question_weight, 'generated' as source
+       FROM ai_generated_questions
+       WHERE interview_id = $1 AND discarded_at IS NULL
+       ORDER BY created_at ASC)
+      `,
       [interviewId]
     );
 
-    // If no custom questions, fall back to job-level questions
+    // If still no questions, fall back to job-level questions
     if (questionsResult.rows.length === 0) {
       questionsResult = await pool.query(
         `SELECT id, question as question_text, question_weight, 'job' as source
-         FROM ai_interview_questions 
+         FROM ai_interview_questions
          WHERE job_id = $1 AND discarded_at IS NULL
          ORDER BY question_weight DESC, created_at ASC`,
         [jobId]
       );
     }
 
-    // If still no questions, try ai_generated_questions
+    // If still empty, return a debug payload so we can see what's wrong in prod/dev quickly
     if (questionsResult.rows.length === 0) {
-      questionsResult = await pool.query(
-        `SELECT id, question as question_text, question_weight, 'generated' as source
-         FROM ai_generated_questions 
-         WHERE interview_id = $1 AND discarded_at IS NULL
-         ORDER BY created_at ASC`,
+      const debugCustom = await pool.query(
+        `SELECT COUNT(*)::int as count FROM ai_interview_custom_questions WHERE ai_interview_id = $1 AND discarded_at IS NULL`,
         [interviewId]
       );
-    }
+      const debugGenerated = await pool.query(
+        `SELECT COUNT(*)::int as count FROM ai_generated_questions WHERE interview_id = $1 AND discarded_at IS NULL`,
+        [interviewId]
+      );
+      const debugJob = await pool.query(
+        `SELECT COUNT(*)::int as count FROM ai_interview_questions WHERE job_id = $1 AND discarded_at IS NULL`,
+        [jobId]
+      );
 
-    if (questionsResult.rows.length === 0) {
-      return res.json({ success: false, questions: [], message: 'No questions found for this interview' });
+      return res.json({
+        success: false,
+        questions: [],
+        message: 'No questions found for this interview',
+        debug: {
+          interviewId,
+          inviteId,
+          jobId,
+          counts: {
+            custom: debugCustom.rows?.[0]?.count ?? null,
+            generated: debugGenerated.rows?.[0]?.count ?? null,
+            job: debugJob.rows?.[0]?.count ?? null,
+          },
+        },
+      });
     }
 
     // Get already answered questions for this invite
@@ -601,6 +874,83 @@ router.get('/fetch_questions/:interviewId/:inviteId', async (req: Request, res: 
   }
 });
 
+/**
+ * Create (or fetch) an interview report at the start of a REAL interview.
+ * Practice interviews should not create reports.
+ *
+ * Body:
+ *  - ai_interview_invite_id: number
+ */
+router.post('/:id/start', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+      return;
+    }
+
+    const { id } = req.params;
+    const { ai_interview_invite_id } = req.body;
+
+    if (!ai_interview_invite_id) {
+      res.status(400).json({ success: false, error: 'ai_interview_invite_id is required' });
+      return;
+    }
+
+    const report = await startInterviewReport(parseInt(id), parseInt(ai_interview_invite_id));
+    res.json({ success: true, data: report });
+  } catch (error: any) {
+    console.error('Start interview report error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to start interview report' });
+  }
+});
+
+/**
+ * Save a single answer (upsert) for a REAL interview.
+ * Practice interviews should not save answers.
+ *
+ * Body:
+ *  - ai_interview_invite_id: number
+ *  - question_id?: number
+ *  - question: string
+ *  - transcript_text: string
+ *  - question_weight?: number
+ *  - que_type?: string
+ */
+router.post('/:id/answer', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+      return;
+    }
+
+    const { id } = req.params;
+    const { ai_interview_invite_id, question_id, question, transcript_text, question_weight, que_type } = req.body;
+
+    if (!ai_interview_invite_id) {
+      res.status(400).json({ success: false, error: 'ai_interview_invite_id is required' });
+      return;
+    }
+
+    if (!question || !transcript_text) {
+      res.status(400).json({ success: false, error: 'question and transcript_text are required' });
+      return;
+    }
+
+    const result = await saveInterviewAnswer(parseInt(id), parseInt(ai_interview_invite_id), {
+      question_id: question_id ? parseInt(question_id) : undefined,
+      question,
+      transcript_text,
+      question_weight: question_weight ? parseInt(question_weight) : undefined,
+      que_type,
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Save interview answer error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to save answer' });
+  }
+});
+
 // Store interview logs
 router.post('/store_interview_logs', async (req: Request, res: Response) => {
   try {
@@ -624,13 +974,15 @@ router.post('/store_interview_logs', async (req: Request, res: Response) => {
 });
 
 // Upload interview response video
-router.post('/upload_video', upload ? upload.single('file') : (req, res, next) => next(), async (req: Request, res: Response) => {
+const uploadMiddleware = upload ? upload.single('file') : (_req: any, _res: any, next: any) => next();
+
+router.post('/upload_video', uploadMiddleware, async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { interview_id, ai_interview_invite_id, question, que_type, is_completed, transcript } = req.body;
+    const { interview_id, ai_interview_invite_id, question, que_type, is_completed, transcript, question_id } = req.body;
     const questionIndex = req.body.question_index || 0;
 
     if (!interview_id || !ai_interview_invite_id) {
@@ -639,6 +991,28 @@ router.post('/upload_video', upload ? upload.single('file') : (req, res, next) =
 
     // Store file path or use cloud storage
     const videoPath = `/uploads/interviews/${(req.file as Express.Multer.File).filename}`;
+
+    // Get question weight if question_id provided
+    let questionWeight = 1;
+    if (question_id) {
+      // Try custom questions first
+      let weightResult = await pool.query(
+        `SELECT question_weight FROM ai_interview_custom_questions WHERE id = $1`,
+        [question_id]
+      );
+
+      // If not found, try generated questions
+      if (weightResult.rows.length === 0) {
+        weightResult = await pool.query(
+          `SELECT question_weight FROM ai_generated_questions WHERE id = $1`,
+          [question_id]
+        );
+      }
+
+      if (weightResult.rows.length > 0) {
+        questionWeight = weightResult.rows[0].question_weight || 1;
+      }
+    }
 
     // Create or update interview report
     let reportResult = await pool.query(
@@ -651,7 +1025,7 @@ router.post('/upload_video', upload ? upload.single('file') : (req, res, next) =
     if (reportResult.rows.length === 0) {
       const createResult = await pool.query(
         `INSERT INTO ai_interview_reports (interview_id, ai_interview_invite_id, interview_start_at, created_at, updated_at)
-         VALUES ($1, $2, CURRENT_DATE, NOW(), NOW())
+         VALUES ($1, $2, NOW(), NOW(), NOW())
          RETURNING id`,
         [interview_id, ai_interview_invite_id]
       );
@@ -660,20 +1034,26 @@ router.post('/upload_video', upload ? upload.single('file') : (req, res, next) =
       reportId = reportResult.rows[0].id;
     }
 
-    // Store response details
+    // Store response details with proper question weight
     await pool.query(
       `INSERT INTO ai_interview_report_details (ai_interview_report_id, ai_interview_invite_id, question, transcript_text, video_url, que_type, question_weight, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())`,
-      [reportId, ai_interview_invite_id, question || '', transcript || '', videoPath, que_type || 'general']
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+      [reportId, ai_interview_invite_id, question || '', transcript || '', videoPath, que_type || 'general', questionWeight]
     );
 
     // If interview is completed, update report status
     if (is_completed === '1') {
       await pool.query(
         `UPDATE ai_interview_reports 
-         SET interview_end_at = NOW(), completed = true, updated_at = NOW()
+         SET interview_end_at = NOW(), updated_at = NOW()
          WHERE id = $1`,
         [reportId]
+      );
+
+      // Also update interview invite status
+      await pool.query(
+        `UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2`,
+        ['Completed', ai_interview_invite_id]
       );
     }
 
@@ -681,7 +1061,8 @@ router.post('/upload_video', upload ? upload.single('file') : (req, res, next) =
       success: true, 
       message: 'Video uploaded',
       report_id: reportId,
-      video_path: videoPath
+      video_path: videoPath,
+      question_weight: questionWeight
     });
   } catch (error: any) {
     console.error('Upload video error:', error);
@@ -708,50 +1089,6 @@ router.post('/speak', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Speak error:', error);
     res.status(500).json({ error: error.message || 'Failed to process speech' });
-  }
-});
-
-// TEST: Seed interview questions for testing
-router.post('/seed/create-test-questions/:interviewId', async (req: Request, res: Response) => {
-  try {
-    const { interviewId } = req.params;
-
-    // Sample interview questions based on common technical interview topics
-    const sampleQuestions = [
-      'Tell us about your most recent project and your role in it.',
-      'What are your strengths and how do they relate to this position?',
-      'Can you describe a challenging situation you faced at work and how you handled it?',
-      'What motivated you to apply for this position?',
-      'Where do you see yourself in 5 years?',
-      'What are your salary expectations?',
-      'How do you handle conflicts with team members?',
-      'Tell us about a time you showed leadership.',
-    ];
-
-    // Insert questions for the interview
-    let insertedCount = 0;
-    for (const question of sampleQuestions) {
-      try {
-        await pool.query(
-          `INSERT INTO ai_interview_custom_questions (ai_interview_id, question, question_weight, created_at, updated_at)
-           VALUES ($1, $2, 1, NOW(), NOW())`,
-          [interviewId, question]
-        );
-        insertedCount++;
-      } catch (e) {
-        console.error('Error inserting question:', e);
-      }
-    }
-
-    res.json({ 
-      success: true, 
-      message: `Created ${insertedCount} test questions`,
-      count: insertedCount,
-      questions: sampleQuestions
-    });
-  } catch (error: any) {
-    console.error('Seed questions error:', error);
-    res.status(500).json({ error: error.message || 'Failed to seed questions' });
   }
 });
 

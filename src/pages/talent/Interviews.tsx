@@ -52,9 +52,11 @@ const TalentInterviews = () => {
       try {
         setLoading(true);
         // Fetch scheduled interviews for talent
+        // NOTE: /interviews/list is the employer endpoint. Talent must use /interviews/talent/scheduled.
         const response = await apiClient.request('/interviews/talent/scheduled');
-        if (response.success && response.data) {
-          setInterviews((response.data as any[]).map((interview: any) => ({
+        const interviewList = (response?.data || []) as any[];
+        if (Array.isArray(interviewList) && interviewList.length > 0) {
+          setInterviews((interviewList).map((interview: any) => ({
             id: interview.id,
             inviteId: interview.invite_id,
             jobTitle: interview.job_title || interview.interview_title || "Interview",
@@ -113,19 +115,6 @@ const TalentInterviews = () => {
     }
   };
 
-  const getStatusBadge = (status: string, completed: boolean) => {
-    if (completed) {
-      return <Badge className="bg-green-600">Completed</Badge>;
-    }
-    switch (status?.toLowerCase()) {
-      case 'pending':
-        return <Badge className="bg-yellow-600">Pending</Badge>;
-      case 'in progress':
-        return <Badge className="bg-blue-600">In Progress</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
 
   const handleStartInterviewClick = (interview: any) => {
     setSelectedInterview(interview);
@@ -208,17 +197,7 @@ const TalentInterviews = () => {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {getStatusBadge(interview.inviteStatus, interview.completed)}
-                    {interview.completed ? (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => navigate(`/talent/interviews/${interview.id}/results/${interview.inviteId}`)}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        View Results
-                      </Button>
-                    ) : (
+                    {!interview.completed && (
                       <Button 
                         size="sm" 
                         className="bg-gradient-to-r from-cardinal to-amber"
@@ -227,6 +206,9 @@ const TalentInterviews = () => {
                         <Play className="w-4 h-4 mr-1" />
                         Take Interview
                       </Button>
+                    )}
+                    {interview.completed && (
+                      <Badge className="bg-green-600">Completed</Badge>
                     )}
                   </div>
                 </div>

@@ -206,13 +206,18 @@ CREATE TABLE IF NOT EXISTS ai_interviews (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- AI Interview Questions - Pre-configured questions
+-- AI Interview Questions - Canonical questions table (job-level + interview-level)
+-- Parity notes:
+-- - ch-job-marketplace uses ai_interview_id to scope questions to a specific interview
+--   and uses ai_interview_id = 0 for job-level default questions.
+-- - ctnew server code also expects (job_id, ai_interview_id) scoping.
 CREATE TABLE IF NOT EXISTS ai_interview_questions (
   id SERIAL PRIMARY KEY,
   job_id INTEGER NOT NULL,
-  category VARCHAR(100) NOT NULL,
+  ai_interview_id INTEGER NOT NULL DEFAULT 0 REFERENCES ai_interviews(id) ON DELETE CASCADE,
+  category VARCHAR(100) DEFAULT 'General',
   question TEXT NOT NULL,
-  question_weight SMALLINT,
+  question_weight SMALLINT DEFAULT 1,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   discarded_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -273,7 +278,7 @@ CREATE TABLE IF NOT EXISTS ai_interview_reports (
   interview_video_url VARCHAR(255),
   protecting_score VARCHAR(50),
   rating VARCHAR(50),
-  score VARCHAR(50),
+  score TEXT,
   ai_feedback TEXT,
   discarded_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -289,7 +294,7 @@ CREATE TABLE IF NOT EXISTS ai_interview_report_details (
   question_weight SMALLINT,
   transcript_text TEXT,
   video_url VARCHAR(255),
-  score VARCHAR(50),
+  score TEXT,
   rating VARCHAR(50),
   ai_feedback TEXT,
   que_type VARCHAR(50),
@@ -330,6 +335,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_interviews_person_id ON ai_interviews(person_i
 CREATE INDEX IF NOT EXISTS idx_ai_interviews_discarded_at ON ai_interviews(discarded_at);
 
 CREATE INDEX IF NOT EXISTS idx_ai_interview_questions_job_id ON ai_interview_questions(job_id);
+CREATE INDEX IF NOT EXISTS idx_ai_interview_questions_ai_interview_id ON ai_interview_questions(ai_interview_id);
+CREATE INDEX IF NOT EXISTS idx_ai_interview_questions_job_interview ON ai_interview_questions(job_id, ai_interview_id);
 CREATE INDEX IF NOT EXISTS idx_ai_interview_questions_discarded_at ON ai_interview_questions(discarded_at);
 
 CREATE INDEX IF NOT EXISTS idx_ai_interview_custom_questions_interview_id ON ai_interview_custom_questions(ai_interview_id);
