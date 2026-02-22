@@ -10,25 +10,14 @@ import {
   Settings,
   Calendar,
   Search,
-  MapPin,
-  Clock,
-  Video,
-  Phone,
-  User,
   Mail,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/api";
+import { employerNavItems } from "@/components/layout/navItems";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
+const navItems = employerNavItems;
 
 const EmployerInterviews = () => {
   const navigate = useNavigate();
@@ -82,6 +71,8 @@ const EmployerInterviews = () => {
     }
   }, []);
 
+
+
   // Filter interviews based on search query
   const filteredInterviews = interviews.filter((interview) => {
     if (!searchQuery) return true;
@@ -92,17 +83,6 @@ const EmployerInterviews = () => {
       interview.category.toLowerCase().includes(query)
     );
   });
-
-  const getInterviewIcon = (type: string) => {
-    switch (type) {
-      case "Video":
-        return <Video className="w-4 h-4" />;
-      case "Phone":
-        return <Phone className="w-4 h-4" />;
-      default:
-        return <Calendar className="w-4 h-4" />;
-    }
-  };
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -193,7 +173,6 @@ const EmployerInterviews = () => {
                       Candidates: {interview.candidateCount} | Completed: {interview.completedCount}
                     </p>
                   </div>
-                  <Badge variant={getStatusVariant(interview.status)}>{interview.status}</Badge>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"

@@ -11,6 +11,7 @@ import jobRoutes from './routes/job.routes.js';
 import organizationRoutes from './routes/organization.routes.js';
 import interviewRoutes from './routes/interview.routes.js';
 import pool, { closePool } from './database/connection.js';
+import { initializeCronJobs, stopCronJobs } from './utils/cron-scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,11 +98,23 @@ const server = app.listen(PORT, () => {
   console.log(`🏢 Organization endpoints: http://localhost:${PORT}/api/organizations`);
   console.log(`🎬 Interview endpoints: http://localhost:${PORT}/api/interviews`);
   console.log('='.repeat(60) + '\n');
+
+  // Initialize cron jobs for interview processing
+  const cronJob = initializeCronJobs();
+  
+  // Store cronJob for cleanup on shutdown
+  (global as any).interviewCronJob = cronJob;
 });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  // Stop cron jobs
+  const cronJob = (global as any).interviewCronJob;
+  if (cronJob) {
+    stopCronJobs(cronJob);
+  }
   
   server.close(async () => {
     console.log('HTTP server closed');

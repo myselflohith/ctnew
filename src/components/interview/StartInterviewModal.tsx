@@ -98,18 +98,24 @@ export function StartInterviewModal({
 
       mediaRecorderRef.current = new MediaRecorder(stream);
 
+      audioChunksRef.current = []; // Reset chunks before starting
+
       mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
       mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        if (audioRef.current) {
-          audioRef.current.src = audioUrl;
-          audioRef.current.oncanplaythrough = () => {
-            audioRef.current?.play();
-          };
+        if (audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          if (audioRef.current) {
+            audioRef.current.src = audioUrl;
+            audioRef.current.oncanplaythrough = () => {
+              audioRef.current?.play();
+            };
+          }
         }
         audioChunksRef.current = [];
       };

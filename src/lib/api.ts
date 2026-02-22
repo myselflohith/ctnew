@@ -53,10 +53,28 @@ class ApiClient {
 
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-      const data = await response.json();
+
+      // Some endpoints (or error pages) may return plain text/HTML.
+      // Try JSON first, then fall back to text for a clearer error.
+      const rawText = await response.text();
+      let data: any = null;
+
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        data = null;
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Request failed');
+        const message =
+          (data && (data.error || data.message)) ||
+          rawText ||
+          'Request failed';
+        throw new Error(message);
+      }
+
+      if (!data) {
+        throw new Error(rawText || 'Invalid JSON response from server');
       }
 
       return data;

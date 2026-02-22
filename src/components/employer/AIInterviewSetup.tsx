@@ -13,6 +13,7 @@ import { Trash2, Plus, Edit2, Sparkles, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import interviewsAPI from "@/lib/api/interviews";
+import { apiClient } from "@/lib/api";
 
 interface AIInterviewQuestion {
   id?: string;
@@ -52,45 +53,33 @@ const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
   const [loading, setLoading] = useState(false);
   const [generatingQuestions, setGeneratingQuestions] = useState(false);
 
-  // Mock data - In production, fetch from API
   useEffect(() => {
     fetchJobs();
   }, []);
 
   const fetchJobs = async () => {
     try {
-      // Fetch real jobs from API
-      const response = await fetch('/api/jobs', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      const data = await response.json();
-      
-      if (data.success && Array.isArray(data.data)) {
-        setJobs(data.data.map((job: any) => ({
-          id: job.id,
-          title: job.title,
-        })));
-      } else {
-        // Fallback to mock data if API fails
-        setJobs([
-          { id: "1", title: "Senior Software Engineer" },
-          { id: "2", title: "Product Manager" },
-          { id: "3", title: "Frontend Developer" },
-          { id: "4", title: "Data Scientist" },
-        ]);
+      // Fetch real jobs from API (no mock fallback; match ch-job-marketplace behavior)
+      const response = await apiClient.request('/jobs');
+      const jobList = (response?.data || response) as any;
+
+      const rows = Array.isArray(jobList) ? jobList : Array.isArray(jobList?.data) ? jobList.data : [];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        setJobs([]);
+        toast.error('No jobs found. Please create a job first.');
+        return;
       }
+
+      setJobs(
+        rows.map((job: any) => ({
+          id: String(job.id),
+          title: job.title || job.job_title || `Job #${job.id}`,
+        }))
+      );
     } catch (error) {
       console.error("Failed to fetch jobs:", error);
-      // Fallback to mock data
-      setJobs([
-        { id: "1", title: "Senior Software Engineer" },
-        { id: "2", title: "Product Manager" },
-        { id: "3", title: "Frontend Developer" },
-        { id: "4", title: "Data Scientist" },
-      ]);
-      toast.error("Using mock jobs - API unavailable");
+      setJobs([]);
+      toast.error("Failed to load jobs. Please try again.");
     }
   };
 
@@ -111,33 +100,32 @@ const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
 
     setGeneratingQuestions(true);
     try {
-      // Simulate AI question generation
-      // In production, this would call an API endpoint
-      const mockGeneratedQuestions: AIInterviewQuestion[] = [
-        {
-          id: `ai-${Date.now()}-1`,
-          question: "Tell us about your most challenging project and how you overcame the obstacles.",
-          category: formData.category,
-          questionWeight: 2,
-          type: "generated",
-        },
-        {
-          id: `ai-${Date.now()}-2`,
-          question: "How do you approach learning new technologies in your role?",
-          category: formData.category,
-          questionWeight: 2,
-          type: "generated",
-        },
-        {
-          id: `ai-${Date.now()}-3`,
-          question: "Describe your experience with team collaboration in remote environments.",
-          category: formData.category,
-          questionWeight: 2,
-          type: "generated",
-        },
-      ];
+      // Generate questions via backend so they are persisted in DB (ai_generated_questions)
+      // and can be used consistently during the interview + scoring.
+      // IMPORTANT: generate_questions expects interviewId (ai_interviews.id), not jobId.
+      // We only allow generating after the interview is created (review step).
+      const response = await apiClient.request(`/interviews/${formData.jobId}/generate_questions`, {
+        method: "POST",
+        body: JSON.stringify({
+          // Backend currently uses this only to generate mock questions, but keep it for future real prompt-based generation.
+          job_description: formData.description || `${formData.title} (${formData.category})`,
+          num_questions: parseInt(formData.numberOfQuestions) || 5,
+        }),
+      });
 
-      setAiGeneratedQuestions(mockGeneratedQuestions);
+      if (!response?.success || !Array.isArray(response?.data)) {
+        throw new Error(response?.error || "Failed to generate questions");
+      }
+
+      const generated: AIInterviewQuestion[] = response.data.map((q: any, idx: number) => ({
+        id: q.id?.toString() || `ai-${Date.now()}-${idx}`,
+        question: q.question,
+        category: formData.category,
+        questionWeight: q.question_weight || 3,
+        type: "generated",
+      }));
+
+      setAiGeneratedQuestions(generated);
       toast.success("AI questions generated successfully!");
     } catch (error) {
       console.error("Failed to generate questions:", error);
@@ -218,18 +206,16 @@ const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Match ch-job-marketplace field names
-      const allQuestions = [...questions, ...aiGeneratedQuestions.filter(q =>
-        formData.questionType.includes("AI Generate Questions")
-      )];
-
       const interviewPayload = {
         interview_param: {
           interview_title: formData.title,
           interview_type: formData.category,
+          type_of_interview: formData.interviewType, // Practice / Screening / Technical
           job_id: formData.jobId,
           job_list: formData.jobId,
           addition_skill: formData.category,
+          interview_duration: parseInt(formData.interviewDuration) || 15,
+          number_of_questions: parseInt(formData.numberOfQuestions) || 5,
           question_type: formData.questionType.join(","),
           questions: questions
             .filter((q) => q.type === "custom")
@@ -238,12 +224,9 @@ const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
               question_weight: q.questionWeight,
               category: q.category,
             })),
-          ai_question: JSON.stringify(
-            aiGeneratedQuestions.map((q) => ({
-              question: q.question,
-              question_weight: q.questionWeight,
-            }))
-          ),
+          // IMPORTANT:
+          // - AI questions are now generated/persisted via /generate_questions.
+          // - Do NOT send ai_question here, otherwise backend will insert duplicates.
         },
       };
 
