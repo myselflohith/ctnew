@@ -38,6 +38,7 @@ import InviteCandidates from "./pages/employer/InviteCandidates";
 import EmployerCompany from "./pages/employer/Company";
 import EmployerSettings from "./pages/employer/Settings";
 import EmployerSetCompany from "./pages/employer/SetCompany";
+import EmployerRequireCompany from "./components/EmployerRequireCompany";
 import NewJob from "./pages/employer/NewJob";
 import SetupInterview from "./pages/employer/SetupInterview";
 
@@ -88,20 +89,20 @@ const App = () => (
             <Route path="/interview/:token/session" element={<TalentInterviewSession />} />
             <Route path="/talent/settings" element={<TalentSettings />} />
             
-            {/* Employer routes */}
+            {/* Employer routes: set-company is unwrapped; all others require company (redirect if missing) */}
             <Route path="/employer/set-company" element={<EmployerSetCompany />} />
-            <Route path="/employer/dashboard" element={<EmployerDashboard />} />
-            <Route path="/employer/jobs" element={<EmployerJobs />} />
-            <Route path="/employer/jobs/new" element={<NewJob />} />
-            <Route path="/employer/candidates" element={<EmployerCandidates />} />
-            <Route path="/employer/interviews" element={<EmployerInterviews />} />
-            <Route path="/employer/interviews/setup" element={<SetupInterview />} />
-            <Route path="/employer/interviews/:id" element={<InterviewDetails />} />
-            <Route path="/employer/interviews/:id/candidate-report/:inviteId" element={<CandidateReportPage />} />
-            <Route path="/employer/interviews/:id/invite" element={<InviteCandidates />} />
-            <Route path="/employer/candidate-report/:reportId" element={<CandidateReportPage />} />
-            <Route path="/employer/company" element={<EmployerCompany />} />
-            <Route path="/employer/settings" element={<EmployerSettings />} />
+            <Route path="/employer/dashboard" element={<EmployerRequireCompany><EmployerDashboard /></EmployerRequireCompany>} />
+            <Route path="/employer/jobs" element={<EmployerRequireCompany><EmployerJobs /></EmployerRequireCompany>} />
+            <Route path="/employer/jobs/new" element={<EmployerRequireCompany><NewJob /></EmployerRequireCompany>} />
+            <Route path="/employer/candidates" element={<EmployerRequireCompany><EmployerCandidates /></EmployerRequireCompany>} />
+            <Route path="/employer/interviews" element={<EmployerRequireCompany><EmployerInterviews /></EmployerRequireCompany>} />
+            <Route path="/employer/interviews/setup" element={<EmployerRequireCompany><SetupInterview /></EmployerRequireCompany>} />
+            <Route path="/employer/interviews/:id" element={<EmployerRequireCompany><InterviewDetails /></EmployerRequireCompany>} />
+            <Route path="/employer/interviews/:id/candidate-report/:inviteId" element={<EmployerRequireCompany><CandidateReportPage /></EmployerRequireCompany>} />
+            <Route path="/employer/interviews/:id/invite" element={<EmployerRequireCompany><InviteCandidates /></EmployerRequireCompany>} />
+            <Route path="/employer/candidate-report/:reportId" element={<EmployerRequireCompany><CandidateReportPage /></EmployerRequireCompany>} />
+            <Route path="/employer/company" element={<EmployerRequireCompany><EmployerCompany /></EmployerRequireCompany>} />
+            <Route path="/employer/settings" element={<EmployerRequireCompany><EmployerSettings /></EmployerRequireCompany>} />
             
             {/* Recruiter routes */}
             <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
