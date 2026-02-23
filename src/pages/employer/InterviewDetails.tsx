@@ -316,12 +316,13 @@ export default function InterviewDetails() {
                 console.log(`📋 Candidate: ${candidateName}, Invite Status: ${candidate.status}, Report Status: ${report.status}`, { candidate, report });
               }
 
-              // Use invite status as source of truth, but if a report exists we should treat it as completed.
-              // This prevents UI from showing "Pending" when the report row exists but invite status is stale.
+              // Source of truth:
+              // - If invite.status is Completed => Completed
+              // - Otherwise => Pending
+              // Report existence alone should NOT flip status to Completed, because a report row
+              // can be created at interview start (startInterviewReport) before completion.
               const inviteStatus =
-                candidate.status === 'Completed' || report
-                  ? 'Completed'
-                  : candidate.status || 'Pending';
+                candidate.status === "Completed" ? "Completed" : "Pending";
 
               return (
                 <div key={candidate.id} className="border border-slate-700 rounded-lg overflow-hidden">
@@ -342,22 +343,30 @@ export default function InterviewDetails() {
                     </div>
                     <div className="flex items-center gap-4">
                       {/* Status Badge */}
-                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 border text-xs font-semibold">
-                        ✅ Completed
-                      </Badge>
+                      {inviteStatus === "Completed" ? (
+                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 border text-xs font-semibold">
+                          ✅ Completed
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 border text-xs font-semibold">
+                          ⏳ Pending
+                        </Badge>
+                      )}
 
-                      {/* Report Details - Show for any Completed status */}
-                      {report && inviteStatus === "Completed" && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-green-500/30 text-green-400 hover:bg-green-500/10"
-                            onClick={() => navigate(`/employer/interviews/${interview.id}/candidate-report/${report.inviteId}`)}
-                          >
-                            View Report
-                          </Button>
-                        </>
+                      {/* Report button should only be visible once interview is completed */}
+                      {inviteStatus === "Completed" && report && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                          onClick={() =>
+                            navigate(
+                              `/employer/interviews/${interview.id}/candidate-report/${report.inviteId}`
+                            )
+                          }
+                        >
+                          View Report
+                        </Button>
                       )}
 
                       <span className="text-xs text-muted-foreground">
