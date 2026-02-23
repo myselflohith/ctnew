@@ -159,8 +159,8 @@ export async function createOrganization(data: {
   organization_type?: string | null;
 }): Promise<Organization> {
   const result = await query(
-    `INSERT INTO organizations (name, owner_id, description, industry, location, website_url, image_url, status, organization_type)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO organizations (name, owner_id, description, industry, location, website_url, image_url, status, organization_type, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
      RETURNING *`,
     [
       data.name,

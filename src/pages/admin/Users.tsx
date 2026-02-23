@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 
@@ -32,8 +33,22 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/admin/settings" },
 ];
 
-const getRoleColor = (role: string) => {
-  switch (role) {
+const ROLE_MAP: Record<string | number, string> = {
+  3: "admin",
+  admin: "admin",
+  4: "talent",
+  talent: "talent",
+  5: "employer",
+  employer: "employer",
+  6: "recruiter",
+  recruiter: "recruiter",
+};
+
+const normalizeRole = (role: string | number | undefined): string =>
+  (role != null && ROLE_MAP[role]) ? ROLE_MAP[role] : String(role ?? "");
+
+const getRoleColor = (role: string | number) => {
+  switch (normalizeRole(role)) {
     case "employer":
       return "excellent";
     case "recruiter":
@@ -47,8 +62,8 @@ const getRoleColor = (role: string) => {
   }
 };
 
-const getRoleLabel = (role: string) => {
-  switch (role) {
+const getRoleLabel = (role: string | number) => {
+  switch (normalizeRole(role)) {
     case "employer":
       return "Employer";
     case "recruiter":
@@ -58,11 +73,14 @@ const getRoleLabel = (role: string) => {
     case "admin":
       return "Admin";
     default:
-      return role;
+      return String(role ?? "");
   }
 };
 
 const AdminUsers = () => {
+  const [searchParams] = useSearchParams();
+  const organizationId = searchParams.get("organization") ?? "";
+  const organizationName = searchParams.get("organizationName") ?? "";
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -72,7 +90,7 @@ const AdminUsers = () => {
       try {
         setLoading(true);
         const response = await apiClient.getAllUsers();
-        if (response.success && response.data) {
+        if (response.success && response.data && Array.isArray(response.data)) {
           setUsers(response.data);
         }
       } catch (error: any) {
@@ -87,21 +105,28 @@ const AdminUsers = () => {
   }, []);
 
   const filteredUsers = users.filter((user) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const fullName = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
-    return (
-      fullName.includes(query) ||
-      user.email?.toLowerCase().includes(query) ||
-      user.company_name?.toLowerCase().includes(query)
-    );
+    const orgIdNorm = (id: string | null | undefined) => (id == null ? "" : String(id).toLowerCase());
+    const matchesOrg = !organizationId || (user.organization_id != null && orgIdNorm(user.organization_id) === orgIdNorm(organizationId));
+    const matchesSearch = !searchQuery
+      ? true
+      : (() => {
+          const query = searchQuery.toLowerCase();
+          const fullName = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
+          return (
+            fullName.includes(query) ||
+            user.email?.toLowerCase().includes(query) ||
+            (user.company_name ?? "").toString().toLowerCase().includes(query)
+          );
+        })();
+    return matchesOrg && matchesSearch;
   });
 
-  const totalUsers = users.length;
-  const talentUsers = users.filter((u) => u.role === "talent").length;
-  const employerUsers = users.filter((u) => u.role === "employer").length;
-  const recruiterUsers = users.filter((u) => u.role === "recruiter").length;
-  const adminUsers = users.filter((u) => u.role === "admin").length;
+  const listForStats = organizationId ? filteredUsers : users;
+  const totalUsers = listForStats.length;
+  const talentUsers = listForStats.filter((u) => normalizeRole(u.role) === "talent").length;
+  const employerUsers = listForStats.filter((u) => normalizeRole(u.role) === "employer").length;
+  const recruiterUsers = listForStats.filter((u) => normalizeRole(u.role) === "recruiter").length;
+  const adminUsers = listForStats.filter((u) => normalizeRole(u.role) === "admin").length;
 
   return (
     <DashboardLayout role="admin" navItems={navItems} userName="Admin User">
@@ -111,8 +136,22 @@ const AdminUsers = () => {
             Users
           </h1>
           <p className="text-muted-foreground">
-            Manage all users across the platform.
+            {organizationId ? (
+              <>
+                Managing users for this organization.{" "}
+                <Link to="/admin/users" className="text-primary hover:underline">
+                  Show all users
+                </Link>
+              </>
+            ) : (
+              "Manage all users across the platform."
+            )}
           </p>
+          {organizationId && organizationName && (
+            <p className="text-sm font-medium text-foreground mt-1">
+              Organization: {decodeURIComponent(organizationName)} ({filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""})
+            </p>
+          )}
         </div>
         <Button variant="hero">
           <Plus className="w-5 h-5 mr-2" />

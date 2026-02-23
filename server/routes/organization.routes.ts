@@ -8,6 +8,8 @@ import {
   updateOrganizationRequirement,
   getAllOrganizations,
   searchOrganizationsForSignup,
+  normalizeCompanyName,
+  findOrganizationByNormalizedName,
 } from '../services/organization.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
@@ -23,6 +25,27 @@ router.get('/search', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Search organizations error:', error);
     res.status(500).json({ error: error.message || 'Failed to search organizations' });
+  }
+});
+
+// Get all organizations (admin only) – must be before /:companyName or "all" is captured as companyName
+router.get('/all', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const organizations = await getAllOrganizations();
+    res.json({ success: true, data: organizations });
+  } catch (error: any) {
+    console.error('Get all organizations error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get organizations' });
   }
 });
 
@@ -76,6 +99,19 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
       return;
+    }
+
+    const normalizedName = normalizeCompanyName(name);
+    const existing = await findOrganizationByNormalizedName(normalizedName);
+    if (existing) {
+      if (!id) {
+        res.status(409).json({ error: 'An organization with this name already exists.' });
+        return;
+      }
+      if (existing.id !== id) {
+        res.status(409).json({ error: 'Another organization already has this name.' });
+        return;
+      }
     }
 
     const org = await upsertOrganization({
@@ -208,27 +244,6 @@ router.delete('/requirements/:id', authenticateToken, async (req: Request, res: 
   } catch (error: any) {
     console.error('Delete requirement error:', error);
     res.status(500).json({ error: error.message || 'Failed to delete requirement' });
-  }
-});
-
-// Get all organizations (admin only)
-router.get('/all', authenticateToken, async (req: Request, res: Response) => {
-  try {
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-
-    if (req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-
-    const organizations = await getAllOrganizations();
-    res.json({ success: true, data: organizations });
-  } catch (error: any) {
-    console.error('Get all organizations error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get organizations' });
   }
 });
 
