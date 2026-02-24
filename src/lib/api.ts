@@ -329,6 +329,12 @@ class ApiClient {
       body: JSON.stringify({ organizationId, companyName }),
     });
   }
+  async requestCompanyApproval(displayName: string, userEmail: string, companyName: string) {
+    return this.request<{ success: boolean }>('/auth/employer/request-company-approval', {
+      method: 'POST',
+      body: JSON.stringify({ displayName, userEmail, companyName }),
+    });
+  }
 
   // Admin endpoints
   async getAllOrganizations() {

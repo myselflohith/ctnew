@@ -11,19 +11,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Building2, Mail } from "lucide-react";
+import { Building2, Loader2, Mail } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import cardinalLogo from "@/assets/cardinal-logo.png";
+import { useToast } from "@/hooks/use-toast";
 
 /** Normalize company name: trim and collapse multiple spaces */
 function normalizeCompanyName(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
-const NOT_APPROVED_EMAIL = "lokesha@poornam.com";
-
 const SetCompany = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [companyInput, setCompanyInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [suggestedLoading, setSuggestedLoading] = useState(true);
@@ -34,6 +34,7 @@ const SetCompany = () => {
   } | null>(null);
   const [notApprovedOpen, setNotApprovedOpen] = useState(false);
   const [notApprovedCompany, setNotApprovedCompany] = useState("");
+  const [sendingRequest, setSendingRequest] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -69,7 +70,11 @@ const SetCompany = () => {
     if (!name) return;
     setLoading(true);
     try {
-      const res = await apiClient.validateEmployerCompany(name);
+      const res = (await apiClient.validateEmployerCompany(name)) as {
+        success?: boolean;
+        found?: boolean;
+        organization?: { id: string; name: string | null };
+      };
       if (res.success && res.found && res.organization) {
         await apiClient.setEmployerCompany(res.organization.id, res.organization.name ?? name);
         navigate("/employer/dashboard");
@@ -87,11 +92,30 @@ const SetCompany = () => {
   const displayName = user
     ? [user.first_name, user.last_name].filter(Boolean).join(" ") || "User"
     : "User";
-  const mailtoSubject = encodeURIComponent("Cardinal Talent - Company not approved");
-  const mailtoBody = encodeURIComponent(
-    `Name: ${displayName}\nCompany entered: ${notApprovedCompany}\n\nPlease add this company as an approved organization for Cardinal Talent.`
-  );
-  const mailtoUrl = `mailto:${NOT_APPROVED_EMAIL}?subject=${mailtoSubject}&body=${mailtoBody}`;
+
+  const handleSendApprovalRequest = async () => {
+    setSendingRequest(true);
+    try {
+      await apiClient.requestCompanyApproval(
+        displayName,
+        user?.email ?? "",
+        notApprovedCompany
+      );
+      toast({
+        title: "Request sent",
+        description: "We've sent your company approval request to our team. We'll be in touch.",
+      });
+      setNotApprovedOpen(false);
+    } catch {
+      toast({
+        title: "Failed to send",
+        description: "Could not send approval request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingRequest(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
@@ -145,7 +169,7 @@ const SetCompany = () => {
             <DialogTitle>Company not approved</DialogTitle>
             <DialogDescription>
               The company you entered is not an approved company for Cardinal Talent. If you believe this is an error,
-              you can send a message to our team to request approval.
+              you can send a request to our team and we'll email them on your behalf.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2 text-sm">
@@ -157,15 +181,23 @@ const SetCompany = () => {
             </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNotApprovedOpen(false)}>
+            <Button variant="outline" onClick={() => setNotApprovedOpen(false)} disabled={sendingRequest}>
               Close
             </Button>
-            <a href={mailtoUrl}>
-              <Button type="button" variant="hero" className="gap-2">
+            <Button
+              type="button"
+              variant="hero"
+              className="gap-2"
+              onClick={handleSendApprovalRequest}
+              disabled={sendingRequest}
+            >
+              {sendingRequest ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
                 <Mail className="w-4 h-4" />
-                Send message to {NOT_APPROVED_EMAIL}
-              </Button>
-            </a>
+              )}
+              {sendingRequest ? "Sending…" : "Send request to our team"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

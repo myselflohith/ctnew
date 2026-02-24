@@ -19,27 +19,37 @@ const sesClient =
     : null;
 
 /** Send an email via AWS SES using raw MIME. Requires AWS SES credentials in .env. */
-async function sendEmailViaSES(to: string, subject: string, html: string, fromAddress: string): Promise<void> {
+async function sendEmailViaSES(
+  to: string,
+  subject: string,
+  html: string,
+  fromAddress: string,
+  options?: { replyTo?: string; fromDisplayName?: string }
+): Promise<void> {
   if (!sesClient) {
     throw new Error(
       'AWS SES credentials not configured. Set AWS_ACCESS_KEY and AWS_SECRET_KEY (or SES_ACCESS_KEY and SES_SECRET_KEY) and AWS_REGION (or SES_REGION) in .env.'
     );
   }
-  const from = fromAddress;
-  const mime = [
+  const from = options?.fromDisplayName
+    ? `"${options.fromDisplayName.replace(/"/g, '\\"')}" <${fromAddress}>`
+    : fromAddress;
+  const headers = [
     `From: ${from}`,
     `To: ${to}`,
     `Subject: ${subject}`,
+    ...(options?.replyTo ? [`Reply-To: ${options.replyTo}`] : []),
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=UTF-8',
     '',
     html,
-  ].join('\r\n');
+  ];
+  const mime = headers.join('\r\n');
   const command = new SendRawEmailCommand({
     RawMessage: {
       Data: Buffer.from(mime, 'utf-8'),
     },
-    Source: from,
+    Source: fromAddress,
     Destinations: [to],
   });
   await sesClient.send(command);
@@ -286,5 +296,49 @@ export async function sendInterviewInviteEmail(
   } catch (error) {
     console.error('Error sending interview invite email:', error);
     throw new Error('Failed to send interview invite email');
+  }
+}
+
+const COMPANY_APPROVAL_REQUEST_TO = process.env.COMPANY_APPROVAL_REQUEST_EMAIL || 'lokesha@poornam.com';
+
+/** Send company approval request to internal team (AWS SES). Used when employer enters an unapproved company. */
+export async function sendCompanyApprovalRequestEmail(
+  displayName: string,
+  userEmail: string,
+  companyName: string
+): Promise<void> {
+  const headerContent = `
+    <h1>CardinalTalent</h1>
+  `;
+
+  const bodyContent = `
+    <h2 style="text-align: center;">Company approval request</h2>
+    <p>An employer has requested that the following company be added as an approved organization:</p>
+    <p><strong>Requester name:</strong> ${displayName}</p>
+    <p><strong>Requester email:</strong> ${userEmail}</p>
+    <p><strong>Company entered:</strong> ${companyName}</p>
+    <p>Please add this company as an approved organization in Cardinal Talent if appropriate.</p>
+    <p>Best regards,<br>CardinalTalent</p>
+  `;
+
+  const footerContent = `
+    <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
+  `;
+
+  const html = generateEmailHtml('CardinalTalent - Company approval request', headerContent, bodyContent, footerContent);
+
+  try {
+    const fromDisplayName = userEmail ? `${displayName} <${userEmail}>` : displayName;
+    await sendEmailViaSES(
+      COMPANY_APPROVAL_REQUEST_TO,
+      'Cardinal Talent - Company not approved - Approval request',
+      html,
+      EMAIL_FROM,
+      { replyTo: userEmail || undefined, fromDisplayName: fromDisplayName }
+    );
+    console.log(`Company approval request email sent to ${COMPANY_APPROVAL_REQUEST_TO} for company: ${companyName}`);
+  } catch (error) {
+    console.error('Error sending company approval request email:', error);
+    throw new Error('Failed to send company approval request email');
   }
 }

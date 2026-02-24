@@ -14,6 +14,7 @@ import {
   normalizeCompanyName,
   findOrganizationByNormalizedName,
 } from '../services/organization.service.js';
+import { sendCompanyApprovalRequestEmail } from '../services/email.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 // Import ROLE_ENUM for validation
@@ -291,6 +292,30 @@ router.post('/employer/set-company', authenticateToken, async (req: Request, res
   } catch (error: any) {
     console.error('Set employer company error:', error);
     res.status(400).json({ error: error.message || 'Failed to set company' });
+  }
+});
+
+// Request company approval: send email to internal team via AWS SES (company not in approved list).
+router.post('/employer/request-company-approval', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user || req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { displayName, userEmail, companyName } = req.body;
+    if (!companyName || typeof companyName !== 'string') {
+      res.status(400).json({ error: 'Company name is required' });
+      return;
+    }
+    await sendCompanyApprovalRequestEmail(
+      displayName || 'User',
+      userEmail || req.user.email || '',
+      companyName.trim()
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Request company approval email error:', error);
+    res.status(500).json({ error: error.message || 'Failed to send approval request' });
   }
 });
 
