@@ -14,6 +14,7 @@ import Jobs from "./pages/Jobs";
 import Employers from "./pages/Employers";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
+import InvestorsDashboard from "./pages/investors/Dashboard";
 
 // Talent pages
 import TalentDashboard from "./pages/talent/Dashboard";
@@ -74,7 +75,8 @@ const App = () => (
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/employers" element={<Employers />} />
             <Route path="/about" element={<About />} />
-            
+            <Route path="/investors" element={<InvestorsDashboard />} />
+
             {/* Public interview access by email link */}
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />
             <Route path="/interview/:token/session" element={<TalentInterviewSession />} />
