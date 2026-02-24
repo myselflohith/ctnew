@@ -8,7 +8,7 @@ export interface User {
   last_name: string | null;
   company_name: string | null;
   organization_id: string | null;
-  role: 'talent' | 'employer' | 'recruiter' | 'admin';
+  role: 'talent' | 'employer' | 'recruiter' | 'admin' | 'investor';
   email_verified: boolean;
   created_at: string;
   updated_at: string;

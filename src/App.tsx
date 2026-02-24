@@ -16,6 +16,7 @@ import Employers from "./pages/Employers";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import InvestorsDashboard from "./pages/investors/Dashboard";
+import InvestorSignup from "./pages/InvestorSignup";
 
 // Talent pages
 import TalentDashboard from "./pages/talent/Dashboard";
@@ -41,6 +42,7 @@ import EmployerCompany from "./pages/employer/Company";
 import EmployerSettings from "./pages/employer/Settings";
 import EmployerSetCompany from "./pages/employer/SetCompany";
 import EmployerRequireCompany from "./components/EmployerRequireCompany";
+import InvestorRequireAuth from "./components/InvestorRequireAuth";
 import NewJob from "./pages/employer/NewJob";
 import SetupInterview from "./pages/employer/SetupInterview";
 
@@ -72,12 +74,13 @@ const App = () => (
             {/* Public routes */}
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/investor" element={<InvestorSignup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/employers" element={<Employers />} />
             <Route path="/about" element={<About />} />
-            <Route path="/investors" element={<InvestorsDashboard />} />
+            <Route path="/investors" element={<InvestorRequireAuth><InvestorsDashboard /></InvestorRequireAuth>} />
 
             {/* Public interview access by email link */}
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />

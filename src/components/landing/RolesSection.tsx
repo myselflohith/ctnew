@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { User, Building2, Users, ShieldCheck, ArrowRight } from "lucide-react";
+import { User, Building2, Users, ShieldCheck, ArrowRight, TrendingUp } from "lucide-react";
 
 const roles = [
   {
@@ -12,6 +12,15 @@ const roles = [
       "Find your dream job with AI-powered matching. Upload your resume and let opportunities find you.",
     features: ["AI Job Matching", "Auto Apply Feature", "Interview Prep"],
     color: "from-cyan-500 to-blue-500",
+  },
+  {
+    id: "investor",
+    icon: TrendingUp,
+    title: "Investor",
+    description:
+      "Join as an accredited investor. Get access to qualified deal flow from top universities and startups.",
+    features: ["Accredited Deal Flow", "Startup Network", "Early-Stage Opportunities"],
+    color: "from-emerald-500 to-teal-500",
   },
   {
     id: "employer",
@@ -102,7 +111,7 @@ const RolesSection = () => {
                 variant="ghost"
                 size="sm"
                 className="group/btn w-full"
-                onClick={() => navigate(`/auth?mode=signup&role=${role.id}`)}
+                onClick={() => navigate(role.id === "investor" ? "/auth/investor" : `/auth?mode=signup&role=${role.id}`)}
               >
                 Get Started
                 <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />

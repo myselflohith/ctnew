@@ -12,6 +12,7 @@ import {
   Building2,
   Users,
   ArrowLeft,
+  ArrowRight,
   Eye,
   EyeOff,
   Mail,
@@ -19,6 +20,7 @@ import {
   Upload,
   Plus,
   ChevronDown,
+  TrendingUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/api";
@@ -29,14 +31,15 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-type Role = "talent" | "employer" | "recruiter" | "admin";
+type Role = "talent" | "employer" | "recruiter" | "admin" | "investor";
 type AuthMode = "signin" | "signup";
 
-// Role mapping to integers
+// Role mapping to integers (investor = 2)
 const roleMap: Record<Exclude<Role, "admin">, number> = {
   talent: 4,
   employer: 5,
   recruiter: 6,
+  investor: 2,
 };
 
 // Public roles (Admin is assigned internally based on email)
@@ -48,17 +51,17 @@ const publicRoles: { id: Exclude<Role, "admin">; icon: React.ElementType; label:
     description: "Find and apply to jobs",
   },
   {
+    id: "investor",
+    icon: TrendingUp,
+    label: "Investor",
+    description: "Accredited investors only",
+  },
+  {
     id: "employer",
     icon: Building2,
     label: "Employer",
     description: "Post jobs and hire talent",
   },
-  // {
-  //   id: "recruiter",
-  //   icon: Users,
-  //   label: "Recruiter",
-  //   description: "Manage clients and placements",
-  // },
 ];
 
 const Auth = () => {
@@ -302,6 +305,7 @@ const Auth = () => {
           employer: "/employer/dashboard",
           recruiter: "/recruiter/dashboard",
           admin: "/admin/dashboard",
+          investor: "/investors",
         };
 
         navigate(dashboardRoutes[user.role]);
@@ -321,6 +325,7 @@ const Auth = () => {
           employer: "/employer/dashboard",
           recruiter: "/recruiter/dashboard",
           admin: "/admin/dashboard",
+          investor: "/investors",
         };
 
         navigate(dashboardRoutes[user.role]);
@@ -451,6 +456,26 @@ const Auth = () => {
                 </div>
               )}
 
+              {/* Investor: redirect to full accredited investor signup */}
+              {mode === "signup" && selectedRole === "investor" && (
+                <div className="rounded-lg border border-border bg-card/50 p-6 space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Join as an accredited investor with full profile: personal info, accreditation, investment preferences, and consent.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="hero"
+                    className="w-full gap-2"
+                    onClick={() => navigate("/auth/investor")}
+                  >
+                    Continue to investor registration
+                    <ArrowRight className="w-5 h-5" />
+                  </Button>
+                </div>
+              )}
+
+              {!(mode === "signup" && selectedRole === "investor") && (
+              <>
               <form onSubmit={handleSubmit} className="space-y-5">
                 {mode === "signup" && (
                   <div className="grid grid-cols-2 gap-4">
@@ -695,6 +720,8 @@ const Auth = () => {
                   {mode === "signup" ? "Sign in" : "Sign up"}
                 </button>
               </p>
+              </>
+              )}
             </motion.div>
           )}
         </div>

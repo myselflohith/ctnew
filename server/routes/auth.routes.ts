@@ -17,12 +17,13 @@ import {
 import { sendCompanyApprovalRequestEmail } from '../services/email.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
-// Import ROLE_ENUM for validation
-// Only supporting: admin=3, talent=4, employer=5
+// Import ROLE_ENUM for validation - investor=2, admin=3, talent=4, employer=5, recruiter=6
 const ROLE_ENUM: { [key: string]: number } = {
+  investor: 2,
   admin: 3,
   talent: 4,
   employer: 5,
+  recruiter: 6,
 };
 
 const router = Router();
@@ -46,13 +47,13 @@ router.post('/register', async (req: Request, res: Response) => {
     // Validate role - accept both string and integer formats
     let validRole = false;
     if (typeof role === 'string') {
-      validRole = ['talent', 'employer', 'admin'].includes(role.toLowerCase());
+      validRole = ['investor', 'talent', 'employer', 'recruiter', 'admin'].includes(role.toLowerCase());
     } else if (typeof role === 'number') {
       validRole = Object.values(ROLE_ENUM).includes(role);
     }
 
     if (!validRole) {
-      res.status(400).json({ error: 'Invalid role. Must be: talent (4), employer (5), or admin (3)' });
+      res.status(400).json({ error: 'Invalid role. Must be: investor (2), talent (4), employer (5), recruiter (6), or admin (3)' });
       return;
     }
 

@@ -7,19 +7,22 @@ import { sendPasswordResetEmail } from './email.service.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const SALT_ROUNDS = 10;
 
-// Role enum mapping - matches ch-job-marketplace
-// Only supporting: admin=3, talent=4, employer=5
+// Role enum mapping - investor=2, admin=3, talent=4, employer=5, recruiter=6, etc.
 const ROLE_ENUM: { [key: string]: number } = {
+  investor: 2,
   admin: 3,
   talent: 4,
   employer: 5,
+  recruiter: 6,
 };
 
 // Reverse mapping
 const ROLE_ID_TO_STRING: { [key: number]: string } = {
+  2: 'investor',
   3: 'admin',
   4: 'talent',
   5: 'employer',
+  6: 'recruiter',
 };
 
 function getRoleId(roleString: string): number {
@@ -62,7 +65,7 @@ export interface User {
   last_name: string | null;
   company_name: string | null;
   organization_id: string | null;
-  role: 'talent' | 'employer' | 'recruiter' | 'admin';
+  role: 'talent' | 'employer' | 'recruiter' | 'admin' | 'investor';
   email_verified: boolean;
   created_at: Date;
   updated_at: Date;

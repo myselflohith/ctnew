@@ -1,5 +1,9 @@
+import { useNavigate } from "react-router-dom";
+import { LogOut } from "lucide-react";
 import cardinalLogo from "@/assets/cardinal-logo.png";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
+import { apiClient } from "@/lib/api";
 
 export type InvestorsTabKey = "feed" | "startups" | "investors" | "pitchroom";
 
@@ -16,6 +20,13 @@ const tabs: { key: InvestorsTabKey; label: string }[] = [
 ];
 
 const InvestorsNavbar = ({ activeTab, setActiveTab }: InvestorsNavbarProps) => {
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await apiClient.logout();
+    navigate("/");
+  };
+
   return (
     <header className="bg-card border-b border-border sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
@@ -48,6 +59,10 @@ const InvestorsNavbar = ({ activeTab, setActiveTab }: InvestorsNavbarProps) => {
           <button className="border border-primary text-primary text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/5 transition-colors">
             Find Investors
           </button>
+          <Button variant="ghost" size="sm" className="gap-2" onClick={handleLogout}>
+            <LogOut className="w-4 h-4" />
+            Log out
+          </Button>
         </div>
       </div>
     </header>
