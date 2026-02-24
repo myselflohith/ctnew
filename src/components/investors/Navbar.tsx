@@ -1,4 +1,5 @@
 import cardinalLogo from "@/assets/cardinal-logo.png";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export type InvestorsTabKey = "feed" | "startups" | "investors" | "pitchroom";
 
@@ -40,6 +41,7 @@ const InvestorsNavbar = ({ activeTab, setActiveTab }: InvestorsNavbarProps) => {
         </nav>
 
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <button className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity">
             Post Update
           </button>

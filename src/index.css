@@ -183,6 +183,27 @@
     animation: gradient-shift 15s ease infinite;
   }
 
+  /* Light mode: hero background - soft warm gradient */
+  .light .animated-gradient {
+    background: linear-gradient(
+      -45deg,
+      hsl(0 0% 98%),
+      hsl(349 40% 96%),
+      hsl(38 50% 97%),
+      hsl(220 20% 97%)
+    );
+    background-size: 400% 400%;
+    animation: gradient-shift 15s ease infinite;
+  }
+
+  /* Light mode: soften hero wave and glow so they don’t overpower */
+  .light .hero-section .wave-flow {
+    opacity: 0.35;
+  }
+  .light .hero-section .hero-radial-glow {
+    opacity: 0.25;
+  }
+
   @keyframes gradient-shift {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import cardinalLogo from "@/assets/cardinal-logo.png";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -52,6 +53,7 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
+            <ThemeToggle />
             <Button variant="ghost" onClick={() => navigate("/auth")}>
               Sign In
             </Button>
@@ -105,6 +107,10 @@ const Navbar = () => {
                 About
               </Link>
               <div className="flex flex-col gap-2 pt-4 border-t border-border/50">
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm text-muted-foreground">Theme</span>
+                  <ThemeToggle variant="outline" size="default" />
+                </div>
                 <Button variant="ghost" onClick={() => { navigate("/auth"); setIsOpen(false); }}>
                   Sign In
                 </Button>

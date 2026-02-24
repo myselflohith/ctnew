@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getCurrentUser } from "@/lib/auth";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface NavItem {
   icon: React.ElementType;
@@ -144,6 +145,7 @@ const DashboardLayout = ({
         {/* Top Bar */}
         <header className="sticky top-0 z-40 h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-end px-6 flex-shrink-0">
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="w-5 h-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />

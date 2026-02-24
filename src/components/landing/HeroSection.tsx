@@ -7,14 +7,14 @@ const HeroSection = () => {
   const navigate = useNavigate();
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
+    <section className="hero-section relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
       {/* Animated background */}
       <div className="absolute inset-0 animated-gradient" />
-      
+
       {/* Flowing wave effect - inspired by noon.ai */}
       <div className="absolute inset-0 overflow-hidden">
         <svg
-          className="absolute bottom-0 left-0 right-0 w-full h-[60%] wave-flow"
+          className="wave-flow absolute bottom-0 left-0 right-0 w-full h-[60%]"
           viewBox="0 0 1440 600"
           preserveAspectRatio="none"
         >
@@ -43,7 +43,7 @@ const HeroSection = () => {
       </div>
 
       {/* Radial glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial opacity-50" />
+      <div className="hero-radial-glow absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial opacity-50" />
 
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4 md:px-6 text-center">
