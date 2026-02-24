@@ -1,4 +1,4 @@
-import { Zap } from "lucide-react";
+import cardinalLogo from "@/assets/cardinal-logo.png";
 
 export type InvestorsTabKey = "feed" | "startups" | "investors" | "pitchroom";
 
@@ -19,10 +19,8 @@ const InvestorsNavbar = ({ activeTab, setActiveTab }: InvestorsNavbarProps) => {
     <header className="bg-card border-b border-border sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Zap className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-bold text-foreground">StartupSphere</span>
+          <img src={cardinalLogo} alt="Cardinal Talent" className="w-9 h-9 object-contain" />
+          <span className="text-lg font-bold text-foreground">Cardinal Talent</span>
         </div>
 
         <nav className="flex items-center gap-6">
