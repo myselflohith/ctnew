@@ -1,6 +1,178 @@
-import { ThumbsUp, MessageSquare, MoreHorizontal, Share, Bookmark, Rocket } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ThumbsUp, MessageSquare, MoreHorizontal, Share, Bookmark, Rocket, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { apiClient } from "@/lib/api";
 
-const FeedTab = () => {
+export type LocalFeedComment = {
+  id: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+};
+
+export type LocalFeedPost = {
+  id: string;
+  content: string;
+  authorName: string;
+  createdAt: string;
+  likeCount?: number;
+  comments?: LocalFeedComment[];
+};
+
+const LIKED_POSTS_KEY = "investor_feed_liked_post_ids";
+
+const loadPostsFromStorage = (key: string): LocalFeedPost[] => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : [];
+    return list.map((p: LocalFeedPost) => ({
+      ...p,
+      likeCount: typeof p.likeCount === "number" ? p.likeCount : 0,
+      comments: Array.isArray(p.comments) ? p.comments : [],
+    }));
+  } catch {
+    return [];
+  }
+};
+
+const loadLikedPostIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(LIKED_POSTS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const saveLikedPostIds = (ids: Set<string>) => {
+  try {
+    localStorage.setItem(LIKED_POSTS_KEY, JSON.stringify([...ids]));
+  } catch (_) {}
+};
+
+const savePostsToStorage = (key: string, posts: LocalFeedPost[]) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(posts));
+  } catch (_) {}
+};
+
+// Render post content with #hashtags as styled tags
+const HASHTAG_SPLIT_REGEX = /(#\w+)/g;
+function isHashtag(part: string) {
+  return /^#\w+$/.test(part);
+}
+function PostContentWithTags({ content }: { content: string }) {
+  const parts = content.split(HASHTAG_SPLIT_REGEX);
+  return (
+    <p className="text-sm text-foreground whitespace-pre-wrap">
+      {parts.map((part, i) =>
+        isHashtag(part) ? (
+          <span
+            key={i}
+            className="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium mx-0.5"
+          >
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </p>
+  );
+}
+
+interface FeedTabProps {
+  openComposer?: boolean;
+  onCloseComposer?: () => void;
+  storageKey?: string;
+}
+
+const FeedTab = ({ openComposer = false, onCloseComposer, storageKey = "investor_feed_posts" }: FeedTabProps) => {
+  const [localPosts, setLocalPosts] = useState<LocalFeedPost[]>(() => loadPostsFromStorage(storageKey));
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => loadLikedPostIds());
+  const [composerContent, setComposerContent] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("You");
+  const [commentByPostId, setCommentByPostId] = useState<Record<string, string>>({});
+  const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiClient.getCurrentUser().then((res) => {
+      const user = res.user;
+      if (user?.first_name || user?.last_name) {
+        setCurrentUserName([user.first_name, user.last_name].filter(Boolean).join(" ") || "You");
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    savePostsToStorage(storageKey, localPosts);
+  }, [localPosts, storageKey]);
+
+  useEffect(() => {
+    saveLikedPostIds(likedPostIds);
+  }, [likedPostIds]);
+
+  const handleLike = (postId: string) => {
+    const isLiked = likedPostIds.has(postId);
+    setLikedPostIds((prev) => {
+      const next = new Set(prev);
+      if (isLiked) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+    setLocalPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, likeCount: Math.max(0, (p.likeCount ?? 0) + (isLiked ? -1 : 1)) }
+          : p
+      )
+    );
+  };
+
+  const handleAddComment = (postId: string) => {
+    const text = (commentByPostId[postId] ?? "").trim();
+    if (!text) return;
+    const comment: LocalFeedComment = {
+      id: `comment-${Date.now()}`,
+      authorName: currentUserName,
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+    setLocalPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, comments: [...(p.comments ?? []), comment] }
+          : p
+      )
+    );
+    setCommentByPostId((prev) => ({ ...prev, [postId]: "" }));
+  };
+
+  const handlePost = () => {
+    const text = composerContent.trim();
+    if (!text || posting) return;
+    setPosting(true);
+    const post: LocalFeedPost = {
+      id: `local-${Date.now()}`,
+      content: text,
+      authorName: currentUserName,
+      createdAt: new Date().toISOString(),
+      likeCount: 0,
+      comments: [],
+    };
+    setLocalPosts((prev) => [post, ...prev]);
+    setComposerContent("");
+    setPosting(false);
+    onCloseComposer?.();
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-6">
       {/* Left Sidebar */}
@@ -42,6 +214,102 @@ const FeedTab = () => {
           <h2 className="text-lg font-semibold text-foreground">Top Startups & Investor Updates</h2>
           <MoreHorizontal className="w-5 h-5 text-muted-foreground cursor-pointer" />
         </div>
+
+        {/* Composer - when open */}
+        {openComposer && (
+          <div className="bg-card rounded-lg border border-border p-5">
+            <p className="text-sm font-medium text-foreground mb-2">Post an update</p>
+            <Textarea
+              placeholder="Share an update with the community..."
+              value={composerContent}
+              onChange={(e) => setComposerContent(e.target.value)}
+              className="min-h-[100px] resize-none mb-3"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={onCloseComposer} disabled={posting}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handlePost} disabled={!composerContent.trim() || posting} className="gap-2">
+                <Send className="w-4 h-4" />
+                Post
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Local posts (at top, newest first) */}
+        {localPosts.map((post) => {
+          const isLiked = likedPostIds.has(post.id);
+          const comments = post.comments ?? [];
+          const showComments = expandedCommentsPostId === post.id;
+          return (
+            <div key={post.id} className="bg-card rounded-lg border border-border p-5">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold text-sm">
+                    {post.authorName.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{post.authorName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(post.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })} · Your update
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <PostContentWithTags content={post.content} />
+              <div className="flex items-center gap-4 mt-4 text-muted-foreground text-sm">
+                <button
+                  type="button"
+                  onClick={() => handleLike(post.id)}
+                  className={`flex items-center gap-1 transition-colors ${isLiked ? "text-primary" : "hover:text-foreground"}`}
+                >
+                  <ThumbsUp className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
+                  {post.likeCount ?? 0}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpandedCommentsPostId(showComments ? null : post.id)}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  {comments.length}
+                </button>
+              </div>
+              {showComments && (
+                <div className="mt-4 pt-4 border-t border-border space-y-3">
+                  {comments.map((c) => (
+                    <div key={c.id} className="flex gap-2">
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium text-xs shrink-0">
+                        {c.authorName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">{c.authorName}</p>
+                        <p className="text-sm text-foreground">{c.content}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(c.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Write a comment..."
+                      value={commentByPostId[post.id] ?? ""}
+                      onChange={(e) => setCommentByPostId((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddComment(post.id))}
+                      className="flex-1 h-9 text-sm"
+                    />
+                    <Button size="sm" onClick={() => handleAddComment(post.id)} disabled={!(commentByPostId[post.id] ?? "").trim()}>
+                      Post
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Post 1 */}
         <div className="bg-card rounded-lg border border-border p-5">

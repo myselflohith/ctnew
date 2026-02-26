@@ -10,6 +10,7 @@ export type InvestorsTabKey = "feed" | "startups" | "investors" | "pitchroom";
 interface InvestorsNavbarProps {
   activeTab: InvestorsTabKey;
   setActiveTab: (tab: InvestorsTabKey) => void;
+  onPostUpdate?: () => void;
 }
 
 const tabs: { key: InvestorsTabKey; label: string }[] = [
@@ -19,7 +20,7 @@ const tabs: { key: InvestorsTabKey; label: string }[] = [
   { key: "pitchroom", label: "Pitch Room" },
 ];
 
-const InvestorsNavbar = ({ activeTab, setActiveTab }: InvestorsNavbarProps) => {
+const InvestorsNavbar = ({ activeTab, setActiveTab, onPostUpdate }: InvestorsNavbarProps) => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -53,7 +54,11 @@ const InvestorsNavbar = ({ activeTab, setActiveTab }: InvestorsNavbarProps) => {
 
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <button className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity">
+          <button
+            type="button"
+            onClick={onPostUpdate}
+            className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+          >
             Post Update
           </button>
           <button className="border border-primary text-primary text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/5 transition-colors">
