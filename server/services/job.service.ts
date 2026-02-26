@@ -178,6 +178,29 @@ export async function getJobsForApprovedOrganizations(): Promise<JobWithOrg[]> {
   return result.rows;
 }
 
+// Search jobs in approved organizations by query (title, description, skills, location, company).
+export async function searchJobsInApprovedOrganizations(searchQuery: string): Promise<JobWithOrg[]> {
+  if (!searchQuery || typeof searchQuery !== 'string' || !searchQuery.trim()) {
+    return [];
+  }
+  const pattern = `%${searchQuery.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+  const result = await query(
+    `SELECT ${PITCH_ROOM_SELECT} FROM jobs j
+     WHERE j.discarded_at IS NULL
+       AND (
+         j.organization_id IN (SELECT id FROM organizations WHERE discarded_at IS NULL AND status = 'approved')
+         OR TRIM(COALESCE(j.company_name, '')) IN (SELECT TRIM(name) FROM organizations WHERE discarded_at IS NULL AND status = 'approved')
+       )
+       AND (
+         j.name ILIKE $1 OR j.description ILIKE $1 OR j.skills ILIKE $1
+         OR j.location ILIKE $1 OR j.company_name ILIKE $1
+       )
+     ORDER BY COALESCE((SELECT o.name FROM organizations o WHERE (o.id = j.organization_id OR (j.organization_id IS NULL AND TRIM(o.name) = TRIM(COALESCE(j.company_name, '')))) AND o.discarded_at IS NULL AND o.status = 'approved' LIMIT 1), j.company_name), j.created_at DESC`,
+    [pattern]
+  );
+  return result.rows;
+}
+
 // Create a new job (creatorId = logged-in user creating the job)
 export async function createJob(
   jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'> & { addNotes?: string | null },

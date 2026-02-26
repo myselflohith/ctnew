@@ -5,6 +5,7 @@ import {
   getJobById,
   getJobsByCompanyName,
   getJobsForApprovedOrganizations,
+  searchJobsInApprovedOrganizations,
   createJob,
   updateJob,
   updateJobStatus,
@@ -91,6 +92,22 @@ router.get('/pitch-room', authenticateToken, async (req: Request, res: Response)
   } catch (error: any) {
     console.error('Get pitch room jobs error:', error);
     res.status(500).json({ error: error.message || 'Failed to get pitch room jobs' });
+  }
+});
+
+// Search jobs in approved organizations (for investors startups tab)
+router.get('/search', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const jobs = await searchJobsInApprovedOrganizations(q);
+    res.json({ success: true, data: jobs });
+  } catch (error: any) {
+    console.error('Search jobs error:', error);
+    res.status(500).json({ error: error.message || 'Failed to search jobs' });
   }
 });
 

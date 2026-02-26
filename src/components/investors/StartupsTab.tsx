@@ -1,8 +1,16 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { TrendingUp, Users, DollarSign, LayoutGrid, List } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { DollarSign, Briefcase, MapPin, Clock, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { apiClient } from "@/lib/api";
+import { formatDistanceToNow } from "date-fns";
 
 const gradients = [
   "from-blue-500 to-indigo-600",
@@ -17,20 +25,96 @@ const gradients = [
   "from-yellow-500 to-amber-600",
 ];
 
-type ViewMode = "list" | "grid";
+type JobRow = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  type: string;
+  salary?: string;
+  posted_at: string;
+  description?: string;
+  status?: string;
+  organization_name?: string;
+};
 
 type StartupRow = { name: string; description?: string; sector?: string; stage?: string; raised?: string; location?: string };
 
 const StartupsTab = () => {
-  const navigate = useNavigate();
-  const [view, setView] = useState<ViewMode>("list");
   const [startups, setStartups] = useState<StartupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [jobSearchQuery, setJobSearchQuery] = useState("");
+  const [jobsByCompany, setJobsByCompany] = useState<Record<string, { jobs: JobRow[]; loading: boolean; error: string | null }>>({});
+  const [expandedCompanies, setExpandedCompanies] = useState<string[]>([]);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const goToOrganizationJobs = (companyName: string) => {
-    navigate(`/investors/startups/${encodeURIComponent(companyName)}`);
+  const fetchJobsForCompany = (companyName: string) => {
+    if (jobsByCompany[companyName] !== undefined) return; // already loaded or loading
+    setJobsByCompany((prev) => ({ ...prev, [companyName]: { jobs: [], loading: true, error: null } }));
+    apiClient
+      .getJobsByCompany(companyName)
+      .then((res) => {
+        setJobsByCompany((prev) => ({
+          ...prev,
+          [companyName]: { jobs: (res.data ?? []) as JobRow[], loading: false, error: null },
+        }));
+      })
+      .catch((err) => {
+        setJobsByCompany((prev) => ({
+          ...prev,
+          [companyName]: { jobs: [], loading: false, error: err?.message ?? "Failed to load jobs" },
+        }));
+      });
   };
+
+  // When user expands an accordion, fetch jobs for that company if not loaded
+  useEffect(() => {
+    expandedCompanies.forEach((c) => {
+      if (jobsByCompany[c] === undefined) fetchJobsForCompany(c);
+    });
+  }, [expandedCompanies]);
+
+  // When user types in search, query DB and open accordions; when search is cleared, close all and clear results
+  useEffect(() => {
+    const query = jobSearchQuery.trim();
+    if (query.length < 2) {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+      setExpandedCompanies([]);
+      setJobsByCompany({});
+      return;
+    }
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      searchTimeoutRef.current = null;
+      apiClient
+        .searchJobsInStartups(query)
+        .then((res) => {
+          const jobs = (res.data ?? []) as JobRow[];
+          const byCompany: Record<string, JobRow[]> = {};
+          jobs.forEach((job) => {
+            const company = (job.organization_name ?? job.company)?.trim() || job.company?.trim() || "Unknown";
+            if (!byCompany[company]) byCompany[company] = [];
+            byCompany[company].push(job);
+          });
+          const companiesWithMatches = Object.keys(byCompany);
+          setJobsByCompany((prev) => {
+            const next = { ...prev };
+            companiesWithMatches.forEach((company) => {
+              next[company] = { jobs: byCompany[company], loading: false, error: null };
+            });
+            return next;
+          });
+          // Only keep accordions open for companies that have matching jobs; close the rest
+          setExpandedCompanies(companiesWithMatches);
+        })
+        .catch(() => {});
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [jobSearchQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,24 +157,20 @@ const StartupsTab = () => {
   return (
     <TooltipProvider delayDuration={200}>
       <div>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-foreground">Startups</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-foreground">Startups</h2>
             <p className="text-sm text-muted-foreground">{startups.length} startup{startups.length !== 1 ? "s" : ""}</p>
-            <div className="flex items-center bg-muted rounded-md p-0.5">
-              <button
-                onClick={() => setView("list")}
-                className={`p-1.5 rounded transition-colors ${view === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setView("grid")}
-                className={`p-1.5 rounded transition-colors ${view === "grid" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-            </div>
+          </div>
+          <div className="relative max-w-xs w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search jobs..."
+              value={jobSearchQuery}
+              onChange={(e) => setJobSearchQuery(e.target.value)}
+              className="pl-9 h-9"
+            />
           </div>
         </div>
 
@@ -98,84 +178,150 @@ const StartupsTab = () => {
           <div className="bg-card rounded-lg border border-border p-8 text-center">
             <p className="text-muted-foreground">No approved startups yet.</p>
           </div>
-        ) : view === "list" ? (
-          <div className="bg-card rounded-lg border border-border overflow-hidden">
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              <span>Company</span>
-              <span>Sector</span>
-              <span>Stage</span>
-              <span>Raised</span>
-              <span>Location</span>
-            </div>
-            {startups.map((s, i) => (
-              <Tooltip key={s.name}>
-                <TooltipTrigger asChild>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => goToOrganizationJobs(s.name)}
-                    onKeyDown={(e) => e.key === "Enter" && goToOrganizationJobs(s.name)}
-                    className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3.5 items-center border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-md bg-gradient-to-br ${gradients[i % gradients.length]} flex items-center justify-center text-primary-foreground font-bold text-xs shrink-0`}>
-                        {s.name.substring(0, 2)}
-                      </div>
-                      <span className="font-medium text-foreground text-sm">{s.name}</span>
-                    </div>
-                    <span className="text-sm text-muted-foreground">{s.sector ?? "—"}</span>
-                    <span className="text-sm text-muted-foreground">{s.stage ?? "—"}</span>
-                    <span className="text-sm text-muted-foreground">{s.raised ?? "—"}</span>
-                    <span className="text-sm text-muted-foreground">{s.location ?? "—"}</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-xs">
-                  <p>{s.description ?? s.name}</p>
-                </TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {startups.map((s, i) => (
-              <div
-                key={s.name}
-                className="bg-card rounded-lg border border-border p-5 flex flex-col hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-11 h-11 rounded-lg bg-gradient-to-br ${gradients[i % gradients.length]} flex items-center justify-center text-primary-foreground font-bold text-sm`}>
-                    {s.name.substring(0, 2)}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{s.name}</h3>
-                    <p className="text-xs text-muted-foreground">{s.sector ?? "—"}</p>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground mb-4 flex-1 line-clamp-3">{s.description ?? ""}</p>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                  <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> {s.stage ?? "—"}</span>
-                  <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" /> {s.raised ?? "—"}</span>
-                  <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {s.location ?? "—"}</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => goToOrganizationJobs(s.name)}
-                    className="flex-1 bg-primary text-primary-foreground text-sm font-medium py-1.5 rounded-md hover:opacity-90 transition-opacity"
-                  >
-                    View Profile
-                  </button>
-                  <button className="flex-1 border border-border text-foreground text-sm font-medium py-1.5 rounded-md hover:bg-muted transition-colors">
-                    Request Intro
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <Accordion
+              type="multiple"
+              value={expandedCompanies}
+              onValueChange={(value) => setExpandedCompanies(value)}
+              className="w-full"
+            >
+              {startups.map((s, i) => (
+                <AccordionItem key={s.name} value={s.name} className="border-border px-4">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AccordionTrigger className="hover:no-underline py-4 [&[data-state=open]>svg]:rotate-180">
+                        <div className="flex items-center gap-3 text-left">
+                          <div className={`w-9 h-9 rounded-md bg-gradient-to-br ${gradients[i % gradients.length]} flex items-center justify-center text-primary-foreground font-bold text-xs shrink-0`}>
+                            {s.name.substring(0, 2)}
+                          </div>
+                          <span className="font-semibold text-foreground">{s.name}</span>
+                          {s.sector != null && s.sector !== "" && (
+                            <span className="text-sm text-muted-foreground hidden sm:inline">· {s.sector}</span>
+                          )}
+                        </div>
+                      </AccordionTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      <p>{s.description ?? s.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <AccordionContent className="pt-0 pb-4">
+                    <CompanyJobsContent
+                      companyName={s.name}
+                      jobsByCompany={jobsByCompany}
+                      jobSearchQuery={jobSearchQuery.trim()}
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
         )}
       </div>
     </TooltipProvider>
   );
 };
+
+function matchJobSearch(job: JobRow, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const title = (job.title ?? "").toLowerCase();
+  const company = (job.company ?? "").toLowerCase();
+  const description = (job.description ?? "").toLowerCase();
+  const location = (job.location ?? "").toLowerCase();
+  return title.includes(q) || company.includes(q) || description.includes(q) || location.includes(q);
+}
+
+function CompanyJobsContent({
+  companyName,
+  jobsByCompany,
+  jobSearchQuery,
+}: {
+  companyName: string;
+  jobsByCompany: Record<string, { jobs: JobRow[]; loading: boolean; error: string | null }>;
+  jobSearchQuery: string;
+}) {
+  const state = jobsByCompany[companyName];
+  if (state === undefined) {
+    return null;
+  }
+  if (state.loading) {
+    return (
+      <div className="py-6 text-center">
+        <p className="text-sm text-muted-foreground">Loading jobs...</p>
+      </div>
+    );
+  }
+  if (state.error) {
+    return (
+      <div className="py-6 text-center">
+        <p className="text-sm text-destructive">{state.error}</p>
+      </div>
+    );
+  }
+  const filteredJobs = jobSearchQuery ? state.jobs.filter((job) => matchJobSearch(job, jobSearchQuery)) : state.jobs;
+  if (filteredJobs.length === 0) {
+    return (
+      <div className="py-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          {state.jobs.length === 0
+            ? "No open jobs at this organization."
+            : "No jobs match your search."}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3 pl-1">
+      {filteredJobs.map((job) => (
+        <div
+          key={job.id}
+          className="rounded-lg border border-border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Briefcase className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <h3 className="font-semibold text-foreground text-sm">{job.title}</h3>
+                {job.status && (
+                  <Badge variant={job.status === "active" ? "default" : "secondary"} className="text-xs">
+                    {job.status}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                {job.location && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    {job.location}
+                  </span>
+                )}
+                {job.type && <span>{job.type}</span>}
+                {job.salary && (
+                  <span className="flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5 shrink-0" />
+                    {job.salary}
+                  </span>
+                )}
+                {job.posted_at && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    {formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })}
+                  </span>
+                )}
+              </div>
+              {job.description && (
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{job.description}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default StartupsTab;

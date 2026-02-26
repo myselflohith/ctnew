@@ -217,6 +217,12 @@ class ApiClient {
     return this.request(`/jobs/by-company?${params}`);
   }
 
+  /** Search jobs in approved organizations (for investors startups tab). Returns jobs with company; open accordions for those companies. */
+  async searchJobsInStartups(q: string) {
+    const params = new URLSearchParams({ q: q.trim() });
+    return this.request<{ id: string; title: string; company: string; location: string; type: string; salary?: string; posted_at: string; description?: string; status?: string }[]>(`/jobs/search?${params}`);
+  }
+
   /** Get jobs for approved organizations with org info (for investors pitch room). */
   async getPitchRoomJobs() {
     return this.request('/jobs/pitch-room');
