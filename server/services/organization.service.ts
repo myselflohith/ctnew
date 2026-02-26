@@ -279,6 +279,17 @@ export async function updateOrganizationRequirement(
   return result.rows[0];
 }
 
+/** Get distinct names of approved, non-discarded organizations (e.g. for investors startups list). */
+export async function getApprovedOrganizationNames(): Promise<{ name: string | null }[]> {
+  const result = await query(
+    `SELECT DISTINCT organizations.name FROM organizations
+     WHERE organizations.discarded_at IS NULL
+       AND organizations.status = 'approved'
+     ORDER BY organizations.name`
+  );
+  return result.rows;
+}
+
 // Get all organizations (for admin); job_count by jobs.organization_id, user_count by owner
 export async function getAllOrganizations(): Promise<(Organization & { user_count: number; job_count: number })[]> {
   const result = await query(

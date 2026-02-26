@@ -16,6 +16,7 @@ import Employers from "./pages/Employers";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import InvestorsDashboard from "./pages/investors/Dashboard";
+import OrganizationJobs from "./pages/investors/OrganizationJobs";
 import InvestorSignup from "./pages/InvestorSignup";
 
 // Talent pages
@@ -80,6 +81,7 @@ const App = () => (
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/employers" element={<Employers />} />
             <Route path="/about" element={<About />} />
+            <Route path="/investors/startups/:companyName" element={<InvestorRequireAuth><OrganizationJobs /></InvestorRequireAuth>} />
             <Route path="/investors" element={<InvestorRequireAuth><InvestorsDashboard /></InvestorRequireAuth>} />
 
             {/* Public interview access by email link */}

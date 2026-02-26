@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import InvestorsNavbar from "@/components/investors/Navbar";
 import FeedTab from "@/components/investors/FeedTab";
 import StartupsTab from "@/components/investors/StartupsTab";
@@ -7,7 +8,13 @@ import PitchRoomTab from "@/components/investors/PitchRoomTab";
 import type { InvestorsTabKey } from "@/components/investors/Navbar";
 
 const InvestorsDashboard = () => {
-  const [activeTab, setActiveTab] = useState<InvestorsTabKey>("feed");
+  const location = useLocation();
+  const tabFromState = (location.state as { tab?: InvestorsTabKey })?.tab;
+  const [activeTab, setActiveTab] = useState<InvestorsTabKey>(tabFromState ?? "feed");
+
+  useEffect(() => {
+    if (tabFromState) setActiveTab(tabFromState);
+  }, [tabFromState]);
 
   return (
     <div className="min-h-screen bg-background">

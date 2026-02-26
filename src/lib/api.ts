@@ -204,6 +204,17 @@ class ApiClient {
     return this.request(`/jobs/${jobId}`);
   }
 
+  /** Get jobs for a company/organization (for investors startup profile). */
+  async getJobsByCompany(companyName: string) {
+    const params = new URLSearchParams({ company: companyName });
+    return this.request(`/jobs/by-company?${params}`);
+  }
+
+  /** Get jobs for approved organizations with org info (for investors pitch room). */
+  async getPitchRoomJobs() {
+    return this.request('/jobs/pitch-room');
+  }
+
   async saveJob(jobId: string) {
     return this.request(`/jobs/${jobId}/save`, {
       method: 'POST',
@@ -334,6 +345,11 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ displayName, userEmail, companyName }),
     });
+  }
+
+  /** Get approved organization names (for investors startups list). Auth required. */
+  async getApprovedOrganizationNames() {
+    return this.request<{ name: string | null }[]>('/organizations/approved-names');
   }
 
   // Admin endpoints

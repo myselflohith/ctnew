@@ -7,6 +7,7 @@ import {
   deleteOrganizationRequirement,
   updateOrganizationRequirement,
   getAllOrganizations,
+  getApprovedOrganizationNames,
   searchOrganizationsForSignup,
   normalizeCompanyName,
   findOrganizationByNormalizedName,
@@ -46,6 +47,22 @@ router.get('/all', authenticateToken, async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get all organizations error:', error);
     res.status(500).json({ error: error.message || 'Failed to get organizations' });
+  }
+});
+
+// Get approved organization names (for investors startups list) – must be before /:companyName
+router.get('/approved-names', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const names = await getApprovedOrganizationNames();
+    res.json({ success: true, data: names });
+  } catch (error: any) {
+    console.error('Get approved organization names error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get approved organization names' });
   }
 });
 

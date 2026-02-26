@@ -120,6 +120,64 @@ export async function getJobById(jobId: string): Promise<Job | null> {
   return result.rows[0] || null;
 }
 
+// Get jobs by company/organization name (for investors viewing a startup's jobs).
+// Uses jobs.organization_id when set; falls back to company_name match.
+export async function getJobsByCompanyName(companyName: string): Promise<Job[]> {
+  if (!companyName || typeof companyName !== 'string' || !companyName.trim()) {
+    return [];
+  }
+  const name = companyName.trim();
+  const result = await query(
+    `SELECT ${JOB_SELECT} FROM jobs j
+     WHERE j.discarded_at IS NULL
+       AND (
+         j.organization_id = (SELECT id FROM organizations WHERE discarded_at IS NULL AND status = 'approved' AND TRIM(name) = $1 LIMIT 1)
+         OR TRIM(COALESCE(j.company_name, '')) = $1
+       )
+     ORDER BY j.created_at DESC`,
+    [name]
+  );
+  return result.rows;
+}
+
+// Select for pitch room: same as JOB_SELECT plus organization_id and organization_name for grouping
+const PITCH_ROOM_SELECT = `
+  j.id,
+  j.name AS title,
+  j.company_name AS company,
+  j.location,
+  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.job_salary AS salary,
+  j.created_at AS posted_at,
+  NULL::integer AS match_score,
+  CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
+  j.description,
+  CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
+  j.created_at,
+  j.updated_at,
+  j.organization_id,
+  (SELECT o.name FROM organizations o WHERE (o.id = j.organization_id OR (j.organization_id IS NULL AND TRIM(o.name) = TRIM(COALESCE(j.company_name, '')))) AND o.discarded_at IS NULL AND o.status = 'approved' LIMIT 1) AS organization_name
+`;
+
+export interface JobWithOrg extends Job {
+  organization_id?: string | null;
+  organization_name?: string | null;
+}
+
+// Get all jobs for approved organizations (for investors pitch room), with org info for grouping.
+export async function getJobsForApprovedOrganizations(): Promise<JobWithOrg[]> {
+  const result = await query(
+    `SELECT ${PITCH_ROOM_SELECT} FROM jobs j
+     WHERE j.discarded_at IS NULL
+       AND (
+         j.organization_id IN (SELECT id FROM organizations WHERE discarded_at IS NULL AND status = 'approved')
+         OR TRIM(COALESCE(j.company_name, '')) IN (SELECT TRIM(name) FROM organizations WHERE discarded_at IS NULL AND status = 'approved')
+       )
+     ORDER BY COALESCE((SELECT o.name FROM organizations o WHERE (o.id = j.organization_id OR (j.organization_id IS NULL AND TRIM(o.name) = TRIM(COALESCE(j.company_name, '')))) AND o.discarded_at IS NULL AND o.status = 'approved' LIMIT 1), j.company_name), j.created_at DESC`
+  );
+  return result.rows;
+}
+
 // Create a new job (creatorId = logged-in user creating the job)
 export async function createJob(
   jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'> & { addNotes?: string | null },

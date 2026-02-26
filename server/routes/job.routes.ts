@@ -3,6 +3,8 @@ import {
   getAvailableJobs,
   getAllJobs,
   getJobById,
+  getJobsByCompanyName,
+  getJobsForApprovedOrganizations,
   createJob,
   updateJob,
   updateJobStatus,
@@ -56,6 +58,39 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get all jobs error:', error);
     res.status(500).json({ error: error.message || 'Failed to get jobs' });
+  }
+});
+
+// Get jobs by company/organization name (for investors startup profile)
+router.get('/by-company', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const company = typeof req.query.company === 'string' ? req.query.company.trim() : '';
+    const jobs = await getJobsByCompanyName(company);
+    res.json({ success: true, data: jobs });
+  } catch (error: any) {
+    console.error('Get jobs by company error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get jobs' });
+  }
+});
+
+// Get jobs for approved organizations, with org info (for investors pitch room)
+router.get('/pitch-room', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const jobs = await getJobsForApprovedOrganizations();
+    res.json({ success: true, data: jobs });
+  } catch (error: any) {
+    console.error('Get pitch room jobs error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get pitch room jobs' });
   }
 });
 
