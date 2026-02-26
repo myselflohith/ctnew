@@ -18,8 +18,8 @@ const roles = [
     icon: TrendingUp,
     title: "Investor",
     description:
-      "Join as an accredited investor. Get access to qualified deal flow from top universities and startups.",
-    features: ["Accredited Deal Flow", "Startup Network", "Early-Stage Opportunities"],
+      "Discover deal flow and connect with founders. Build your investor profile and explore opportunities.",
+    features: ["Deal Flow", "Startup Network", "Early-Stage Opportunities"],
     color: "from-emerald-500 to-teal-500",
   },
   {

@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -16,31 +15,17 @@ import { useToast } from "@/hooks/use-toast";
 import { register } from "@/lib/auth";
 import {
   ArrowRight,
-  ShieldCheck,
-  Upload,
   Mail,
   Lock,
   User,
-  Phone,
-  Calendar,
   MapPin,
   Linkedin,
-  Check,
+  Building2,
+  Briefcase,
+  AtSign,
+  Camera,
 } from "lucide-react";
 import cardinalLogo from "@/assets/cardinal-logo.png";
-
-const COUNTRY_PHONE = [
-  { code: "+1", flag: "🇺🇸", label: "United States" },
-  { code: "+44", flag: "🇬🇧", label: "United Kingdom" },
-  { code: "+91", flag: "🇮🇳", label: "India" },
-  { code: "+49", flag: "🇩🇪", label: "Germany" },
-  { code: "+33", flag: "🇫🇷", label: "France" },
-  { code: "+81", flag: "🇯🇵", label: "Japan" },
-  { code: "+61", flag: "🇦🇺", label: "Australia" },
-  { code: "+86", flag: "🇨🇳", label: "China" },
-  { code: "+65", flag: "🇸🇬", label: "Singapore" },
-  { code: "+971", flag: "🇦🇪", label: "UAE" },
-];
 
 const STAGE_OPTIONS = [
   "Pre-seed",
@@ -52,25 +37,28 @@ const STAGE_OPTIONS = [
   "All stages",
 ];
 
-const INVESTMENT_SIZE_OPTIONS = [
-  "$25K – $250K",
-  "$250K – $500K",
-  "$500K – $1M",
-  "$1M – $5M",
-  "$5M+",
+const GEOGRAPHY_OPTIONS = [
+  "North America",
+  "Europe",
+  "Asia",
+  "Global",
+  "Other",
 ];
 
-const PROOF_TYPES = [
-  "Recent tax form (W-2, 1099, K-1, or similar)",
-  "Brokerage/bank statement",
-  "Professional credentials (e.g. FINRA, CPA)",
-];
+function slugFromName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ".")
+    .replace(/[^a-z0-9.-]/g, "");
+}
 
-const RIGHT_BENEFITS = [
-  "Qualified deal flow from top universities, accelerators, and syndicates",
-  "Network with trusted founders and fellow investors",
-  "Access early-stage investment opportunities",
-];
+function suggestHandle(fullName: string, email: string): string {
+  const fromName = slugFromName(fullName);
+  if (fromName) return fromName;
+  const local = email.split("@")[0]?.trim() || "";
+  return local.toLowerCase().replace(/[^a-z0-9.-]/g, "") || "investor";
+}
 
 const InvestorSignup = () => {
   const navigate = useNavigate();
@@ -80,32 +68,29 @@ const InvestorSignup = () => {
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [phoneCountry, setPhoneCountry] = useState("+1");
-  const [phone, setPhone] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
-  const [address, setAddress] = useState("");
-  const [linkedInUrl, setLinkedInUrl] = useState("");
+  const [username, setUsername] = useState("");
+  const [useAutoHandle, setUseAutoHandle] = useState(true);
   const [password, setPassword] = useState("");
 
-  const [accreditedConfirmed, setAccreditedConfirmed] = useState(false);
-  const [accreditationCriteria, setAccreditationCriteria] = useState<"income" | "networth" | "">("");
-  const [proofType, setProofType] = useState("");
-  const [proofFile, setProofFile] = useState<File | null>(null);
-
+  const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
+  const [location, setLocation] = useState("");
+  const [bio, setBio] = useState("");
   const [stagePreference, setStagePreference] = useState("");
-  const [sectors, setSectors] = useState("");
-  const [investmentSize, setInvestmentSize] = useState("");
+  const [industryInterests, setIndustryInterests] = useState("");
+  const [geography, setGeography] = useState("");
+  const [linkedInUrl, setLinkedInUrl] = useState("");
+  const [twitterUrl, setTwitterUrl] = useState("");
+  const [employerFirm, setEmployerFirm] = useState("");
+  const [priorInvestments, setPriorInvestments] = useState("");
+
+  const suggestedHandle = useMemo(
+    () => suggestHandle(fullName, email),
+    [fullName, email]
+  );
+  const displayHandle = useAutoHandle ? suggestedHandle : username;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accreditedConfirmed) {
-      toast({
-        title: "Accreditation required",
-        description: "You must confirm that you are an accredited investor under SEC Rule 501(a).",
-        variant: "destructive",
-      });
-      return;
-    }
     if (!acceptedTerms) {
       toast({
         title: "Terms required",
@@ -125,6 +110,16 @@ const InvestorSignup = () => {
       });
       return;
     }
+    const finalUsername =
+      displayHandle?.trim() || suggestHandle(fullName, email);
+    if (!finalUsername) {
+      toast({
+        title: "Username required",
+        description: "Choose a username or use the auto-generated handle.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsLoading(true);
     try {
       await register({
@@ -133,6 +128,16 @@ const InvestorSignup = () => {
         firstName,
         lastName,
         role: 2,
+        username: finalUsername,
+        location: location.trim() || null,
+        linkedinUrl: linkedInUrl.trim() || null,
+        twitterUrl: twitterUrl.trim() || null,
+        bio: bio.trim() || null,
+        investmentInterests: [stagePreference, industryInterests, geography]
+          .filter(Boolean)
+          .join("; ") || null,
+        priorInvestments: priorInvestments.trim() || null,
+        companyName: employerFirm.trim() || null,
       });
       toast({ title: "Account created!", description: "Welcome. Redirecting to your dashboard." });
       navigate("/investors");
@@ -149,7 +154,6 @@ const InvestorSignup = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
@@ -162,32 +166,43 @@ const InvestorSignup = () => {
         </div>
       </header>
 
-      {/* 3-column layout: Left sidebar | Center form | Right sidebar */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left sidebar - Investment Preferences (~25%) */}
+          {/* Left sidebar - Profile preview & investment preferences */}
           <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1">
-            <div className="bg-card rounded-lg border border-border p-4 flex flex-col items-center">
-              <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center text-4xl text-muted-foreground mb-3">
-                👤
+            <label className="bg-card rounded-lg border border-border p-4 flex flex-col items-center cursor-pointer hover:bg-muted/30 transition-colors group">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setProfilePhoto(e.target.files?.[0] ?? null)}
+              />
+              <div className="relative w-24 h-24 rounded-full bg-muted flex items-center justify-center overflow-hidden text-4xl text-muted-foreground ring-2 ring-transparent group-hover:ring-primary/50 transition-all">
+                {profilePhoto ? (
+                  <img
+                    src={URL.createObjectURL(profilePhoto)}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  "👤"
+                )}
+                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera className="w-8 h-8 text-white" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Your profile photo will appear after signup.
-              </p>
-            </div>
-            <div className="bg-muted/50 rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">
-                Secure & confidential. All data is encrypted.
-              </p>
-            </div>
+              <span className="text-xs text-muted-foreground mt-2 text-center">
+                {profilePhoto ? "Click to change photo" : "Click to upload profile photo"}
+              </span>
+            </label>
             <div className="bg-card rounded-lg border border-border p-4">
-              <h3 className="font-semibold text-foreground mb-3">3. Investment Preferences</h3>
+              <h3 className="font-semibold text-foreground mb-3">2. Investment preferences</h3>
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Stage Preference</Label>
+                  <Label className="text-xs">Stage</Label>
                   <Select value={stagePreference} onValueChange={setStagePreference}>
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Seed / Series A" />
+                      <SelectValue placeholder="e.g. Seed / Series A" />
                     </SelectTrigger>
                     <SelectContent>
                       {STAGE_OPTIONS.map((s) => (
@@ -197,23 +212,23 @@ const InvestorSignup = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Sectors Interested In</Label>
+                  <Label className="text-xs">Industry</Label>
                   <Input
-                    placeholder="e.g. AI, HealthTech, SaaS, FinTech"
-                    value={sectors}
-                    onChange={(e) => setSectors(e.target.value)}
+                    placeholder="e.g. AI, HealthTech, SaaS"
+                    value={industryInterests}
+                    onChange={(e) => setIndustryInterests(e.target.value)}
                     className="h-9 text-sm"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Typical Investment Size</Label>
-                  <Select value={investmentSize} onValueChange={setInvestmentSize}>
+                  <Label className="text-xs">Geography</Label>
+                  <Select value={geography} onValueChange={setGeography}>
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="$25K – $250K" />
+                      <SelectValue placeholder="e.g. North America" />
                     </SelectTrigger>
                     <SelectContent>
-                      {INVESTMENT_SIZE_OPTIONS.map((s) => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      {GEOGRAPHY_OPTIONS.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -222,19 +237,18 @@ const InvestorSignup = () => {
             </div>
           </aside>
 
-          {/* Center - Main form (~50%) */}
+          {/* Center - Main form */}
           <main className="lg:col-span-6 order-1 lg:order-2">
             <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-1">
-              Join Cardinal Talent as an accredited investor
+              Join StartupSphere as an investor
             </h1>
             <p className="text-muted-foreground text-sm mb-6">
               Create your account to discover exclusive startup deal flow.
             </p>
 
             <form id="investor-signup-form" onSubmit={handleSubmit} className="space-y-6">
-              {/* 1. Personal Information */}
               <section className="space-y-3">
-                <h2 className="font-semibold text-foreground">1. Personal Information</h2>
+                <h2 className="font-semibold text-foreground">1. Personal information</h2>
                 <div className="grid gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="fullName" className="text-sm">Full Name</Label>
@@ -242,7 +256,7 @@ const InvestorSignup = () => {
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
                         id="fullName"
-                        placeholder="e.g., David Knox"
+                        placeholder="e.g., Jane Smith"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         className="pl-9 h-9"
@@ -257,7 +271,7 @@ const InvestorSignup = () => {
                       <Input
                         id="email"
                         type="email"
-                        placeholder="e.g., david.knox@gmail.com"
+                        placeholder="e.g., jane@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-9 h-9"
@@ -266,59 +280,80 @@ const InvestorSignup = () => {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm">Phone Number</Label>
-                    <div className="flex gap-2">
-                      <Select value={phoneCountry} onValueChange={setPhoneCountry}>
-                        <SelectTrigger className="w-[100px] h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {COUNTRY_PHONE.map((c) => (
-                            <SelectItem key={c.code} value={c.code}>
-                              {c.flag} {c.code}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="relative flex-1">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Label htmlFor="username" className="text-sm">Username / Handle</Label>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <div className="relative flex-1 min-w-[140px]">
+                        <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
-                          placeholder="(555) 123-4567"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
+                          id="username"
+                          placeholder={useAutoHandle ? suggestedHandle : "your.handle"}
+                          value={useAutoHandle ? "" : username}
+                          onChange={(e) => setUsername(e.target.value)}
                           className="pl-9 h-9"
+                          disabled={useAutoHandle}
                         />
                       </div>
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer whitespace-nowrap">
+                        <Checkbox
+                          checked={useAutoHandle}
+                          onCheckedChange={(v) => setUseAutoHandle(v === true)}
+                        />
+                        Auto-generate
+                      </label>
                     </div>
+                    {useAutoHandle && (
+                      <p className="text-xs text-muted-foreground">
+                        Suggested: <span className="font-medium text-foreground">{suggestedHandle}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="dob" className="text-sm">Date of Birth</Label>
+                    <Label htmlFor="password" className="text-sm">Password</Label>
                     <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
-                        id="dob"
-                        type="date"
-                        value={dateOfBirth}
-                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        id="password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
                         className="pl-9 h-9"
+                        minLength={8}
+                        required
                       />
                     </div>
                   </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="grid gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="address" className="text-sm">Residential Address</Label>
+                    <Label htmlFor="location" className="text-sm">Location (city)</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
-                        id="address"
-                        placeholder="e.g., 123 Elm St, Palo Alto, CA 94301"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
+                        id="location"
+                        placeholder="e.g., San Francisco, CA"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
                         className="pl-9 h-9"
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="linkedin" className="text-sm">LinkedIn Profile URL</Label>
+                    <Label htmlFor="bio" className="text-sm">Bio</Label>
+                    <textarea
+                      id="bio"
+                      placeholder="Short bio or background"
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="linkedin" className="text-sm">LinkedIn</Label>
                     <div className="relative">
                       <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
@@ -331,128 +366,58 @@ const InvestorSignup = () => {
                       />
                     </div>
                   </div>
-                </div>
-              </section>
-
-              {/* 2. Investor Accreditation - only these options when checkbox is selected */}
-              <section className="space-y-3">
-                <h2 className="font-semibold text-foreground">2. Investor Accreditation</h2>
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="accredited"
-                    checked={accreditedConfirmed}
-                    onCheckedChange={(v) => setAccreditedConfirmed(v === true)}
-                    className="mt-0.5"
-                  />
-                  <label htmlFor="accredited" className="text-sm text-foreground cursor-pointer leading-tight">
-                    I am an accredited investor under SEC Rule 501(a):
-                  </label>
-                </div>
-                {accreditedConfirmed && (
-                  <>
-                    <RadioGroup
-                      value={accreditationCriteria}
-                      onValueChange={(v) => setAccreditationCriteria(v as "income" | "networth")}
-                      className="flex flex-col gap-2 ml-6"
-                    >
-                      <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <RadioGroupItem value="income" id="income" />
-                        Annual income over $200k individually or $300k jointly (past 2 years)
-                      </label>
-                      <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <RadioGroupItem value="networth" id="networth" />
-                        Net worth over $1 million (excluding primary residence)
-                      </label>
-                    </RadioGroup>
-                    <div className="ml-6 space-y-2">
-                      <p className="text-xs text-muted-foreground">
-                        Upload proof of accreditation (optional, for faster approval)
-                      </p>
-                      <RadioGroup value={proofType} onValueChange={setProofType} className="flex flex-col gap-1.5">
-                        {PROOF_TYPES.map((opt) => (
-                          <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <RadioGroupItem value={opt} id={opt} />
-                            {opt}
-                          </label>
-                        ))}
-                      </RadioGroup>
-                      <Button type="button" variant="outline" size="sm" className="gap-1" asChild>
-                        <label className="cursor-pointer">
-                          <Upload className="w-4 h-4" />
-                          Upload File
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,.jpg,.png"
-                            className="hidden"
-                            onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-                          />
-                        </label>
-                      </Button>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="twitter" className="text-sm">Twitter / X</Label>
+                    <div className="relative">
+                      <Input
+                        id="twitter"
+                        type="url"
+                        placeholder="https://twitter.com/yourhandle"
+                        value={twitterUrl}
+                        onChange={(e) => setTwitterUrl(e.target.value)}
+                        className="pl-9 h-9"
+                      />
                     </div>
-                  </>
-                )}
-              </section>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-sm">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9 h-9"
-                    minLength={8}
-                    required
-                  />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="employerFirm" className="text-sm">Employer / Firm name</Label>
+                    <div className="relative">
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="employerFirm"
+                        placeholder="e.g., Acme Ventures"
+                        value={employerFirm}
+                        onChange={(e) => setEmployerFirm(e.target.value)}
+                        className="pl-9 h-9"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="priorInvestments" className="text-sm">Prior investments (optional)</Label>
+                    <div className="relative">
+                      <Briefcase className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                      <textarea
+                        id="priorInvestments"
+                        placeholder="Notable prior investments or experience"
+                        value={priorInvestments}
+                        onChange={(e) => setPriorInvestments(e.target.value)}
+                        className="flex min-h-[60px] w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        rows={2}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </section>
             </form>
           </main>
 
-          {/* Right sidebar - Benefits + CTA (~25%) */}
+          {/* Right sidebar - CTA */}
           <aside className="lg:col-span-3 space-y-6 order-3">
-            <div className="bg-card rounded-lg border border-border p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
-                <ShieldCheck className="w-5 h-5 text-primary" />
-                FOR ACCREDITED INVESTORS ONLY
-              </div>
-              <ul className="space-y-2">
-                {RIGHT_BENEFITS.map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <Check className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-3 text-center">
-              <div className="flex items-center justify-center gap-2 text-sm font-semibold text-foreground mb-1">
-                <Check className="w-4 h-4 text-primary" />
-                ACCREDITED INVESTORS ONLY
-              </div>
-              <p className="text-xs text-muted-foreground">
-                U.S. SEC-Qualified · Confidential · Encrypted
-              </p>
-            </div>
-            <div className="bg-card rounded-lg border border-border p-4">
-              <h3 className="font-semibold text-foreground mb-1">Security & Consent</h3>
-              <ul className="space-y-2 mb-4">
-                {RIGHT_BENEFITS.map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <Check className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
             <div className="bg-card rounded-lg border border-border p-4 space-y-4">
               <div>
-                <h3 className="font-semibold text-foreground">Sign Up as an Accredited Investor</h3>
+                <h3 className="font-semibold text-foreground">Create your investor account</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Create your account to discover exclusive startup deal flow.
+                  Join to discover startup deal flow and connect with founders.
                 </p>
               </div>
               <Button
@@ -461,13 +426,13 @@ const InvestorSignup = () => {
                 variant="hero"
                 size="lg"
                 className="w-full gap-2"
-                disabled={isLoading || !accreditedConfirmed || !acceptedTerms}
+                disabled={isLoading || !acceptedTerms}
               >
-                {isLoading ? "Creating account…" : "Sign Up & Join"}
+                {isLoading ? "Creating account…" : "Sign up"}
                 <ArrowRight className="w-5 h-5" />
               </Button>
               <p className="text-xs text-muted-foreground">
-                Cardinal Talent is for accredited investors only. All info is secure and confidential. By signing up, you agree to our{" "}
+                By signing up, you agree to our{" "}
                 <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
                 {" "}and{" "}
                 <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.

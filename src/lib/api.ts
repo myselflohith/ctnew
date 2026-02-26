@@ -93,6 +93,13 @@ class ApiClient {
     companyName?: string;
     organizationId?: string | null;
     role: string;
+    username?: string | null;
+    location?: string | null;
+    linkedinUrl?: string | null;
+    twitterUrl?: string | null;
+    bio?: string | null;
+    investmentInterests?: string | null;
+    priorInvestments?: string | null;
   }) {
     const response = await this.request('/auth/register', {
       method: 'POST',

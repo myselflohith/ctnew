@@ -79,6 +79,10 @@ export interface RegisterData {
   companyName?: string;
   organizationId?: string | null;
   role: string | number;
+  // Optional investor profile fields (columns that already exist on users)
+  username?: string | null;
+  location?: string | null;
+  linkedinUrl?: string | null;
 }
 
 export interface LoginData {
@@ -88,7 +92,7 @@ export interface LoginData {
 
 // Register a new user
 export async function registerUser(data: RegisterData): Promise<{ user: User; token: string }> {
-  const { email, password, firstName, lastName, companyName, organizationId, role } = data;
+  const { email, password, firstName, lastName, companyName, organizationId, role, username, location, linkedinUrl } = data;
 
   // Validate email
   if (!email || typeof email !== 'string') {
@@ -139,11 +143,12 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
   
   const userRole = getRoleString(roleId);
 
-  // Insert user (include organization_id when selecting existing org)
+  // Insert user (include organization_id when selecting existing org; investor profile fields that exist on users table)
   const orgIdParam = organizationId && /^[0-9a-f-]{36}$/i.test(organizationId) ? organizationId : null;
   const result = await query(
-    `INSERT INTO users (email, encrypted_password, first_name, last_name, company_name, organization_id, role, verification_token, email_verified)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO users (email, encrypted_password, first_name, last_name, company_name, organization_id, role, verification_token, email_verified,
+       username, location, linkedin_profile_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING id, email, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at`,
     [
       email.toLowerCase(),
@@ -154,7 +159,10 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
       orgIdParam,
       roleId,
       verificationToken,
-      isAdmin, // Auto-verify admin
+      isAdmin,
+      username ?? null,
+      location ?? null,
+      linkedinUrl ?? null,
     ]
   );
 

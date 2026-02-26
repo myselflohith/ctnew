@@ -34,6 +34,13 @@ export async function register(data: {
   companyName?: string;
   organizationId?: string | null;
   role: string | number;
+  username?: string | null;
+  location?: string | null;
+  linkedinUrl?: string | null;
+  twitterUrl?: string | null;
+  bio?: string | null;
+  investmentInterests?: string | null;
+  priorInvestments?: string | null;
 }): Promise<User> {
   const response = await apiClient.register(data);
   return response.user;

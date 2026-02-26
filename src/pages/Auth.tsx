@@ -54,7 +54,7 @@ const publicRoles: { id: Exclude<Role, "admin">; icon: React.ElementType; label:
     id: "investor",
     icon: TrendingUp,
     label: "Investor",
-    description: "Accredited investors only",
+    description: "Discover deal flow and connect with founders",
   },
   {
     id: "employer",
@@ -456,11 +456,11 @@ const Auth = () => {
                 </div>
               )}
 
-              {/* Investor: redirect to full accredited investor signup */}
+              {/* Investor: redirect to full investor signup */}
               {mode === "signup" && selectedRole === "investor" && (
                 <div className="rounded-lg border border-border bg-card/50 p-6 space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Join as an accredited investor with full profile: personal info, accreditation, investment preferences, and consent.
+                    Create your investor profile: name, email, handle, and optional details (location, bio, investment interests, links).
                   </p>
                   <Button
                     type="button"

@@ -31,7 +31,7 @@ const router = Router();
 // Register new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, companyName, organizationId, role } = req.body;
+    const { email, password, firstName, lastName, companyName, organizationId, role, username, location, linkedinUrl } = req.body;
 
     // Validate required fields
     if (!email || !password) {
@@ -65,6 +65,9 @@ router.post('/register', async (req: Request, res: Response) => {
       companyName,
       organizationId: organizationId || null,
       role,
+      username: username ?? null,
+      location: location ?? null,
+      linkedinUrl: linkedinUrl ?? null,
     });
 
     // Set token in cookie
