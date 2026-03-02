@@ -5,13 +5,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import fs from 'fs';
 import authRoutes from './routes/auth.routes.js';
 import resumeRoutes from './routes/resume.routes.js';
 import jobRoutes from './routes/job.routes.js';
 import organizationRoutes from './routes/organization.routes.js';
 import interviewRoutes from './routes/interview.routes.js';
 import pool, { closePool } from './database/connection.js';
-import { initializeCronJobs, stopCronJobs } from './utils/cron-scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +20,12 @@ const __dirname = path.dirname(__filename);
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../uploads/interviews');
+    try {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    } catch (e) {
+      // If mkdir fails, multer will throw later; keep error visible in logs.
+      console.warn('Failed to ensure upload directory exists:', uploadDir, e);
+    }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
@@ -99,22 +105,11 @@ const server = app.listen(PORT, () => {
   console.log(`🎬 Interview endpoints: http://localhost:${PORT}/api/interviews`);
   console.log('='.repeat(60) + '\n');
 
-  // Initialize cron jobs for interview processing
-  const cronJob = initializeCronJobs();
-  
-  // Store cronJob for cleanup on shutdown
-  (global as any).interviewCronJob = cronJob;
 });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
-  
-  // Stop cron jobs
-  const cronJob = (global as any).interviewCronJob;
-  if (cronJob) {
-    stopCronJobs(cronJob);
-  }
   
   server.close(async () => {
     console.log('HTTP server closed');

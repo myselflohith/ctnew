@@ -84,10 +84,54 @@ const TalentInterviewSession = () => {
   const speakingRef = useRef(false);
   const processingQuestionRef = useRef(false);
 
+  // Non-blocking background save queue (do not block UX on network)
+  const pendingSavesRef = useRef<
+    Array<{
+      interviewId: number;
+      inviteId: number;
+      questionId?: number;
+      question: string;
+      transcript: string;
+      attempts: number;
+    }>
+  >([]);
+
+  // Persist unsent answers locally so that if the user closes tab / loses network,
+  // we can still recover and generate partial reports/feedback once they return.
+  const storageKeyRef = useRef<string | null>(null);
+  const isFlushingSavesRef = useRef(false);
+  const lastSaveErrorRef = useRef<string | null>(null);
+
   // Fetch interview data
   useEffect(() => {
     const fetchInterviewData = async () => {
       try {
+        // Initialize local storage key for this session (unique per interview+invite).
+        const key = `ai_interview_pending_${interviewId || 'link'}_${inviteId || uniqueLink || 'unknown'}`;
+        storageKeyRef.current = key;
+        // Load any previously-unsent answers (from crashes/network exits).
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              pendingSavesRef.current.push(
+                ...parsed.map((p: any) => ({
+                  interviewId: Number(p.interviewId),
+                  inviteId: Number(p.inviteId),
+                  questionId: p.questionId ?? undefined,
+                  question: String(p.question || ''),
+                  transcript: String(p.transcript || ''),
+                  attempts: 0,
+                }))
+              );
+              // Try flushing in background.
+              void flushPendingSaves();
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to restore pending answers from localStorage:', e);
+        }
         setLoading(true);
         
         // Extract candidate info from navigation state if available
@@ -106,8 +150,39 @@ const TalentInterviewSession = () => {
         
         // Handle public access via unique link (from email)
         if (uniqueLink && !interviewId) {
-          const response = await fetch(`/api/interviews/public/by-link/${uniqueLink}`);
+          const token = localStorage.getItem('auth_token');
+          const response = await fetch(`/api/interviews/public/by-link/${uniqueLink}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
           if (!response.ok) {
+            // If backend requires auth for this invite, redirect to Auth page.
+            // We preserve the link so after signup/login the user can reopen it.
+            if (response.status === 401) {
+              const err = await response.json().catch(() => ({}));
+              if (err?.error === 'AUTH_REQUIRED') {
+                try {
+                  localStorage.setItem('pending_interview_link', uniqueLink);
+                } catch {}
+
+                // Decide signup vs login:
+                // - If user exists => login
+                // - Else => signup
+                let mode: 'signin' | 'signup' = 'signup';
+                try {
+                  const email = (err?.data?.candidateEmail || err?.data?.candidate_email || '').toString().trim();
+                  if (email) {
+                    const existsRes = await fetch(`/api/auth/exists?email=${encodeURIComponent(email)}`);
+                    const existsJson = await existsRes.json().catch(() => ({}));
+                    if (existsJson?.exists === true) mode = 'signin';
+                  }
+                } catch {}
+
+                toast.error(err?.message || 'Please create an account or login to start this interview.');
+                navigate(`/auth?mode=${mode}`, { state: { redirectTo: `/interview/${uniqueLink}` } });
+                return;
+              }
+            }
+
             toast.error('Interview invitation not found or expired');
             navigate('/');
             return;
@@ -249,13 +324,17 @@ const TalentInterviewSession = () => {
 
   const handleStartSession = async () => {
     try {
+      // Requirement: camera and mic should be OFF until the candidate explicitly starts.
+      // We only request microphone permission here (user gesture), and we immediately stop
+      // the stream so the mic is not left "on" while the AI is speaking / before recording.
       console.log('🎯 Requesting microphone permission...');
-      // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log('✅ Microphone permission granted');
 
-      // Store the stream reference for cleanup later
-      (window as any).initialAudioStream = stream;
+      // Immediately stop tracks so mic is OFF until "Start Listening" is pressed.
+      try {
+        stream.getTracks().forEach((t) => t.stop());
+      } catch {}
 
       // Autoplay policies: ensure the first AI speech happens only after a user gesture.
       // Prime the audio element again here (inside the click handler) so QUESTION 1 speaks reliably.
@@ -325,25 +404,34 @@ const TalentInterviewSession = () => {
 
     const firstQuestion = questions[0]?.label || 'Tell me about yourself.';
 
-    const welcomeMessage = `Hello! I am Mary, AI Interviewer. Welcome, excited to get to know you. QUESTION 1: ${firstQuestion}`;
+    // Start greeting must include "Hi, I'm Mary..." and then ask the question.
+    // Keep greeting separate from QUESTION 1 so report extraction and UI pairing stay correct.
+    const greetingMessage = `Hi, I'm Mary, AI Interviewer. Welcome, excited to get to know you.`;
+    const firstQuestionMessage = `QUESTION 1: ${firstQuestion}`;
 
     setState((prev) => ({
       ...prev,
       sessionStarted: true,
       totalQuestions: questions.length,
       currentQuestion: 0,
-      messages: [{ role: 'assistant', content: welcomeMessage, timestamp: new Date() }],
+      messages: [
+        { role: 'assistant', content: greetingMessage, timestamp: new Date() },
+        { role: 'assistant', content: firstQuestionMessage, timestamp: new Date() },
+      ],
       isProcessing: true,
       questionCount: 1,
     }));
 
-    // Speak first question (guard against race conditions)
+    // Speak greeting then question 1 (guard against race conditions)
     setTimeout(async () => {
       if (!mountedRef.current) return;
       if (processingQuestionRef.current) return;
       processingQuestionRef.current = true;
       try {
-        await playAvatarSpeech(welcomeMessage);
+        // Ensure greeting is clearly spoken first (some browsers may cut off back-to-back TTS).
+        await playAvatarSpeech(greetingMessage);
+        await new Promise((r) => setTimeout(r, 1200));
+        await playAvatarSpeech(firstQuestionMessage);
       } finally {
         processingQuestionRef.current = false;
         setState((prev) => ({ ...prev, isProcessing: false }));
@@ -679,6 +767,169 @@ const TalentInterviewSession = () => {
     }
   };
 
+  const persistPendingToStorage = () => {
+    try {
+      const key = storageKeyRef.current;
+      if (!key) return;
+      localStorage.setItem(key, JSON.stringify(pendingSavesRef.current));
+    } catch (e) {
+      // ignore quota / private mode
+    }
+  };
+
+  const enqueueAnswerSave = (payload: {
+    interviewId: number;
+    inviteId: number;
+    questionId?: number;
+    question: string;
+    transcript: string;
+  }) => {
+    pendingSavesRef.current.push({
+      interviewId: payload.interviewId,
+      inviteId: payload.inviteId,
+      questionId: payload.questionId,
+      question: payload.question,
+      transcript: payload.transcript,
+      attempts: 0,
+    });
+
+    persistPendingToStorage();
+
+    // Fire-and-forget flush (do not await)
+    void flushPendingSaves();
+  };
+
+  const flushPendingSaves = async () => {
+    if (isFlushingSavesRef.current) return;
+    if (pendingSavesRef.current.length === 0) return;
+
+    isFlushingSavesRef.current = true;
+
+    try {
+      while (pendingSavesRef.current.length > 0) {
+        const item = pendingSavesRef.current[0];
+        item.attempts += 1;
+
+        try {
+          const token = localStorage.getItem('auth_token');
+          const res = await fetch(`/api/interviews/${item.interviewId}/answer`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              ai_interview_invite_id: item.inviteId,
+              question_id: item.questionId,
+              question: item.question,
+              transcript_text: item.transcript,
+              question_weight: undefined,
+              que_type: 'general',
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err?.error || err?.message || `Save failed (${res.status})`);
+          }
+
+          // success: remove from queue
+          pendingSavesRef.current.shift();
+          persistPendingToStorage();
+          lastSaveErrorRef.current = null;
+        } catch (e: any) {
+          lastSaveErrorRef.current = e?.message || 'Failed to save answer';
+
+          // Retry a few times with small backoff, but do not block UI
+          if (item.attempts >= 3) {
+            // Keep the item in storage so the user can recover later (do not drop).
+            // We stop retrying now to avoid infinite loops.
+            console.warn('Keeping unsent answer for later recovery:', lastSaveErrorRef.current);
+            toast.error('Network issue: some answers will be saved automatically when connection returns.');
+            break;
+          } else {
+            persistPendingToStorage();
+            const backoffMs = 500 * item.attempts;
+            await new Promise((r) => setTimeout(r, backoffMs));
+          }
+        }
+      }
+    } finally {
+      isFlushingSavesRef.current = false;
+    }
+  };
+
+  const endInterviewEarly = async (reason?: string) => {
+    try {
+      const isPractice = interviewData?.type_of_interview === 'Practice';
+      if (isPractice) return;
+
+      const resolvedInterviewId = Number(interviewId || interviewData?.id);
+      const resolvedInviteId = Number(inviteId || inviteData?.id || inviteData?.invite_id);
+
+      if (!resolvedInterviewId || !resolvedInviteId) return;
+
+      // Mark partial completion and trigger scoring (if any answers exist).
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+
+      await fetch(`/api/interviews/${resolvedInterviewId}/end`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ai_interview_invite_id: resolvedInviteId,
+          reason: reason || 'user_exit',
+        }),
+        keepalive: true as any,
+      });
+    } catch (e) {
+      console.warn('Failed to end interview early (best-effort):', e);
+    }
+  };
+
+  // Flush pending saves + mark interview ended when tab is hidden/unloading (best-effort)
+  useEffect(() => {
+    const onOnline = () => {
+      // If connection comes back, retry sending any pending answers.
+      void flushPendingSaves();
+    };
+
+    window.addEventListener('online', onOnline);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        void flushPendingSaves();
+        if (state.sessionStarted && !state.sessionComplete) {
+          void endInterviewEarly('visibility_hidden');
+        }
+      }
+    };
+    const onBeforeUnload = () => {
+      // best-effort; cannot reliably await
+      void flushPendingSaves();
+      if (state.sessionStarted && !state.sessionComplete) {
+        void endInterviewEarly('beforeunload');
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+
+      // Component unmount: if interview was started and not completed, mark partial.
+      if (state.sessionStarted && !state.sessionComplete) {
+        void endInterviewEarly('unmount');
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionStarted, state.sessionComplete, interviewId, inviteId, uniqueLink, inviteData, interviewData]);
+  
   const getAIResponse = async (userMessage: string) => {
     try {
       const isPractice = interviewData?.type_of_interview === 'Practice';
@@ -691,27 +942,15 @@ const TalentInterviewSession = () => {
       const currentQuestionText = currentQ?.label || state.messages[state.messages.length - 1]?.content || '';
 
       // Persist answer for real interviews (practice should not store)
+      // IMPORTANT: do NOT block UX on network. Save in background queue.
       if (!isPractice && resolvedInterviewId && resolvedInviteId) {
-        try {
-          const token = localStorage.getItem('auth_token');
-          await fetch(`/api/interviews/${resolvedInterviewId}/answer`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              ai_interview_invite_id: resolvedInviteId,
-              question_id: currentQ?.id,
-              question: currentQuestionText.replace(/^QUESTION\s*\d+\s*:\s*/i, '').trim(),
-              transcript_text: userMessage,
-              question_weight: undefined,
-              que_type: 'general',
-            }),
-          });
-        } catch (e) {
-          console.warn('Failed to save answer:', e);
-        }
+        enqueueAnswerSave({
+          interviewId: resolvedInterviewId,
+          inviteId: resolvedInviteId,
+          questionId: currentQ?.id,
+          question: currentQuestionText.replace(/^QUESTION\s*\d+\s*:\s*/i, '').trim(),
+          transcript: userMessage,
+        });
       }
 
       // Replace the placeholder "Processing your audio..." with the real transcript.
@@ -813,20 +1052,31 @@ const TalentInterviewSession = () => {
         isProcessing: true,
       }));
 
-      // Calculate scores and feedback
+      // End message: AI should thank the candidate (spoken) after the last question.
+      // IMPORTANT: Do not append this summary to the chat UI, otherwise it appears "below the interview".
+      // The Thank You page is responsible for showing the completion text on a dedicated screen.
       const summary = `Thanks for giving the interview. Your responses have been submitted successfully.`;
-
-      setState((prev) => ({
-        ...prev,
-        messages: [...prev.messages, { role: 'assistant', content: summary }],
-      }));
 
       // Save interview report
       // Practice interviews should NOT store anything (no reports/details).
       const isPractice = interviewData?.type_of_interview === 'Practice';
+
+      // Best-effort: flush any pending per-question saves before final submit
+      if (!isPractice) {
+        try {
+          await flushPendingSaves();
+        } catch {}
+      }
+
+      // Always redirect to the dedicated Thank You screen (new page) after completion.
+      // We should not rely on `saveInterviewReport()` to navigate because the report call
+      // can fail or take time; the UX requirement is to always land on the Thank You page.
       if (!isPractice && ((interviewId && inviteId) || (uniqueLink && inviteData))) {
-        await saveInterviewReport();
-      } else if (isPractice) {
+        // Fire-and-forget: keep saving the report, but do not block redirect.
+        void saveInterviewReport();
+      }
+
+      if (isPractice) {
         // Still mark invite as completed so employer/talent UI reflects completion,
         // but do not create any report rows.
         const inviteIdToUpdate = parseInt(inviteId || inviteData?.id || inviteData?.invite_id);
@@ -847,12 +1097,35 @@ const TalentInterviewSession = () => {
         }
       }
 
+      // Speak the closing message (required: AI speak before end)
       await playAvatarSpeech(summary);
-      
+
       // Stop all media streams after interview completes
       stopAllMediaStreams();
+
+      // Redirect to Thank You page (dedicated screen).
+      const resolvedInviteId = Number(inviteId || inviteData?.id || inviteData?.invite_id);
+      navigate("/talent/interviews/thank-you", {
+        replace: true,
+        state: {
+          inviteId: resolvedInviteId || undefined,
+          interviewTitle: interviewData?.interview_title || "Interview",
+          interviewData,
+        },
+      });
     } catch (error) {
       console.error('Error completing session:', error);
+
+      // Still redirect so the user sees completion screen instead of staying on chat UI.
+      const resolvedInviteId = Number(inviteId || inviteData?.id || inviteData?.invite_id);
+      navigate("/talent/interviews/thank-you", {
+        replace: true,
+        state: {
+          inviteId: resolvedInviteId || undefined,
+          interviewTitle: interviewData?.interview_title || "Interview",
+          interviewData,
+        },
+      });
     } finally {
       setState((prev) => ({ ...prev, isProcessing: false }));
       // Make sure to stop media even if there's an error
@@ -880,12 +1153,11 @@ const TalentInterviewSession = () => {
         const currentMsg = state.messages[i];
         const nextMsg = state.messages[i + 1];
 
-        // Skip the very first assistant message (intro). The intro text starts with "Hello!"
-        // and is not an interview question.
+        // Skip the greeting/introduction message (not an interview question)
         if (
           i === 0 &&
           currentMsg.role === 'assistant' &&
-          currentMsg.content.toLowerCase().includes("i'm your ai interview assistant")
+          currentMsg.content.toLowerCase().includes("hi, i'm mary, ai interviewer")
         ) {
           console.log(`⏭️  Skipping intro message at index 0`);
           continue;
@@ -980,7 +1252,11 @@ const TalentInterviewSession = () => {
 
       const result = await response.json();
       console.log('✅ Interview report saved:', result);
-      toast.success('Interview completed! Feedback will be generated shortly by our AI system.');
+
+      // No navigation here.
+      // Navigation to the dedicated Thank You screen is handled by `completeSession()`,
+      // so we don't risk double-navigation / race conditions.
+      toast.success("Interview completed!");
     } catch (error) {
       console.error('❌ Error saving interview report:', error);
       toast.error('Failed to save interview report');
@@ -998,10 +1274,10 @@ const TalentInterviewSession = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20 p-3">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-4">
           <Button
             variant="ghost"
             onClick={() => navigate('/talent/interviews')}
@@ -1230,18 +1506,8 @@ const TalentInterviewSession = () => {
                       <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
                       <h3 className="text-lg font-semibold text-green-900 mb-2">Interview Complete!</h3>
                       <p className="text-green-800">
-                        Thanks for giving the interview. Your responses have been submitted successfully.
+                        Redirecting to Thank You page...
                       </p>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <Button
-                        onClick={() => navigate('/talent/interviews')}
-                        className="bg-gradient-to-r from-green-600 to-emerald-600"
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        Return to Interviews
-                      </Button>
                     </div>
                   </div>
                 )}

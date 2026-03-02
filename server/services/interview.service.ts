@@ -5,7 +5,7 @@ import { sendInterviewInviteEmail } from './email.service.js';
 export async function createAIInterview(
   userId: string,
   jobId: string | number,
-  status: string = 'pending',
+  status: string = 'Pending',
   questionType: string = '',
   typeOfInterview: string = 'Practice',
   interviewCategory: string = '',
@@ -65,6 +65,7 @@ export async function createAIInterview(
             [jobId, interviewCategory || 'general', questionText, weight, userId]
           );
         }
+        
       }
 
       await client.query('COMMIT');
@@ -81,20 +82,75 @@ export async function createAIInterview(
   }
 }
 
-export async function getInterviewsForEmployer(userId: string) {
+export async function getInterviewsForEmployer(
+  userId: string,
+  filters?: { status?: string; search?: string }
+) {
   try {
+    const status = (filters?.status || '').toString().toLowerCase().trim();
+    const search = (filters?.search || '').toString().toLowerCase().trim();
+
+    // Default behavior should match ch-job-marketplace:
+    // - If status param is missing/empty => show ACTIVE (discarded_at IS NULL)
+    // - Only show archived when explicitly requested.
+    const isArchived =
+      status === 'archieved' || status === 'archived' || status === 'archive';
+
+    // NOTE:
+    // - "Active" means discarded_at IS NULL
+    // - "Archived" means discarded_at IS NOT NULL (Rails uses unscoped + where.not(discarded_at: nil))
+    // - Search parity: interview_title, type_of_interview, and job title (ct_job.title)
     const result = await pool.query(
       `SELECT 
         ai.*,
+        cj.title as job_title,
         (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND discarded_at IS NULL) as candidate_count,
-        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND status = 'Completed' AND discarded_at IS NULL) as completed_count
+        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) = 'completed' AND discarded_at IS NULL) as completed_count,
+        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) IN ('completed','complete') AND discarded_at IS NULL) as completed_count_compat,
+        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) IN ('in progress','in_progress','started') AND discarded_at IS NULL) as in_progress_count,
+        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) IN ('partially completed','partially_completed') AND discarded_at IS NULL) as partially_completed_count,
+        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) IN ('pending') AND discarded_at IS NULL) as pending_count,
+        (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND discarded_at IS NULL) as total_invites
        FROM ai_interviews ai
-       WHERE ai.person_id = $1 AND ai.discarded_at IS NULL
+       LEFT JOIN ct_job cj ON ai.job_id = cj.id
+       WHERE ai.person_id = $1
+         AND (
+           ($2::boolean = true AND ai.discarded_at IS NOT NULL)
+           OR
+           ($2::boolean = false AND ai.discarded_at IS NULL)
+         )
+         AND (
+           $3 = ''
+           OR LOWER(COALESCE(ai.interview_title, '')) LIKE ('%' || $3 || '%')
+           OR LOWER(COALESCE(ai.type_of_interview, '')) LIKE ('%' || $3 || '%')
+           OR LOWER(COALESCE(cj.title, '')) LIKE ('%' || $3 || '%')
+         )
        ORDER BY ai.created_at DESC`,
-      [userId]
+      [userId, isArchived, search]
     );
 
-    return result.rows;
+    // Normalize status for employer list:
+    // - If any candidate completed => show "Completed" (matches expected employer behavior)
+    // - Else if any candidate in progress => show "In Progress"
+    // - Else keep DB status (or Pending)
+    return result.rows.map((row: any) => {
+      const completed = Number(row.completed_count_compat ?? row.completed_count ?? 0);
+      const inProgress = Number(row.in_progress_count ?? 0);
+      const pending = Number(row.pending_count ?? 0);
+      const total = Number(row.total_invites ?? row.candidate_count ?? 0);
+
+      let normalizedStatus = row.status || 'Pending';
+
+      if (completed > 0) normalizedStatus = 'Completed';
+      else if (inProgress > 0) normalizedStatus = 'In Progress';
+      else if (total > 0 && pending === total) normalizedStatus = 'Pending';
+
+      return {
+        ...row,
+        status: normalizedStatus,
+        completed_count: row.completed_count ?? completed,
+      };
+    });
   } catch (error: any) {
     console.error('Error getting interviews:', error);
     throw error;
@@ -395,6 +451,140 @@ Ensure that you generate exactly ${numQuestions} questions and that they are dis
   }
 }
 
+export async function getInterviewInvites(
+  interviewId: number,
+  filters?: {
+    status?: string; // "active" | "archieved" | "archived" OR invite status like "Completed"
+    interview_status?: string; // Pending/In Progress/Completed/Partially Completed
+    search?: string;
+    start_date?: string; // YYYY-MM-DD
+    end_date?: string; // YYYY-MM-DD
+    sortField?: string;
+    sortDirection?: string;
+  }
+) {
+  try {
+    const status = (filters?.status || '').toString().toLowerCase().trim();
+    const interviewStatus = (filters?.interview_status || '').toString().trim();
+    const search = (filters?.search || '').toString().toLowerCase().trim();
+    const startDate = (filters?.start_date || '').toString().trim();
+    const endDate = (filters?.end_date || '').toString().trim();
+
+    const isArchived =
+      status === 'archieved' || status === 'archived' || status === 'archive';
+
+    // Sorting allowlist (avoid SQL injection)
+    const allowedSortFields = new Set(['created_at', 'updated_at', 'candidate_name', 'candidate_email', 'status']);
+    const sortFieldRaw = (filters?.sortField || 'created_at').toString();
+    const sortField = allowedSortFields.has(sortFieldRaw) ? sortFieldRaw : 'created_at';
+
+    const sortDirRaw = (filters?.sortDirection || 'DESC').toString().toUpperCase();
+    const sortDirection = sortDirRaw === 'ASC' ? 'ASC' : 'DESC';
+
+    // Employer candidate list needs to show overall rating/score even for archived candidates.
+    // Also needs completion % for partial interviews. Compute from report_details (answered) vs total questions.
+    const result = await pool.query(
+      `SELECT
+         aiv.*,
+         air.id as report_id,
+         air.rating as report_rating,
+         air.score as report_score,
+         air.ai_feedback as report_ai_feedback,
+         (
+           SELECT COUNT(*)::int
+           FROM ai_interview_report_details d
+           WHERE d.ai_interview_invite_id = aiv.id
+             AND LENGTH(TRIM(COALESCE(d.transcript_text, ''))) > 0
+         ) as answered_count,
+         (
+           (
+             (SELECT COUNT(*) FROM ai_interview_custom_questions WHERE ai_interview_id = aiv.interview_id AND discarded_at IS NULL)
+             +
+             (SELECT COUNT(*) FROM ai_generated_questions WHERE interview_id = aiv.interview_id AND discarded_at IS NULL)
+           )::int
+         ) as total_questions
+       FROM ai_interview_invites aiv
+       LEFT JOIN ai_interview_reports air
+         ON air.ai_interview_invite_id = aiv.id
+        AND air.discarded_at IS NULL
+        AND air.created_at = (
+          SELECT MAX(air2.created_at)
+          FROM ai_interview_reports air2
+          WHERE air2.ai_interview_invite_id = aiv.id
+            AND air2.discarded_at IS NULL
+        )
+       WHERE aiv.interview_id = $1
+         AND (
+           ($2::boolean = true AND aiv.discarded_at IS NOT NULL)
+           OR
+           ($2::boolean = false AND aiv.discarded_at IS NULL)
+         )
+         AND (
+           $3 = ''
+           OR LOWER(COALESCE(aiv.candidate_name, '')) LIKE ('%' || $3 || '%')
+           OR LOWER(COALESCE(aiv.candidate_email, '')) LIKE ('%' || $3 || '%')
+           OR LOWER(COALESCE(aiv.status, '')) LIKE ('%' || $3 || '%')
+         )
+         AND (
+           $4 = ''
+           OR aiv.status = $4
+         )
+         AND (
+           ($5 = '' OR $6 = '')
+           OR DATE(aiv.created_at) BETWEEN $5::date AND $6::date
+         )
+       ORDER BY
+         CASE WHEN $7 = 'candidate_name' THEN aiv.candidate_name END,
+         CASE WHEN $7 = 'candidate_email' THEN aiv.candidate_email END,
+         CASE WHEN $7 = 'status' THEN aiv.status END,
+         CASE WHEN $7 = 'updated_at' THEN aiv.updated_at END,
+         aiv.created_at ${sortDirection}`,
+      [interviewId, isArchived, search, interviewStatus, startDate, endDate, sortField]
+    );
+
+    const safeJsonParse = (value: any) => {
+      if (!value) return null;
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    };
+
+    return result.rows.map((row: any) => {
+      const inviteStatus = (row.status || '').toString().toLowerCase();
+
+      // IMPORTANT:
+      // Do NOT show "Partial" as a rating label. If rating is missing, return null so UI can show
+      // "Pending" (while worker generates) OR, if score exists, we derive Great/Average/Poor in UI/service.
+      const reportRatingRaw = (row.report_rating || '').toString().trim();
+      const fallbackRating = reportRatingRaw.length > 0 ? row.report_rating : null;
+
+      const answeredCount = Number(row.answered_count ?? 0);
+      const totalQuestions = Number(row.total_questions ?? 0);
+      const completionPercentage =
+        totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+
+      return {
+        ...row,
+        report_id: row.report_id,
+        report_rating: fallbackRating,
+        report_score: safeJsonParse(row.report_score),
+        report_ai_feedback: safeJsonParse(row.report_ai_feedback),
+        answered_count: answeredCount,
+        total_questions: totalQuestions,
+        completion_percentage: completionPercentage,
+        // Keep status as-is; this is what employer list uses ("Partially Completed")
+        status: row.status,
+      };
+    });
+  } catch (error: any) {
+    console.error('Error getting interview invites:', error);
+    throw error;
+  }
+}
+
 export async function getCandidateReports(interviewId: number) {
   try {
     const result = await pool.query(
@@ -434,6 +624,34 @@ export async function startInterviewReport(interviewId: number, interviewInviteI
     }
     if (Number(inviteRes.rows[0].interview_id) !== Number(interviewId)) {
       throw new Error(`Invite ${interviewInviteId} does not belong to interview ${interviewId}`);
+    }
+
+    // Expire link once interview starts (single-use):
+    // - Mark invite as "In Progress"
+    // - Invalidate unique_interview_link so the public link can't be reused
+    // This matches the requirement: "link should be only one time accessible" (invalidate on start).
+    const expiredSuffix = crypto.randomBytes(8).toString('hex');
+
+    const expireRes = await client.query(
+      `UPDATE ai_interview_invites
+       SET status = 'In Progress',
+           unique_interview_link = CONCAT('expired_', id, '_', $2::text),
+           updated_at = NOW()
+       WHERE id = $1 AND LOWER(status) = 'pending'
+       RETURNING id`,
+      [interviewInviteId, expiredSuffix]
+    );
+
+    // Enforce single-start:
+    // If the invite is not Pending, do not allow starting again.
+    // This ensures the talent can only start the interview once.
+    if (expireRes.rowCount === 0) {
+      const current = await client.query(
+        `SELECT status FROM ai_interview_invites WHERE id = $1 AND discarded_at IS NULL`,
+        [interviewInviteId]
+      );
+      const status = current.rows?.[0]?.status || 'Unknown';
+      throw new Error(`Interview link already used (status: ${status})`);
     }
 
     // Ensure report exists (idempotent)
@@ -483,8 +701,45 @@ export async function saveInterviewAnswer(
   try {
     await client.query('BEGIN');
 
-    // Ensure report exists
-    const report = await startInterviewReport(interviewId, interviewInviteId);
+    // Ensure report exists WITHOUT re-triggering "start" logic.
+    // startInterviewReport() enforces single-start and will throw once invite is already In Progress.
+    // For saving answers we just need an existing report row (create if missing).
+    const existingReportRes = await client.query(
+      `SELECT * FROM ai_interview_reports
+       WHERE interview_id = $1 AND ai_interview_invite_id = $2 AND discarded_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [interviewId, interviewInviteId]
+    );
+
+    let report: any;
+    if (existingReportRes.rows.length > 0) {
+      report = existingReportRes.rows[0];
+
+      // Ensure interview_start_at exists so the scoring worker (generateInterviewFeedback)
+      // can pick this report up even for partially completed interviews.
+      // The worker filters: air.interview_start_at IS NOT NULL
+      if (!report.interview_start_at) {
+        const patched = await client.query(
+          `UPDATE ai_interview_reports
+           SET interview_start_at = NOW()::date,
+               updated_at = NOW()
+           WHERE id = $1
+           RETURNING *`,
+          [report.id]
+        );
+        report = patched.rows[0] || report;
+      }
+    } else {
+      const created = await client.query(
+        `INSERT INTO ai_interview_reports
+         (interview_id, ai_interview_invite_id, interview_start_at, transcript_text, created_at, updated_at)
+         VALUES ($1, $2, NOW()::date, '', NOW(), NOW())
+         RETURNING *`,
+        [interviewId, interviewInviteId]
+      );
+      report = created.rows[0];
+    }
 
     // Upsert by (report_id, question) to avoid duplicates
     const existing = await client.query(
@@ -532,6 +787,45 @@ export async function saveInterviewAnswer(
         [report.id, interviewInviteId, payload.question, payload.transcript_text, weight, payload.que_type || 'general']
       );
       detailRow = inserted.rows[0];
+    }
+
+    // Update invite status to "Partially Completed" once we have at least 1 answer,
+    // but only if the interview is not fully submitted yet.
+    // We compute completion based on answeredCount vs totalQuestions.
+      const answeredCountRes = await client.query(
+        `SELECT COUNT(*)::int as answered_count
+         FROM ai_interview_report_details
+         WHERE ai_interview_invite_id = $1
+           AND LENGTH(TRIM(COALESCE(transcript_text, ''))) > 0`,
+        [interviewInviteId]
+      );
+      const answeredCount = Number(answeredCountRes.rows?.[0]?.answered_count ?? 0);
+
+    const totalQuestionsRes = await client.query(
+      `SELECT
+         (
+           (SELECT COUNT(*) FROM ai_interview_custom_questions WHERE ai_interview_id = $1 AND discarded_at IS NULL)
+           +
+           (SELECT COUNT(*) FROM ai_generated_questions WHERE interview_id = $1 AND discarded_at IS NULL)
+         )::int as total_questions`,
+      [interviewId]
+    );
+    const totalQuestions = Number(totalQuestionsRes.rows?.[0]?.total_questions ?? 0);
+
+    if (answeredCount > 0) {
+      // Keep invite status in sync as soon as we have at least 1 real answer.
+      // This allows partial interviews to be visible and also allows scoring worker to pick it up.
+      const newStatus =
+        totalQuestions > 0 && answeredCount >= totalQuestions ? 'Completed' : 'Partially Completed';
+
+      await client.query(
+        `UPDATE ai_interview_invites
+         SET status = $2,
+             updated_at = NOW()
+         WHERE id = $1
+           AND LOWER(status) NOT IN ('completed','complete')`,
+        [interviewInviteId, newStatus]
+      );
     }
 
     await client.query('COMMIT');
@@ -688,6 +982,11 @@ export async function submitInterviewReport(
 
           if (!questionText) continue;
 
+          // IMPORTANT:
+          // Do not persist "empty answers". Some UI flows submit report_details with questions but no transcript,
+          // which results in "No response provided" rows that later get AI-scored incorrectly.
+          if (!answerText) continue;
+
           let detailScore = null;
           let detailFeedback = null;
 
@@ -756,12 +1055,26 @@ export async function submitInterviewReport(
         console.log('⚠️  No report_details to upsert\n');
       }
 
-      // Update interview invite status to Completed
-      await client.query(
-        'UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2',
-        ['Completed', interviewInviteId]
+      // Update interview invite status to Completed ONLY if there is at least 1 answered question.
+      // If there are no answers, keep it as Pending/In Progress/Partially Completed (do not "complete" the interview).
+      const answeredCountRes = await client.query(
+        `SELECT COUNT(*)::int as answered_count
+         FROM ai_interview_report_details
+         WHERE ai_interview_report_id = $1
+           AND LENGTH(TRIM(COALESCE(transcript_text, ''))) > 0`,
+        [report.id]
       );
-      console.log(`✅ Invite ${interviewInviteId} status updated to Completed`);
+      const answeredCount = Number(answeredCountRes.rows?.[0]?.answered_count ?? 0);
+
+      if (answeredCount > 0) {
+        await client.query(
+          'UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2',
+          ['Completed', interviewInviteId]
+        );
+        console.log(`✅ Invite ${interviewInviteId} status updated to Completed`);
+      } else {
+        console.log(`⚠️  No answers found for invite ${interviewInviteId}; skipping status update to Completed`);
+      }
 
       // Check if all invited candidates have completed this interview
       const pendingResult = await client.query(
@@ -835,8 +1148,19 @@ export async function getTalentReportByInviteId(inviteId: number) {
   try {
     const client = await pool.connect();
 
+    const safeJsonParse = (value: any) => {
+      if (!value) return null;
+      if (typeof value !== "string") return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        // Some rows may contain plain text like "Awaiting processing" instead of JSON.
+        return value;
+      }
+    };
+
     try {
-      // Get report for this invite (includes reports being processed)
+      // Get report for this invite (includes partial reports and reports being processed)
       const reportResult = await client.query(
         `SELECT air.*, aiv.candidate_name, aiv.candidate_email, ai.interview_title, ai.interview_category
          FROM ai_interview_reports air
@@ -862,20 +1186,152 @@ export async function getTalentReportByInviteId(inviteId: number) {
         [report.id]
       );
 
-      // Add processing_status to indicate if report is still being processed
-      const isProcessing = report.rating === null || report.ai_feedback === null;
+      // Completion metrics
+      const answeredCount = Number(detailsResult.rows?.length ?? 0);
 
-      return {
+      const totalQuestionsRes = await client.query(
+        `SELECT
+           (
+             (SELECT COUNT(*) FROM ai_interview_custom_questions WHERE ai_interview_id = $1 AND discarded_at IS NULL)
+             +
+             (SELECT COUNT(*) FROM ai_generated_questions WHERE interview_id = $1 AND discarded_at IS NULL)
+           )::int as total_questions`,
+        [report.interview_id]
+      );
+      const totalQuestions = Number(totalQuestionsRes.rows?.[0]?.total_questions ?? 0);
+
+      const completionPercentage =
+        totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+
+      // Processing: partial scoring may run async.
+      //
+      // IMPORTANT FIX:
+      // Some endpoints/UI treat "rating is null" as "pending" and show N/A in employer lists/reports.
+      // For partially-completed interviews we want to show a meaningful status:
+      //  - If there is at least 1 answered question AND we have any scored detail -> show "Partial"
+      //  - If there is at least 1 answered question BUT no scored detail yet -> show "Pending"
+      // This mirrors Rails behavior more closely and prevents "N/A" on partial interviews.
+      const normalized = {
         ...report,
-        details: detailsResult.rows,
-        is_processing: isProcessing,
-        processing_status: isProcessing ? 'generating_feedback' : 'completed',
+        // IMPORTANT: score/ai_feedback columns may be JSON stored as string
+        score: safeJsonParse(report.score),
+        ai_feedback: safeJsonParse(report.ai_feedback),
+        details: detailsResult.rows.map((row: any) => ({
+          ...row,
+          score: safeJsonParse(row.score),
+          ai_feedback: safeJsonParse(row.ai_feedback),
+        })),
+        answered_count: answeredCount,
+        total_questions: totalQuestions,
+        completion_percentage: completionPercentage,
+        is_processing: false,
+        processing_status: "completed",
       };
+
+      // If overall score is missing but we have per-question scores, compute a basic aggregate.
+      // This enables "scoring" to show for Partially Completed interviews.
+      if (!normalized.score) {
+        const detailScores = (normalized.details || [])
+          .map((d: any) => {
+            const s = d?.score;
+            if (typeof s === "number") return s;
+            if (typeof s === "string") {
+              const n = Number(s);
+              return Number.isFinite(n) ? n : null;
+            }
+            if (s && typeof s === "object") {
+              // common shapes: { total: 7 } or { score: 7 }
+              const n = Number((s as any).total ?? (s as any).score);
+              return Number.isFinite(n) ? n : null;
+            }
+            return null;
+          })
+          .filter((n: any) => typeof n === "number" && Number.isFinite(n));
+
+        if (detailScores.length > 0) {
+          const avg =
+            Math.round(
+              (detailScores.reduce((a: number, b: number) => a + b, 0) / detailScores.length) * 10
+            ) / 10;
+          normalized.score = { average: avg, answered: detailScores.length };
+        }
+      }
+
+      // If overall rating is missing but we have at least one scored detail row, compute an overall rating
+      // using the same mapping as completed interviews (generateInterviewFeedback output).
+      //
+      // IMPORTANT:
+      // Do NOT return "Partial" as a rating label. For partially completed interviews we still want a real
+      // overall rating (Great/Average/Poor) based on whatever answers exist so far.
+      if (!normalized.rating || String(normalized.rating).trim().length === 0) {
+        // Try derive from score payload (best-effort) before falling back to detail ratings.
+        const extractNumericScore = (val: any): number | null => {
+          if (val == null) return null;
+          if (typeof val === 'number') return Number.isFinite(val) ? val : null;
+          if (typeof val === 'string') {
+            const n = Number(val);
+            return Number.isFinite(n) ? n : null;
+          }
+          if (typeof val === 'object') {
+            const n = Number((val as any).total ?? (val as any).score ?? (val as any).average);
+            return Number.isFinite(n) ? n : null;
+          }
+          return null;
+        };
+
+        const overallNumeric =
+          extractNumericScore(normalized.score) ??
+          extractNumericScore((normalized.score as any)?.final_score) ??
+          extractNumericScore((normalized.score as any)?.overall_score);
+
+        // Map numeric -> label (align with existing completed interview labeling conventions).
+        const numericToLabel = (n: number): string => {
+          // If your completed flow uses a different scale, adjust here.
+          // Current system commonly uses 0-10 or 0-100; support both.
+          const score0to100 = n <= 10 ? n * 10 : n;
+          if (score0to100 >= 75) return 'Great';
+          if (score0to100 >= 45) return 'Average';
+          return 'Poor';
+        };
+
+        let derived: string | null = null;
+
+        if (overallNumeric != null) {
+          derived = numericToLabel(overallNumeric);
+        } else {
+          const detailRatings = (normalized.details || [])
+            .map((d: any) => (d?.rating || '').toString().trim())
+            .filter((r: string) => r.length > 0 && r.toLowerCase() !== 'practice');
+
+          // If details are already labeled Great/Average/Poor, use majority vote.
+          if (detailRatings.length > 0) {
+            const counts = new Map<string, number>();
+            for (const r of detailRatings) counts.set(r, (counts.get(r) || 0) + 1);
+            derived = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+          }
+        }
+
+        if (answeredCount > 0 && derived) {
+          normalized.rating = derived;
+          normalized.is_processing = false;
+          normalized.processing_status = 'completed';
+        } else if (answeredCount > 0) {
+          normalized.rating = null;
+          normalized.is_processing = true;
+          normalized.processing_status = 'generating_feedback';
+        } else {
+          normalized.rating = null;
+          normalized.is_processing = false;
+          normalized.processing_status = 'no_answers';
+        }
+      }
+
+      return normalized;
     } finally {
       client.release();
     }
   } catch (error: any) {
-    console.error('Error getting talent interview report:', error);
+    console.error("Error getting talent interview report:", error);
     throw error;
   }
 }
@@ -892,7 +1348,7 @@ export async function getTalentInterviewSchedules(talentUserId: string | number)
       return [];
     }
 
-    const userEmail = userResult.rows[0].email;
+    const userEmail = (userResult.rows[0].email || '').toString().toLowerCase().trim();
 
     const result = await pool.query(
       `SELECT 
@@ -916,37 +1372,58 @@ export async function getTalentInterviewSchedules(talentUserId: string | number)
         aiv.created_at as invite_created_at,
         aiv.updated_at as invite_updated_at,
         (SELECT COUNT(*) FROM ai_interview_reports WHERE ai_interview_invite_id = aiv.id) as completed,
-        (SELECT COUNT(*) FROM ai_interview_reports WHERE ai_interview_invite_id = aiv.id AND discarded_at IS NULL) as report_count
+        (SELECT COUNT(*) FROM ai_interview_reports WHERE ai_interview_invite_id = aiv.id AND discarded_at IS NULL) as report_count,
+        (SELECT COUNT(*) FROM ai_interview_report_details WHERE ai_interview_invite_id = aiv.id)::int as answered_count,
+        (
+          (
+            (SELECT COUNT(*) FROM ai_interview_custom_questions WHERE ai_interview_id = ai.id AND discarded_at IS NULL)
+            +
+            (SELECT COUNT(*) FROM ai_generated_questions WHERE interview_id = ai.id AND discarded_at IS NULL)
+          )::int
+        ) as total_questions
        FROM ai_interviews ai
        JOIN ai_interview_invites aiv ON ai.id = aiv.interview_id
-       WHERE (aiv.person_id = $1 OR aiv.candidate_email = $2)
+       WHERE (
+           (aiv.person_id = $1)
+           OR (LOWER(TRIM(aiv.candidate_email)) = $2)
+         )
          AND ai.discarded_at IS NULL 
          AND aiv.discarded_at IS NULL
        ORDER BY aiv.created_at DESC`,
       [talentUserId, userEmail]
     );
 
-    return result.rows.map(row => ({
-      id: row.id,
-      invite_id: row.invite_id,
-      job_title: row.interview_title || 'Interview',
-      interview_title: row.interview_title,
-      company: 'Company',
-      location: 'Remote',
-      type_of_interview: row.type_of_interview || 'Practice',
-      interview_category: row.interview_category || 'General',
-      invite_created_at: row.invite_created_at,
-      invite_status: row.invite_status || 'Pending',
-      completed: row.completed,
-      report_count: row.report_count,
-      candidate_name: row.candidate_name,
-      candidate_email: row.candidate_email,
-      phone_num: row.phone_num,
-      unique_interview_link: row.unique_interview_link,
-      job_id: row.job_id,
-      status: row.status,
-      question_type: row.question_type,
-    }));
+    return result.rows.map(row => {
+      const answeredCount = Number(row.answered_count ?? 0);
+      const totalQuestions = Number(row.total_questions ?? 0);
+      const completionPercentage =
+        totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+
+      return {
+        id: row.id,
+        invite_id: row.invite_id,
+        job_title: row.interview_title || 'Interview',
+        interview_title: row.interview_title,
+        company: 'Company',
+        location: 'Remote',
+        type_of_interview: row.type_of_interview || 'Practice',
+        interview_category: row.interview_category || 'General',
+        invite_created_at: row.invite_created_at,
+        invite_status: row.invite_status || 'Pending',
+        completed: row.completed,
+        report_count: row.report_count,
+        answered_count: answeredCount,
+        total_questions: totalQuestions,
+        completion_percentage: completionPercentage,
+        candidate_name: row.candidate_name,
+        candidate_email: row.candidate_email,
+        phone_num: row.phone_num,
+        unique_interview_link: row.unique_interview_link,
+        job_id: row.job_id,
+        status: row.status,
+        question_type: row.question_type,
+      };
+    });
   } catch (error: any) {
     console.error('Error getting talent interview schedules:', error);
     throw error;
@@ -965,13 +1442,14 @@ export async function getInterviewByUniqueLink(uniqueLink: string) {
       console.log('🔍 Looking up interview with link:', uniqueLink);
       
       // Get invite and interview info
-      const inviteResult = await client.query(
-        `SELECT 
+    const inviteResult = await client.query(
+      `SELECT 
           aiv.id as invite_id,
           aiv.interview_id,
           aiv.candidate_name,
           aiv.candidate_email,
           aiv.status as invite_status,
+          aiv.person_id as invite_person_id,
           ai.id,
           ai.interview_title,
           ai.type_of_interview,
@@ -983,7 +1461,9 @@ export async function getInterviewByUniqueLink(uniqueLink: string) {
          FROM ai_interview_invites aiv
          JOIN ai_interviews ai ON aiv.interview_id = ai.id
          LEFT JOIN ct_job cj ON ai.job_id = cj.id
-         WHERE aiv.unique_interview_link = $1 AND aiv.discarded_at IS NULL`,
+         WHERE aiv.unique_interview_link = $1
+           AND aiv.discarded_at IS NULL
+           AND LOWER(aiv.status) = 'pending'`,
         [uniqueLink]
       );
 
@@ -1023,6 +1503,7 @@ export async function getInterviewByUniqueLink(uniqueLink: string) {
         interview_id: inviteData.interview_id,
         candidate_name: inviteData.candidate_name,
         candidate_email: inviteData.candidate_email,
+        invite_person_id: inviteData.invite_person_id,
         interview_title: inviteData.interview_title,
         type_of_interview: inviteData.type_of_interview || 'Practice',
         interview_category: inviteData.interview_category || 'General',

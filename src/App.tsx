@@ -28,6 +28,9 @@ import TalentInterviews from "./pages/talent/Interviews";
 import InterviewScreeningPage from "./pages/talent/InterviewScreeningPage";
 import TalentSettings from "./pages/talent/Settings";
 import TalentInterviewSession from "./pages/talent/InterviewSession";
+import InterviewAccessGate from "./pages/talent/InterviewAccessGate";
+import TalentInterviewReportPage from "./pages/talent/InterviewReportPage";
+import InterviewThankYou from "./pages/talent/InterviewThankYou";
 
 // Public/Interview pages
 
@@ -86,6 +89,7 @@ const App = () => (
 
             {/* Public interview access by email link */}
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />
+            <Route path="/interview/:token/access" element={<InterviewAccessGate />} />
             <Route path="/interview/:token/session" element={<TalentInterviewSession />} />
             
             {/* Talent routes */}
@@ -94,7 +98,10 @@ const App = () => (
             <Route path="/talent/applications" element={<TalentApplications />} />
             <Route path="/talent/saved" element={<TalentSavedJobs />} />
             <Route path="/talent/interviews" element={<TalentInterviews />} />
+            <Route path="/talent/interviews/thank-you" element={<InterviewThankYou />} />
+            <Route path="/talent/interview-report/:inviteId" element={<TalentInterviewReportPage />} />
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />
+            <Route path="/interview/:token/access" element={<InterviewAccessGate />} />
             <Route path="/interview/:token/session" element={<TalentInterviewSession />} />
             <Route path="/talent/settings" element={<TalentSettings />} />
             

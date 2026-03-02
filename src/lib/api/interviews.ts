@@ -120,7 +120,8 @@ export const interviewsAPI = {
     interviewId: string,
     page: number = 1,
     filters?: {
-      status?: string;
+      status?: string; // active|archieved (archive toggle)
+      interviewStatus?: string; // Pending|In Progress|Completed|Partially Completed
       search?: string;
       startDate?: string;
       endDate?: string;
@@ -136,7 +137,9 @@ export const interviewsAPI = {
   }> {
     const params = new URLSearchParams({
       page: page.toString(),
-      status: filters?.status || "",
+      per_page: "10",
+      status: filters?.status || "active",
+      interview_status: filters?.interviewStatus || "",
       search: filters?.search || "",
       start_date: filters?.startDate || "",
       end_date: filters?.endDate || "",
@@ -239,6 +242,32 @@ export const interviewsAPI = {
     }) as Promise<{ success: boolean }>;
   },
 
+  // Archive / unarchive candidate invite
+  async archiveInvite(inviteId: string | number, payload?: { reason?: string; reason_note?: string }): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    return apiClient.request<{ success: boolean; message?: string; error?: string }>(
+      `/interviews/invites/${inviteId}/archive`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload || {}),
+      }
+    ) as Promise<{ success: boolean; message?: string; error?: string }>;
+  },
+
+  async unarchiveInvite(inviteId: string | number): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    return apiClient.request<{ success: boolean; message?: string; error?: string }>(
+      `/interviews/invites/${inviteId}/unarchive`,
+      { method: "POST" }
+    ) as Promise<{ success: boolean; message?: string; error?: string }>;
+  },
+
   // Delete candidate invite
   async deleteInvite(interviewId: string, inviteId: string): Promise<{
     success: boolean;
@@ -324,13 +353,23 @@ export const interviewsAPI = {
       {
         method: "GET",
       }
-    ) as Promise<{ success: boolean; data: any[] }>;
+    ) as unknown as Promise<{ success: boolean; data: any[] }>;
   },
 
   // Get interview report details
   async getInterviewReportDetails(reportId: string | number): Promise<{ success: boolean; data: any }> {
     return apiClient.request<{ success: boolean; data: any }>(
       `/interviews/reports/${reportId}`,
+      {
+        method: "GET",
+      }
+    ) as Promise<{ success: boolean; data: any }>;
+  },
+
+  // Get talent report by inviteId (includes completion metrics)
+  async getTalentReportByInviteId(inviteId: string | number): Promise<{ success: boolean; data: any }> {
+    return apiClient.request<{ success: boolean; data: any }>(
+      `/interviews/talent/report/${inviteId}`,
       {
         method: "GET",
       }

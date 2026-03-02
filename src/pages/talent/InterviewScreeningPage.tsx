@@ -22,6 +22,39 @@ const InterviewScreeningPage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
 
+  const endInterviewEarly = async (reason?: string) => {
+    try {
+      // Only for REAL interviews (practice should not persist anything)
+      if (practiceMode) return;
+
+      const authToken = localStorage.getItem('auth_token');
+      if (!authToken) return;
+
+      const resolvedInterviewId = interviewData?.interviewId || interviewData?.interview_id;
+      const resolvedInviteId =
+        interviewData?.inviteId || interviewData?.invite_id || interviewData?.ai_interview_invite_id;
+
+      if (!resolvedInterviewId || !resolvedInviteId) return;
+
+      // Best-effort: mark as Partially Completed and trigger scoring (if any answers exist).
+      await fetch(`/api/interviews/${resolvedInterviewId}/end`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          ai_interview_invite_id: resolvedInviteId,
+          reason: reason || 'user_exit',
+        }),
+        keepalive: true as any, // supported in modern browsers; ignored elsewhere
+      });
+    } catch (e) {
+      // best-effort only
+      console.warn('Failed to end interview early (best-effort):', e);
+    }
+  };
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [interviewData, setInterviewData] = useState<any>(null);
@@ -60,11 +93,53 @@ const InterviewScreeningPage = () => {
   const [componentMounted, setComponentMounted] = useState(false);
   const [voicesLoaded, setVoicesLoaded] = useState(false);
   const [interviewStarted, setInterviewStarted] = useState(false);
+  const [aiSpokenText, setAiSpokenText] = useState<string>('');
+  const [aiSpokenFullText, setAiSpokenFullText] = useState<string>('');
+  const aiSpokenIntervalRef = useRef<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const startTypewriter = (fullText: string) => {
+    // Clear any previous animation
+    if (aiSpokenIntervalRef.current) {
+      window.clearInterval(aiSpokenIntervalRef.current);
+      aiSpokenIntervalRef.current = null;
+    }
+
+    // While loading, do not show the text card at all.
+    // We'll reveal words only after audio actually starts.
+    setAiSpokenFullText('');
+    setAiSpokenText('');
+
+    // Store the upcoming text in a ref-like state (we'll copy it into aiSpokenFullText on startSpeaking)
+    // We reuse aiSpokenText as empty and keep the full text in a closure via beginTypewriterReveal(fullText).
+  };
+
+  const beginTypewriterReveal = (fullText: string) => {
+    // If already revealing, don't restart
+    if (aiSpokenIntervalRef.current) return;
+
+    setAiSpokenFullText(fullText);
+
+    const words = (fullText || '').split(/\s+/).filter(Boolean);
+    if (words.length === 0) return;
+
+    let i = 0;
+    aiSpokenIntervalRef.current = window.setInterval(() => {
+      i += 1;
+      setAiSpokenText(words.slice(0, i).join(' '));
+
+      if (i >= words.length) {
+        if (aiSpokenIntervalRef.current) {
+          window.clearInterval(aiSpokenIntervalRef.current);
+          aiSpokenIntervalRef.current = null;
+        }
+      }
+    }, 120);
+  };
 
   // Load interview data from token
   useEffect(() => {
@@ -100,19 +175,57 @@ const InterviewScreeningPage = () => {
         console.log('👤 User registered status:', isRegistered, 'Token:', authToken ? 'Present' : 'Missing');
 
         console.log('📡 Calling API endpoint: /api/interviews/public/by-link/' + token);
-        const response = await fetch(`/api/interviews/public/by-link/${token}`);
+
+        const response = await fetch(`/api/interviews/public/by-link/${token}`, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+        });
         
         console.log('📊 API Response Status:', response.status);
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         console.log('📦 API Response Data:', data);
         
         if (!isActive) return;
 
-        if (!response.ok || !data.success) {
-          console.log('❌ API returned error:', data);
-          setError('Interview invitation not found or has expired. Please check your email link and try again.');
+        // If auth is required, redirect to dedicated access screen (login/signup).
+        if (response.status === 401 && data?.error === 'AUTH_REQUIRED') {
           setLoading(false);
           clearTimeout(timeout);
+          navigate(`/interview/${token}/access?reason=auth_required`);
+          return;
+        }
+
+        if (response.status === 403 && data?.error === 'FORBIDDEN') {
+          const authToken = localStorage.getItem('auth_token');
+          const isLoggedIn = !!authToken;
+
+          // Not logged in -> show dedicated access screen with login/signup
+          if (!isLoggedIn) {
+            setLoading(false);
+            clearTimeout(timeout);
+            navigate(`/interview/${token}/access?reason=forbidden`);
+            return;
+          }
+
+          // Logged in but wrong account -> show hard error
+          setError(data?.message || 'This interview link is not assigned to your account.');
+          setLoading(false);
+          clearTimeout(timeout);
+          return;
+        }
+
+        // Link expired (single-use) -> dedicated expired screen
+        if (response.status === 410 && data?.error === 'LINK_EXPIRED') {
+          setLoading(false);
+          clearTimeout(timeout);
+          navigate(`/interview/${token}/access?reason=expired`);
+          return;
+        }
+
+        if (!response.ok || !data.success) {
+          console.log('❌ API returned error:', data);
+          setLoading(false);
+          clearTimeout(timeout);
+          navigate(`/interview/${token}/access?reason=not_found`);
           return;
         }
 
@@ -190,6 +303,38 @@ const InterviewScreeningPage = () => {
     }
   }, [isComplete]);
 
+  // If user leaves mid-interview, mark as ended early so reports/scoring still happen.
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (step === 'interview' && !isComplete) {
+        void endInterviewEarly('beforeunload');
+      }
+    };
+
+    const onVisibilityChange = () => {
+      // If tab becomes hidden while interview is in progress, trigger best-effort end.
+      // (Some mobile browsers never fire beforeunload reliably.)
+      if (document.visibilityState === 'hidden' && step === 'interview' && !isComplete) {
+        void endInterviewEarly('visibility_hidden');
+      }
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+
+      // Component unmount: if interview is active and not complete, mark partial.
+      if (step === 'interview' && !isComplete) {
+        void endInterviewEarly('unmount');
+      }
+    };
+    // Intentionally depend on step/isComplete + ids
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isComplete, practiceMode, interviewData]);
+
   // Initialize webcam
   useEffect(() => {
     if (step !== 'interview') return;
@@ -211,16 +356,33 @@ const InterviewScreeningPage = () => {
   }, [step]);
 
   // Auto-read question when it loads (like ch-job-marketplace)
+  // Requirement: On the very first question, Mary should introduce herself first.
+  //
+  // IMPORTANT:
+  // playAvatarSpeech has a one-at-a-time lock. Calling it twice back-to-back will cause
+  // the second call to be ignored. So we must speak intro+question in a SINGLE call.
   useEffect(() => {
     if (interviewStarted && voicesLoaded && questions[currentQuestion]) {
+      // New question loaded -> clear any previous response text immediately
+      setTranscript('');
+
       // While AI is asking the question, user should not be able to record.
       setAiFinishedSpeaking(false);
 
       // Small delay to ensure UI renders question first
-      setTimeout(() => {
+      setTimeout(async () => {
         const questionText = getQuestionText(questions[currentQuestion]);
         console.log('📢 Auto-reading question:', questionText);
-        playAvatarSpeech(questionText);
+
+        if (currentQuestion === 0) {
+          const combined = `Hi, I'm Mary, AI Interviewer. Welcome, excited to get to know you. QUESTION 1: ${questionText}`;
+          startTypewriter(combined);
+          await playAvatarSpeech(combined);
+          return;
+        }
+
+        startTypewriter(questionText);
+        await playAvatarSpeech(questionText);
       }, 150);
     }
   }, [currentQuestion, interviewStarted, voicesLoaded, questions.length]);
@@ -235,7 +397,13 @@ const InterviewScreeningPage = () => {
   // Component mount tracking
   useEffect(() => {
     setComponentMounted(true);
-    return () => setComponentMounted(false);
+    return () => {
+      setComponentMounted(false);
+      if (aiSpokenIntervalRef.current) {
+        window.clearInterval(aiSpokenIntervalRef.current);
+        aiSpokenIntervalRef.current = null;
+      }
+    };
   }, []);
 
   // Audio element initialization (do NOT auto-play/prime on mount)
@@ -312,30 +480,10 @@ const InterviewScreeningPage = () => {
     }
   }, [recording]);
 
-  // Prepend intro text to first question (like ch-job-marketplace)
-  // IMPORTANT: questions can come as {label: "..."} (from fetch_questions) or {text: "..."} (practice defaults).
-  useEffect(() => {
-    if (questions.length === 0) return;
-
-    const first = questions[0];
-    const firstText = getQuestionText(first);
-    if (!firstText) return;
-
-    if (firstText.includes('Hello! I am Mary')) return;
-
-    const updatedQuestions = [...questions];
-    if (updatedQuestions[0]?.text !== undefined) {
-      updatedQuestions[0].text =
-        'Hello! I am Mary, AI Interviewer. Welcome, excited to get to know you. ' + firstText;
-    } else {
-      updatedQuestions[0] = {
-        ...updatedQuestions[0],
-        label: 'Hello! I am Mary, AI Interviewer. Welcome, excited to get to know you. ' + firstText,
-      };
-    }
-    setQuestions(updatedQuestions);
-    console.log('📝 Intro text prepended to first question');
-  }, [questions.length]);
+  // NOTE:
+  // We do NOT prepend the greeting into the first question anymore.
+  // Requirement: AI should speak "Hi, I'm Mary..." first, then ask QUESTION 1 separately.
+  // (This is handled in the interview session page.)
 
   // Play AI voice for questions and messages (match ch-job-marketplace behavior)
   // Guarantees:
@@ -373,6 +521,9 @@ const InterviewScreeningPage = () => {
       setIsLoadingVoice(false);
       setIsAiSpeaking(true);
       setAiFinishedSpeaking(false);
+
+      // Start revealing words only when audio actually starts.
+      beginTypewriterReveal(text);
     };
 
     const useWebSpeechAPI = (textToSpeak: string) => {
@@ -457,9 +608,49 @@ const InterviewScreeningPage = () => {
     setStartingMode(mode);
     setStartSource(source || mode);
 
-    // IMPORTANT (per ch-job-marketplace behavior):
+    // REAL interview requires login. If not logged in, force auth first.
+    // (Per requirement: "Require login only")
+    if (mode === "real") {
+      const authToken = localStorage.getItem("auth_token");
+      if (!authToken) {
+        toast.error("Please login or create an account to start the interview.");
+        navigate(`/interview/${token}/access?reason=auth_required`);
+        return;
+      }
+    }
+
+    // IMPORTANT:
+    // Expire the invite link as soon as the user clicks "Start Interview" (REAL mode).
+    // This ensures the link cannot be reused even if the user leaves mid-interview.
+    if (mode === "real") {
+      try {
+        const authToken = localStorage.getItem("auth_token");
+        const resolvedInterviewId = interviewData?.interviewId || interviewData?.interview_id;
+        const resolvedInviteId =
+          interviewData?.inviteId || interviewData?.invite_id || interviewData?.ai_interview_invite_id;
+
+        if (authToken && resolvedInterviewId && resolvedInviteId) {
+          const startRes = await fetch(`/api/interviews/${resolvedInterviewId}/start`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ ai_interview_invite_id: resolvedInviteId }),
+          });
+
+          // If already used, show expired screen immediately
+          if (startRes.status === 410) {
+            navigate(`/interview/${token}/access?reason=expired`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to expire link on start (will still attempt to proceed):", e);
+      }
+    }
+
     // Clicking Start/Practice should immediately move to the interview screen.
-    // No TTS calls, no voice loading, no extra async work here.
     setStep('interview');
 
     // Reset per-run state quickly
@@ -625,6 +816,11 @@ const InterviewScreeningPage = () => {
     // Capture transcript immediately to avoid stale state in async callbacks
     const capturedTranscript = transcript;
 
+    // IMPORTANT:
+    // Keep the response visible while we save, then clear it after save completes.
+    // (Requirement: clear response after user gives answer and it is saved.)
+    // So do NOT clear transcript here.
+
     // Capture question metadata now (before currentQuestion changes)
     const q = questions[currentQuestion];
     const questionText = getQuestionText(q);
@@ -647,7 +843,9 @@ const InterviewScreeningPage = () => {
     if (recognitionRef.current) recognitionRef.current.stop();
 
     setRecording(false);
-    setSubmittingResponse(true);
+
+    // UX: do not show "Saving..." loader at all. Move to next question immediately.
+    setSubmittingResponse(false);
 
     const videoBlob = await stopped;
 
@@ -659,7 +857,11 @@ const InterviewScreeningPage = () => {
 
     // For REAL interviews:
     // 1) Save transcript text (answer endpoint)
-    // 2) Upload video blob (upload_video endpoint) so video is stored per question
+    // 2) Upload video blob (upload_video endpoint)
+    //
+    // UX requirement:
+    // - Do NOT keep the button stuck on "Saving..." while video upload is in-flight.
+    // - We only wait for the transcript save (fast). Video upload is fire-and-forget.
     if (!practiceMode) {
       try {
         const authToken = localStorage.getItem('auth_token');
@@ -668,7 +870,7 @@ const InterviewScreeningPage = () => {
           interviewData?.inviteId || interviewData?.invite_id || interviewData?.ai_interview_invite_id;
 
         if (authToken && resolvedInterviewId && resolvedInviteId && questionText) {
-          // Save transcript
+          // Save transcript (await this; it's small and should be fast)
           await fetch(`/api/interviews/${resolvedInterviewId}/answer`, {
             method: 'POST',
             headers: {
@@ -684,7 +886,7 @@ const InterviewScreeningPage = () => {
             }),
           });
 
-          // Upload video
+          // Upload video (fire-and-forget; do NOT await)
           if (videoBlob && videoBlob.size > 0) {
             const form = new FormData();
             form.append('file', videoBlob, 'response.webm');
@@ -699,16 +901,26 @@ const InterviewScreeningPage = () => {
             form.append('question_index', String(currentQuestion));
             form.append('is_completed', currentQuestion === questions.length - 1 ? '1' : '0');
 
-            const uploadRes = await fetch('/api/interviews/upload_video', {
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 15000);
+
+            fetch('/api/interviews/upload_video', {
               method: 'POST',
               headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
               body: form,
-            });
-
-            if (!uploadRes.ok) {
-              const err = await uploadRes.json().catch(() => ({}));
-              console.warn('Video upload failed:', uploadRes.status, err?.error || '');
-            }
+              signal: controller.signal,
+            })
+              .then((uploadRes) => {
+                if (!(uploadRes.status === 200 || uploadRes.status === 202)) {
+                  console.warn('Video upload request returned non-success status:', uploadRes.status);
+                }
+              })
+              .catch((e: any) => {
+                console.warn('Video upload aborted/failed:', e?.message || e);
+              })
+              .finally(() => {
+                window.clearTimeout(timeout);
+              });
           }
         }
       } catch (e) {
@@ -716,17 +928,22 @@ const InterviewScreeningPage = () => {
       }
     }
 
+    // Release the UI "Saving..." state now (do not wait for video upload)
+    setSubmittingResponse(false);
+
+    // Move to next question (or finish)
     if (currentQuestion === questions.length - 1) {
       if (!practiceMode) {
-        // Ensure the final video upload has time to update invite status/report details
-        // before we submit the final report payload.
+        // Submit report (this is separate from per-question video upload)
         await submitInterview();
       }
+      setTranscript('');
       setIsComplete(true);
-    } else {
-      setSubmittingResponse(false);
       setCurrentQuestion((q) => q + 1);
       setTranscript('');
+    } else {
+      setTranscript('');
+      setCurrentQuestion((q) => q + 1);
     }
   };
 
@@ -743,40 +960,12 @@ const InterviewScreeningPage = () => {
   }
 
   // ============================================================
-  // UNREGISTERED USER - SHOW SIGNUP PROMPT
+  // AUTH GATING
+  // Do NOT auto-redirect.
+  // We show the invite details screen and provide explicit buttons for:
+  // - Login
+  // - Sign up
   // ============================================================
-  if (!isUserRegistered && !error && interviewData) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="bg-secondary border border-border rounded-2xl p-8 max-w-md text-center space-y-6">
-          <div className="flex justify-center">
-            <AlertCircle className="h-12 w-12 text-cardinal" />
-          </div>
-          <h2 className="text-2xl font-bold text-foreground">
-            Sign Up to Take Interview
-          </h2>
-          <p className="text-muted-foreground">
-            You need to create an account to start this interview. Sign up now or log in if you already have an account.
-          </p>
-          <div className="space-y-3">
-            <Button 
-              onClick={() => navigate(`/talent/signup?redirect=/interview/${token}`)}
-              className="w-full bg-cardinal text-white hover:bg-cardinal/90"
-            >
-              Create Account
-            </Button>
-            <Button 
-              onClick={() => navigate(`/auth/login?redirect=/interview/${token}`)}
-              variant="outline"
-              className="w-full border-cardinal text-cardinal hover:bg-cardinal/10"
-            >
-              Already Have Account? Login
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ============================================================
   // ERROR STATE
@@ -807,6 +996,16 @@ const InterviewScreeningPage = () => {
   // INTERVIEW DETAILS & VERIFICATION PAGE
   // ============================================================
   if (step === 'details') {
+    const authToken = localStorage.getItem('auth_token');
+    const isLoggedIn = !!authToken;
+
+    // If user is not logged in, do not show auth UI here.
+    // Redirect to dedicated access screen.
+    if (!isLoggedIn) {
+      navigate(`/interview/${token}/access?reason=auth_required`);
+      return null;
+    }
+
     return (
       <div className="h-screen bg-background overflow-hidden flex flex-col">
         <div className="max-w-3xl mx-auto w-full h-full px-4 py-4 md:py-6 flex flex-col overflow-hidden">
@@ -819,6 +1018,15 @@ const InterviewScreeningPage = () => {
               {organization?.name || 'CardinalTalent'}
             </p>
           </div>
+
+          {!isLoggedIn && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-3">
+              <p className="text-sm font-semibold text-foreground mb-1">Account required</p>
+              <p className="text-sm text-muted-foreground">
+                You need to login or create an account to start this interview.
+              </p>
+            </div>
+          )}
 
           {/* Interview Details Cards */}
           <div className="grid md:grid-cols-2 gap-2 md:gap-3 mb-3">
@@ -931,20 +1139,38 @@ const InterviewScreeningPage = () => {
                   </Button>
                 )}
                 
-                <Button
-                  onClick={() => handleStartInterview('real')}
-                  disabled={submitting}
-                  className="bg-cardinal hover:bg-cardinal/90 text-white transition-colors flex-1 text-xs md:text-sm py-2 h-auto"
-                >
-                  {submitting && startSource === 'real' ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      Starting...
-                    </>
-                  ) : (
-                    interviewData?.type_of_interview === 'Practice' ? 'Start Practice Interview' : 'Start Interview'
-                  )}
-                </Button>
+                {!isLoggedIn ? (
+                  <div className="flex flex-1 gap-2">
+                    <Button
+                      onClick={() => navigate(`/auth?mode=signin&redirect=/interview/${token}`)}
+                      variant="outline"
+                      className="border-cardinal text-cardinal hover:bg-cardinal/10 flex-1 text-xs md:text-sm py-2 h-auto"
+                    >
+                      Login
+                    </Button>
+                    <Button
+                      onClick={() => navigate(`/auth?mode=signup&role=talent&redirect=/interview/${token}`)}
+                      className="bg-cardinal hover:bg-cardinal/90 text-white transition-colors flex-1 text-xs md:text-sm py-2 h-auto"
+                    >
+                      Sign up
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => handleStartInterview('real')}
+                    disabled={submitting}
+                    className="bg-cardinal hover:bg-cardinal/90 text-white transition-colors flex-1 text-xs md:text-sm py-2 h-auto"
+                  >
+                    {submitting && startSource === 'real' ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        Starting...
+                      </>
+                    ) : (
+                      interviewData?.type_of_interview === 'Practice' ? 'Start Practice Interview' : 'Start Interview'
+                    )}
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -987,21 +1213,28 @@ const InterviewScreeningPage = () => {
           <div className="lg:col-span-1 bg-secondary border border-border rounded-2xl p-8 flex flex-col items-center justify-center min-h-96">
             <div className="relative mb-6 flex items-center justify-center">
               {/* Avatar Image - switches between PNG and GIF when speaking */}
-              <div className={`relative w-64 h-64 rounded-full overflow-hidden flex items-center justify-center transition-all duration-200 ${
-                isAiSpeaking ? 'border-4 border-cardinal' : 'border-2 border-cardinal/30'
-              }`}>
-                {isAiSpeaking ? (
-                  <img 
-                    src="/images/aiinterview.gif" 
-                    alt="AI Speaking" 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img 
-                    src="/images/aiinterview.png" 
-                    alt="AI Interview Assistant" 
-                    className="w-full h-full object-cover"
-                  />
+              <div
+                className={`relative w-64 h-64 rounded-full overflow-hidden flex items-center justify-center transition-all duration-200 bg-secondary ${
+
+                  isAiSpeaking || isLoadingVoice
+                    ? 'border-4 border-cardinal bg-secondary'
+                    : 'border-2 border-cardinal/30'
+                }`}
+              >
+                <img
+                  src={isAiSpeaking ? "/images/aiinterview.gif" : "/images/aiinterview.png"}
+                  alt={isAiSpeaking ? "AI Speaking" : "AI Interview Assistant"}
+                  className={`w-full h-full object-cover ${isAiSpeaking ? "bg-white" : "bg-secondary"}`}
+                />
+
+                {/* Loading overlay on top of the avatar (static image or gif) */}
+                {isLoadingVoice && !isAiSpeaking && (
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                    <div className="bg-black/50 text-white px-3 py-2 rounded-full text-sm font-semibold flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Preparing question...
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -1019,23 +1252,31 @@ const InterviewScreeningPage = () => {
             </div>
           </div>
 
-          {/* Question & Response Section */}
+          {/* Mary + My Response (two separate cards) */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Question Card */}
-            <div className="bg-secondary border-l-4 border-cardinal rounded-lg p-6">
-              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                Question {currentQuestion + 1} of {questions.length}
+            {/* Mary (AI spoken text) - keep card static even when empty */}
+            <div className="bg-secondary border-2 border-border rounded-lg p-6 min-h-48">
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Mary</p>
+              <p className="text-foreground leading-relaxed">
+                {aiSpokenFullText ? (
+                  aiSpokenText
+                ) : (
+                  <span className="text-muted-foreground italic">Preparing question...</span>
+                )}
               </p>
-              <h3 className="text-lg font-bold text-foreground">
-                {getQuestionText(questions[currentQuestion]) || 'Loading question...'}
-              </h3>
             </div>
 
-            {/* Transcript Card */}
-            <div className={`bg-secondary border-2 rounded-lg p-6 min-h-48 transition-all ${recording ? 'border-cardinal bg-cardinal/10' : 'border-border'}`}>
-              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Your Response</p>
+            {/* My Response (live transcript) */}
+            <div
+              className={`bg-secondary border-2 rounded-lg p-6 min-h-48 transition-all ${
+                recording ? "border-cardinal bg-cardinal/10" : "border-border"
+              }`}
+            >
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">My Response</p>
               <p className="text-foreground leading-relaxed">
-                {transcript || <span className="text-muted-foreground italic">Waiting for your response...</span>}
+                {transcript || (
+                  <span className="text-muted-foreground italic">Waiting for your response...</span>
+                )}
               </p>
             </div>
           </div>
@@ -1068,16 +1309,7 @@ const InterviewScreeningPage = () => {
                   disabled={submittingResponse}
                   className="bg-cardinal hover:bg-cardinal/90 text-white transition-colors min-w-40"
                 >
-                  {submittingResponse ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      {recording ? '⏹️ Stop & Save' : '⏺️ Start Recording'}
-                    </>
-                  )}
+                  {recording ? '⏹️ Stop & Next' : '⏺️ Start Recording'}
                 </Button>
               ) : (
                 <Button disabled variant="outline" className="min-w-40">

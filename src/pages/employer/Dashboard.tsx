@@ -26,12 +26,12 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
   { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
+  { icon: Users, label: "Applications", path: "/employer/candidates" },
   { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
   { icon: Building2, label: "Company", path: "/employer/company" },
   { icon: Settings, label: "Settings", path: "/employer/settings" },
@@ -54,6 +54,28 @@ interface Candidate {
   matchScore: number;
   rank: number;
   status: string;
+  interview?: {
+    id: string;
+    interview_type?: string;
+    scheduled_date?: string;
+    scheduled_time?: string;
+    status?: string;
+  } | null;
+}
+
+interface InterviewItem {
+  id: string;
+  interview_type?: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  interviewer?: string;
+  status?: string;
+  application?: {
+    id?: string;
+    candidate_name?: string;
+    candidate_email?: string;
+    job?: { title?: string };
+  };
 }
 
 const EmployerDashboard = () => {
@@ -63,8 +85,11 @@ const EmployerDashboard = () => {
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [interviews, setInterviews] = useState<InterviewItem[]>([]);
+  const [allInterviews, setAllInterviews] = useState<InterviewItem[]>([]);
   const [showAllJobs, setShowAllJobs] = useState(false);
   const [showAllCandidates, setShowAllCandidates] = useState(false);
+  const [showAllInterviews, setShowAllInterviews] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,8 +106,12 @@ const EmployerDashboard = () => {
         const jobsResponse = await apiClient.getAllJobs();
         if (jobsResponse.success && jobsResponse.data) {
           // Get applications to calculate stats
-          const applicationsResponse = await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
-          const applications = applicationsResponse.success ? applicationsResponse.data : [];
+          const applicationsResponse = await apiClient
+            .getApplications()
+            .catch(() => ({ success: false, data: [] as any[] }));
+          const applications = applicationsResponse.success
+            ? ((applicationsResponse.data as any[]) ?? [])
+            : [];
           
           const applicationsByJob: Record<string, any[]> = {};
           applications.forEach((app: any) => {
@@ -98,7 +127,8 @@ const EmployerDashboard = () => {
           const oneWeekAgo = new Date();
           oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
           
-          const allJobsWithStats = jobsResponse.data.map((job: any) => {
+          const jobsData = (jobsResponse.data as any[]) ?? [];
+          const allJobsWithStats = jobsData.map((job: any) => {
             const jobApplications = applicationsByJob[job.id] || [];
             const newApplicants = jobApplications.filter((app: any) => {
               const appliedDate = new Date(app.applied_at || app.appliedAt);
@@ -123,10 +153,15 @@ const EmployerDashboard = () => {
         }
         
         // Fetch candidates (from applications for employer's jobs)
-        const applicationsResponse = await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
-        if (applicationsResponse.success && applicationsResponse.data) {
+        const applicationsResponse = await apiClient
+          .getApplications()
+          .catch(() => ({ success: false, data: [] as any[] }));
+        const apps = applicationsResponse.success
+          ? ((applicationsResponse.data as any[]) ?? [])
+          : [];
+        if (apps.length) {
           // Sort by match score and get all candidates
-          const sortedApplications = [...applicationsResponse.data].sort((a: any, b: any) => {
+          const sortedApplications = [...apps].sort((a: any, b: any) => {
             const scoreA = a.job?.match_score || 0;
             const scoreB = b.job?.match_score || 0;
             return scoreB - scoreA;
@@ -139,11 +174,39 @@ const EmployerDashboard = () => {
             matchScore: app.job?.match_score || 0,
             rank: index + 1,
             status: app.status || "New",
+            interview: app.interview || null,
           }));
           
           setAllCandidates(allCandidatesData);
           setCandidates(allCandidatesData.slice(0, 3));
         }
+
+        // Fetch scheduled interviews (authoritative source for "Interview Scheduled")
+        const interviewsResponse = await apiClient
+          .getInterviews({ status: "active" })
+          .catch(() => ({ success: false, data: [] }));
+        const interviewList = interviewsResponse.success
+          ? ((interviewsResponse.data as any[]) ?? [])
+          : [];
+
+        // Employer expectation for "Interviews Scheduled" on dashboard (based on user feedback):
+        // show COUNT OF CREATED INTERVIEWS (active/not archived), regardless of candidate completion.
+        // We'll still keep a separate "onlyScheduled" list for future use, but metric uses `interviewList.length`.
+        const onlyScheduled = [...interviewList].filter((i: any) => {
+          const s = (i.status || "").toString().toLowerCase();
+          return s === "pending" || s === "in progress";
+        });
+
+        // Sort newest first
+        interviewList.sort((a: any, b: any) => {
+          const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return db - da;
+        });
+
+        setAllInterviews(interviewList);
+        setAllInterviews(onlyScheduled);
+        setInterviews(onlyScheduled.slice(0, 3));
       } catch (error: any) {
         console.error("Error fetching dashboard data:", error);
         setJobs([]);
@@ -183,7 +246,7 @@ const EmployerDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <button onClick={() => navigate("/employer/candidates")} className="text-left">
           <MetricCard
-            title="Total Applicants"
+            title="Applications"
             value={loading ? "..." : jobs.reduce((sum, j) => sum + j.applicants, 0)}
             change=""
             changeType="neutral"
@@ -191,10 +254,13 @@ const EmployerDashboard = () => {
             variant="amber"
           />
         </button>
-        <button onClick={() => navigate("/employer/interviews")} className="text-left">
+        <button
+          onClick={() => navigate("/employer/interviews")}
+          className="text-left"
+        >
           <MetricCard
-            title="Interviews Scheduled"
-            value={loading ? "..." : candidates.filter(c => c.status === "Interview Scheduled").length}
+            title="Interview Scheduled"
+            value={loading ? "..." : allInterviews.length}
             change=""
             changeType="neutral"
             icon={<Clock className="w-6 h-6" />}

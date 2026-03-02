@@ -67,13 +67,18 @@ const TalentInterviews = () => {
               ? new Date(interview.invite_created_at).toLocaleDateString()
               : "TBD",
             inviteStatus: interview.invite_status || "Pending",
-            completed: interview.completed > 0,
+            // Treat as completed only when invite status is actually Completed.
+            // Previously this used `interview.completed > 0` (report_count), which is also true for partial reports.
+            completed: String(interview.invite_status || "").toLowerCase() === "completed",
             uniqueLink: interview.unique_interview_link,
             interviewTitle: interview.interview_title,
             interviewCategory: interview.interview_category || "General",
             candidateEmail: interview.candidate_email,
             candidateName: interview.candidate_name,
             phoneNum: interview.phone_num,
+            answeredCount: Number(interview.answered_count ?? 0),
+            totalQuestions: Number(interview.total_questions ?? 0),
+            completionPercentage: Number(interview.completion_percentage ?? 0),
           })));
         } else {
           setInterviews([]);
@@ -196,19 +201,34 @@ const TalentInterviews = () => {
                       {interview.interviewTitle || "Practice Interview"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {!interview.completed && (
-                      <Button 
-                        size="sm" 
-                        className="bg-gradient-to-r from-cardinal to-amber"
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {/* Status */}
+                    {String(interview.inviteStatus || "").toLowerCase() === "completed" && (
+                      <Badge className="bg-green-600">Completed</Badge>
+                    )}
+                    {String(interview.inviteStatus || "").toLowerCase() === "partially completed" && (
+                      <Badge variant="secondary">Partially Completed</Badge>
+                    )}
+                    {String(interview.inviteStatus || "").toLowerCase() === "in progress" && (
+                      <Badge className="bg-blue-600">In Progress</Badge>
+                    )}
+                    {String(interview.inviteStatus || "").toLowerCase() === "pending" && (
+                      <Badge variant="outline">Pending</Badge>
+                    )}
+                    {!["completed", "partially completed", "in progress", "pending"].includes(
+                      String(interview.inviteStatus || "").toLowerCase()
+                    ) && <Badge variant="outline">{interview.inviteStatus || "Pending"}</Badge>}
+
+                    {/* Action: Only allow taking interview while status is still Pending. */}
+                    {String(interview.inviteStatus || "").toLowerCase() === "pending" && (
+                      <Button
+                        size="sm"
+                        variant="hero"
                         onClick={() => handleStartInterviewClick(interview)}
                       >
-                        <Play className="w-4 h-4 mr-1" />
+                        <Play className="w-4 h-4 mr-2" />
                         Take Interview
                       </Button>
-                    )}
-                    {interview.completed && (
-                      <Badge className="bg-green-600">Completed</Badge>
                     )}
                   </div>
                 </div>
