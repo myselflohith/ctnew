@@ -41,8 +41,12 @@ class ApiClient {
       ...options.headers,
     };
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    // Always read the latest token from localStorage to avoid stale in-memory token
+    // (fixes cases where some pages call APIs and get 401 even though user is logged in)
+    const liveToken = localStorage.getItem('auth_token');
+    if (liveToken) {
+      this.token = liveToken;
+      headers['Authorization'] = `Bearer ${liveToken}`;
     }
 
     const config: RequestInit = {
@@ -255,8 +259,12 @@ class ApiClient {
     return this.request('/jobs/applications/list');
   }
 
-  async getInterviews() {
-    return this.request('/interviews/list');
+  async getInterviews(filters?: { status?: string; search?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.search) params.set('search', filters.search);
+    const qs = params.toString();
+    return this.request(`/interviews/list${qs ? `?${qs}` : ''}`);
   }
 
   async createJob(jobData: {

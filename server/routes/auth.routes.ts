@@ -139,6 +139,29 @@ router.post('/logout', authenticateToken, async (req: Request, res: Response) =>
   }
 });
 
+/**
+ * Public: check if a user exists by email.
+ * Used by interview invite flow to decide whether to redirect to login or signup.
+ * GET /api/auth/exists?email=someone@example.com
+ */
+router.get('/exists', async (req: Request, res: Response) => {
+  try {
+    const email = (req.query.email || '').toString().toLowerCase().trim();
+    if (!email) {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+
+    const { query } = await import('../database/connection.js');
+    const result = await query('SELECT 1 FROM users WHERE email = $1 LIMIT 1', [email]);
+
+    res.json({ success: true, exists: result.rows.length > 0 });
+  } catch (error: any) {
+    console.error('User exists check error:', error);
+    res.status(500).json({ error: error.message || 'Failed to check user' });
+  }
+});
+
 // Get current user
 router.get('/me', authenticateToken, async (req: Request, res: Response) => {
   try {

@@ -36,22 +36,35 @@ const EmployerInterviews = () => {
       try {
         setLoading(true);
         const response = await apiClient.getInterviews();
+
         if (response.success && response.data && Array.isArray(response.data)) {
-          setInterviews(response.data.map((interview: any) => ({
-            id: interview.id,
-            title: interview.interview_title || `Interview #${interview.id}`,
-            description: interview.interview_description || "",
-            jobId: interview.job_id,
-            type: interview.type_of_interview || "Practice",
-            category: interview.interview_category || "General",
-            questionType: interview.question_type || "",
-            status: interview.status || "pending",
-            candidateCount: interview.candidate_count || 0,
-            completedCount: interview.completed_count || 0,
-            createdAt: interview.created_at 
-              ? new Date(interview.created_at).toLocaleDateString()
-              : "TBD",
-          })));
+          setInterviews(
+            response.data.map((interview: any) => ({
+              id: interview.id,
+              title: interview.interview_title || `Interview #${interview.id}`,
+              description: interview.interview_description || "",
+              jobId: interview.job_id,
+              type: interview.type_of_interview || "Practice",
+              category: interview.interview_category || "General",
+              questionType: interview.question_type || "",
+              status: interview.status || "Pending",
+              candidateCount:
+                Number(interview.total_invites ?? interview.candidate_count ?? 0) || 0,
+              completedCount:
+                Number(
+                  interview.completed_count_compat ??
+                    interview.completed_count ??
+                    0
+                ) || 0,
+              pendingCount: Number(interview.pending_count ?? 0) || 0,
+              inProgressCount: Number(interview.in_progress_count ?? 0) || 0,
+              partiallyCompletedCount:
+                Number(interview.partially_completed_count ?? 0) || 0,
+              createdAt: interview.created_at
+                ? new Date(interview.created_at).toLocaleDateString()
+                : "TBD",
+            }))
+          );
         } else {
           setInterviews([]);
         }
@@ -63,7 +76,6 @@ const EmployerInterviews = () => {
       }
     };
 
-    // Only fetch if we have a token
     if (apiClient.getToken()) {
       fetchInterviews();
     } else {
@@ -73,7 +85,7 @@ const EmployerInterviews = () => {
 
 
 
-  // Filter interviews based on search query
+  // Filter interviews based on search query (client-side)
   const filteredInterviews = interviews.filter((interview) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
@@ -85,15 +97,20 @@ const EmployerInterviews = () => {
   });
 
   const getStatusVariant = (status: string) => {
-    switch (status) {
-      case "Scheduled":
-        return "excellent";
-      case "Completed":
+    switch ((status || "").toLowerCase()) {
+      case "completed":
         return "good";
-      case "Cancelled":
-        return "closed";
-      case "Rescheduled":
+      case "partially completed":
+      case "partially_completed":
         return "secondary";
+      case "in progress":
+      case "in_progress":
+      case "started":
+        return "excellent";
+      case "pending":
+        return "secondary";
+      case "cancelled":
+        return "closed";
       default:
         return "secondary";
     }
@@ -170,10 +187,12 @@ const EmployerInterviews = () => {
                   <div className="text-right">
                     <p className="text-sm font-medium text-foreground">{interview.createdAt}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Candidates: {interview.candidateCount} | Completed: {interview.completedCount}
+                      Candidates: {interview.candidateCount} | Completed:{" "}
+                      {interview.completedCount} | Partially Completed:{" "}
+                      {interview.partiallyCompletedCount}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"

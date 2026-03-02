@@ -11,6 +11,7 @@ import {
   inviteCandidate,
   generateQuestions,
   getCandidateReports,
+  getInterviewInvites,
   submitInterviewReport,
   getInterviewReportDetails,
   getTalentInterviewSchedules,
@@ -18,6 +19,46 @@ import {
   startInterviewReport,
   saveInterviewAnswer,
 } from '../services/interview.service.js';
+import { generateInterviewFeedback } from '../jobs/interview-feedback.js';
+import { interviewVideoQueue } from '../queues/interview-video.queue.js';
+import { interviewFeedbackQueue } from '../queues/interview-feedback.queue.js';
+
+const enqueuePartialScoring = async (params: { reportId: number; inviteId: number; reason?: string }) => {
+  const delayMs = process.env.PARTIAL_INTERVIEW_FEEDBACK_DELAY_MS
+    ? Number(process.env.PARTIAL_INTERVIEW_FEEDBACK_DELAY_MS)
+    : 20 * 1000; // debounce: 20s after last answer
+
+  try {
+    console.log(
+      `🧠 enqueuePartialScoring(${params.reason || 'unknown'}): reportId=${params.reportId} inviteId=${params.inviteId} delay=${delayMs}ms`
+    );
+
+    // IMPORTANT:
+    // BullMQ "jobId" makes jobs idempotent. If you always use the same jobId and ONLY update the delay,
+    // the already-queued job may NOT get rescheduled as expected depending on BullMQ settings/version.
+    // For partial interviews we want "latest activity wins", so we *explicitly remove* any existing job
+    // with the same id before adding a new delayed one.
+    try {
+      const existing = await interviewFeedbackQueue.getJob(`score-report-${params.reportId}`);
+      if (existing) {
+        await existing.remove();
+        console.log(`🧹 enqueuePartialScoring: removed existing jobId=score-report-${params.reportId}`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ enqueuePartialScoring: failed to remove existing jobId=score-report-${params.reportId}`, e);
+    }
+
+    await interviewFeedbackQueue.add(
+      'scoreInterviewFeedback',
+      { reportId: params.reportId, inviteId: params.inviteId, force: true } as any,
+      { delay: delayMs, jobId: `score-report-${params.reportId}` }
+    );
+
+    console.log(`✅ enqueuePartialScoring: queued jobId=score-report-${params.reportId}`);
+  } catch (e) {
+    console.warn('Failed to enqueue partial scoring job:', e);
+  }
+};
 
 const createInterviewRoutes = (upload?: Multer) => {
   const router = Router();
@@ -39,6 +80,74 @@ router.get('/public/by-link/:uniqueLink', async (req: Request, res: Response) =>
       return;
     }
 
+    // ch-job-marketplace behavior:
+    // - If invite is Pending and user is not logged in:
+    //    - If user exists by invited email => force login
+    //    - Else => force signup
+    // - If logged in, allow only if the logged-in user matches invite email/person_id
+    const authHeader = (req.headers.authorization || '').toString();
+    const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : null;
+
+    if (!bearer) {
+      // Tell frontend to redirect to signup/login decision screen
+      res.status(401).json({
+        success: false,
+        error: 'AUTH_REQUIRED',
+        message: 'Please create an account or login to start this interview.',
+        data: {
+          inviteId: interviewData.invite_id,
+          interviewId: interviewData.interview_id,
+          candidateName: interviewData.candidate_name,
+          candidateEmail: interviewData.candidate_email,
+          interviewTitle: interviewData.interview_title,
+          interviewCategory: interviewData.interview_category,
+          interviewType: interviewData.type_of_interview,
+          jobName: interviewData.job_name || 'Position',
+          company: interviewData.job_name || 'CardinalTalent',
+          inviteStatus: interviewData.invite_status,
+        },
+      });
+      return;
+    }
+
+    // Validate token and ensure it matches the invite
+    let authedUser: any = null;
+    try {
+      const jwt = await import('jsonwebtoken');
+      const secret = process.env.JWT_SECRET || 'your-secret-key';
+      authedUser = jwt.default.verify(bearer, secret) as any;
+    } catch {
+      res.status(401).json({
+        success: false,
+        error: 'AUTH_REQUIRED',
+        message: 'Please create an account or login to start this interview.',
+      });
+      return;
+    }
+
+    // Load user from DB to get canonical email (token may not include email)
+    const userRes = await pool.query(`SELECT id, email FROM users WHERE id = $1`, [authedUser?.id]);
+    const dbUser = userRes.rows?.[0];
+
+    const authedUserId = dbUser?.id || authedUser?.id;
+    const authedEmail = (dbUser?.email || authedUser?.email || '').toString().toLowerCase().trim();
+
+    const invitePersonId = interviewData.invite_person_id;
+    const inviteEmail = (interviewData.candidate_email || '').toString().toLowerCase().trim();
+
+    const matchesInvite =
+      (invitePersonId && authedUserId && String(invitePersonId) === String(authedUserId)) ||
+      (inviteEmail && authedEmail && inviteEmail === authedEmail);
+
+    if (!matchesInvite) {
+      res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'This interview link is not assigned to your account.',
+      });
+      return;
+    }
+    
     // Format questions for frontend
     const formattedQuestions = interviewData.questions.map((q: any, index: number) => ({
       id: q.id,
@@ -135,7 +244,13 @@ router.post('/store', authenticateToken, async (req: Request, res: Response) => 
   }
 });
 
-// Get all interviews for employer
+/**
+ * Get all interviews for employer
+ *
+ * Query params (feature parity with ch-job-marketplace):
+ *  - status: "active" | "archieved" | "archived"  (default: active)
+ *  - search: string (matches interview_title, type_of_interview, job title)
+ */
 router.get('/list', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
@@ -143,11 +258,73 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
       return;
     }
 
-    const interviews = await getInterviewsForEmployer(req.user.id);
+    const status = (req.query.status || '').toString().toLowerCase().trim();
+    const search = (req.query.search || '').toString().trim();
+
+    const interviews = await getInterviewsForEmployer(req.user.id, { status, search });
     res.json({ success: true, data: interviews });
   } catch (error: any) {
     console.error('Get interviews error:', error);
     res.status(500).json({ error: error.message || 'Failed to get interviews' });
+  }
+});
+
+/**
+ * Get interview invites (candidates) for an interview
+ *
+ * Query params (feature parity with ch-job-marketplace):
+ *  - status: "active" | "archieved" | "archived" (default: active)
+ *  - interview_status: "Pending" | "In Progress" | "Completed" | "Partially Completed"
+ *  - search: string (candidate name/email/status)
+ *  - start_date/end_date: YYYY-MM-DD (filters by DATE(created_at))
+ *  - sortField: created_at|updated_at|candidate_name|candidate_email|status
+ *  - sortDirection: ASC|DESC
+ */
+router.get('/:id/invites', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Debug: helps diagnose "Candidates (0)" issues quickly
+    // (safe to keep; does not log tokens)
+    console.log('[invites] user:', req.user?.id, 'interview:', req.params.id, 'query:', req.query);
+
+    const { id } = req.params;
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const perPageRaw = Number(req.query.per_page) || 10;
+    const perPage = Math.min(Math.max(perPageRaw, 1), 50);
+
+    const list = await getInterviewInvites(parseInt(id), {
+      status: (req.query.status || '').toString(),
+      interview_status: (req.query.interview_status || '').toString(),
+      search: (req.query.search || '').toString(),
+      start_date: (req.query.start_date || '').toString(),
+      end_date: (req.query.end_date || '').toString(),
+      sortField: (req.query.sortField || '').toString(),
+      sortDirection: (req.query.sortDirection || '').toString(),
+    });
+
+    const totalCount = list.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+    const start = (page - 1) * perPage;
+    const pagedList = list.slice(start, start + perPage);
+
+    res.json({
+      success: true,
+      data: {
+        list: pagedList,
+        total_count: totalCount,
+        total_pages: totalPages,
+        current_counts: pagedList.length,
+        per_page: perPage,
+      },
+    });
+  } catch (error: any) {
+    console.error('Get interview invites error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get invites' });
   }
 });
 
@@ -201,6 +378,84 @@ router.post('/:id/candidate_invite', authenticateToken, async (req: Request, res
   } catch (error: any) {
     console.error('Invite candidate error:', error);
     res.status(500).json({ error: error.message || 'Failed to invite candidate' });
+  }
+});
+
+// Archive / unarchive interview invite (candidate)
+// Mirrors ch-job-marketplace:
+//  - archive: sets discarded_at (soft delete)
+//  - restore: clears discarded_at
+router.post('/invites/:inviteId/archive', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+      return;
+    }
+
+    const inviteId = parseInt(req.params.inviteId);
+    if (isNaN(inviteId)) {
+      res.status(400).json({ success: false, error: 'inviteId must be a valid number' });
+      return;
+    }
+
+    // Match ch-job-marketplace behavior:
+    // - Archive requires a reason.
+    // - If reason is "Other", a note is required.
+    const reason = (req.body?.reason || '').toString().trim();
+    const reason_note = (req.body?.reason_note || '').toString().trim();
+
+    if (!reason) {
+      res.status(400).json({ success: false, error: 'reason is required' });
+      return;
+    }
+
+    if (reason.toLowerCase() === 'other' && !reason_note) {
+      res.status(400).json({ success: false, error: 'reason_note is required when reason is Other' });
+      return;
+    }
+
+    await pool.query(
+      `UPDATE ai_interview_invites
+       SET discarded_at = COALESCE(discarded_at, NOW()),
+           reason = $2,
+           reason_note = NULLIF($3, ''),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [inviteId, reason, reason_note]
+    );
+
+    res.json({ success: true, message: 'Candidate archived successfully' });
+  } catch (error: any) {
+    console.error('Archive invite error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to archive invite' });
+  }
+});
+
+router.post('/invites/:inviteId/unarchive', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+      return;
+    }
+
+    const inviteId = parseInt(req.params.inviteId);
+    if (isNaN(inviteId)) {
+      res.status(400).json({ success: false, error: 'inviteId must be a valid number' });
+      return;
+    }
+
+    await pool.query(
+      `UPDATE ai_interview_invites
+       SET discarded_at = NULL,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [inviteId]
+    );
+
+    res.json({ success: true, message: 'Candidate unarchived successfully' });
+  } catch (error: any) {
+    console.error('Unarchive invite error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to unarchive invite' });
   }
 });
 
@@ -300,15 +555,49 @@ router.post('/:id/submit_report', authenticateToken, async (req: Request, res: R
       report_details,
     });
 
-    // Extra safety: ensure invite status is Completed even if downstream logic changes.
-    // (submitInterviewReport already does this, but we enforce it here too.)
+    // IMPORTANT:
+    // Only enqueue scoring when there is at least 1 answered question.
+    // Otherwise the worker will (correctly) skip, and employer UI will show N/A.
+    let answeredCount = 0;
     try {
-      await pool.query(
-        `UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2`,
-        ['Completed', inviteIdNum]
+      const answeredCountRes = await pool.query(
+        `SELECT COUNT(*)::int as answered_count
+         FROM ai_interview_report_details
+         WHERE ai_interview_report_id = $1
+           AND LENGTH(TRIM(COALESCE(transcript_text, ''))) > 0`,
+        [report.id]
       );
+      answeredCount = Number(answeredCountRes.rows?.[0]?.answered_count ?? 0);
     } catch (e) {
-      console.warn('Failed to force invite status Completed:', e);
+      console.warn('Failed to count answered questions on submit_report:', e);
+    }
+
+    if (answeredCount > 0) {
+      // Mark Completed
+      try {
+        await pool.query(
+          `UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2`,
+          ['Completed', inviteIdNum]
+        );
+      } catch (e) {
+        console.warn('Failed to set invite status Completed:', e);
+      }
+
+      // Enqueue scoring + feedback asynchronously (do NOT block the submit_report response).
+      // This keeps the "finish interview" UX fast.
+      try {
+        await interviewFeedbackQueue.add(
+          'scoreInterviewFeedback',
+          { reportId: report.id, inviteId: inviteIdNum },
+          { jobId: `score-report-${report.id}` }
+        );
+      } catch (e) {
+        console.warn('Failed to enqueue scoring job (will rely on cron fallback):', e);
+      }
+    } else {
+      console.warn(
+        `⚠️ submit_report: not enqueuing scoring and not marking Completed for invite ${inviteIdNum} (0 answered questions)`
+      );
     }
 
     console.log('✅ Report saved successfully:', report.id);
@@ -352,6 +641,9 @@ router.get('/employer/report-by-invite/:inviteId', authenticateToken, async (req
 
     const { inviteId } = req.params;
 
+    // IMPORTANT:
+    // Allow fetching report even if the invite is archived (discarded_at set).
+    // Poor interviews are auto-archived after scoring, but the report + rating must remain visible.
     const result = await pool.query(
       `SELECT 
         air.*,
@@ -364,6 +656,8 @@ router.get('/employer/report-by-invite/:inviteId', authenticateToken, async (req
        INNER JOIN ai_interview_invites aii ON air.ai_interview_invite_id = aii.id
        INNER JOIN ai_interviews ai ON air.interview_id = ai.id
        WHERE air.ai_interview_invite_id = $1
+         AND air.discarded_at IS NULL
+       ORDER BY air.created_at DESC
        LIMIT 1`,
       [parseInt(inviteId)]
     );
@@ -394,6 +688,77 @@ router.get('/employer/report-by-invite/:inviteId', authenticateToken, async (req
       }
     };
 
+    // Completion metrics
+    // IMPORTANT: answered_count should count only answered questions (non-empty transcript_text).
+    // Otherwise partially completed interviews can show 100% completion and confuse report logic.
+    const answeredCount = (detailsResult.rows || []).filter(
+      (r: any) => (r?.transcript_text || '').toString().trim().length > 0
+    ).length;
+
+    const totalQuestionsRes = await pool.query(
+      `SELECT
+         (
+           (SELECT COUNT(*) FROM ai_interview_custom_questions WHERE ai_interview_id = $1 AND discarded_at IS NULL)
+           +
+           (SELECT COUNT(*) FROM ai_generated_questions WHERE interview_id = $1 AND discarded_at IS NULL)
+         )::int as total_questions`,
+      [report.interview_id]
+    );
+    const totalQuestions = Number(totalQuestionsRes.rows?.[0]?.total_questions ?? 0);
+
+    const completionPercentage =
+      totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+
+    // Fallback for partial interviews:
+    // If overall rating is missing but we have at least one answered question, do not show "N/A".
+    // This fixes employer UI candidate list/report showing N/A + "Pending overall rating" forever.
+    const detailRatings = (detailsResult.rows || [])
+      .map((r: any) => (r?.rating || '').toString().trim())
+      .filter((r: string) => r.length > 0 && r.toLowerCase() !== 'practice');
+
+    const hasAnyScoredDetail = detailRatings.length > 0 || !!report.score || !!report.ai_feedback;
+
+    // If OpenAI scoring hasn't run yet, employer should still see an overall rating for partial interviews.
+    // Derive a simple "Great/Average/Poor" from already-scored detail ratings.
+    // This avoids "Pending forever" when the worker isn't running or API key isn't configured.
+    const deriveOverallFromDetails = () => {
+      if (!detailRatings.length) return null;
+
+      const norm = detailRatings.map(r => r.toLowerCase());
+      const counts = norm.reduce(
+        (acc: Record<string, number>, r: string) => {
+          acc[r] = (acc[r] || 0) + 1;
+          return acc;
+        },
+        {}
+      );
+
+      // Prefer majority vote.
+      const top = (Object.entries(counts) as Array<[string, number]>).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+      if (top.includes('great')) return 'Great';
+      if (top.includes('poor')) return 'Poor';
+      if (top.includes('average')) return 'Average';
+
+      // Fallback: if any poor and no great => Poor; else Average.
+      if (norm.some(r => r.includes('poor')) && !norm.some(r => r.includes('great'))) return 'Poor';
+      return 'Average';
+    };
+
+    const derivedRating = deriveOverallFromDetails();
+
+    // IMPORTANT:
+    // Never use "Partial" as an overall rating label. Rating should always be:
+    // - Great/Average/Poor (when we can derive it)
+    // - null (so UI shows "Pending"/"Generating..." while worker runs)
+    //
+    // "Partial/Partially Completed" is an interview *status*, not a rating.
+    const fallbackRating =
+      !report.rating || String(report.rating).trim().length === 0
+        ? answeredCount > 0
+          ? derivedRating || null
+          : null
+        : report.rating;
+
     const formattedReport = {
       id: report.id,
       interview_id: report.interview_id,
@@ -401,13 +766,23 @@ router.get('/employer/report-by-invite/:inviteId', authenticateToken, async (req
       interview_start_at: report.interview_start_at,
       transcript_text: report.transcript_text,
       interview_video_url: report.interview_video_url,
-      rating: report.rating,
+      rating: fallbackRating,
       score: safeJsonParse(report.score),
       ai_feedback: safeJsonParse(report.ai_feedback),
       candidate_name: report.candidate_name,
       candidate_email: report.candidate_email,
       interview_title: report.interview_title,
       interview_category: report.interview_category,
+      answered_count: answeredCount,
+      total_questions: totalQuestions,
+      completion_percentage: completionPercentage,
+      is_processing: answeredCount > 0 && !hasAnyScoredDetail && (!report.rating || !report.score || !report.ai_feedback),
+      processing_status:
+        answeredCount === 0
+          ? 'no_answers'
+          : hasAnyScoredDetail
+            ? 'partial_scored'
+            : 'generating_feedback',
       details: detailsResult.rows.map((row: any) => ({
         id: row.id,
         question: row.question,
@@ -570,6 +945,15 @@ router.get('/employer/interview-reports/:interviewId', authenticateToken, async 
 
     const { interviewId } = req.params;
 
+    // IMPORTANT:
+    // When listing ARCHIVED invites, still return their report (rating/score/ai_feedback).
+    // Previously this endpoint always joined only "non-discarded reports", which made
+    // archived poor interviews show N/A even though report data exists.
+    const isArchived =
+      (req.query.status || '').toString().toLowerCase().trim() === 'archieved' ||
+      (req.query.status || '').toString().toLowerCase().trim() === 'archived' ||
+      (req.query.status || '').toString().toLowerCase().trim() === 'archive';
+
     const result = await pool.query(
       `SELECT 
         aii.id as invite_id,
@@ -584,13 +968,69 @@ router.get('/employer/interview-reports/:interviewId', authenticateToken, async 
         ai.interview_title
        FROM ai_interview_invites aii
        INNER JOIN ai_interviews ai ON aii.interview_id = ai.id
-       LEFT JOIN ai_interview_reports air ON aii.id = air.ai_interview_invite_id
+       LEFT JOIN ai_interview_reports air
+         ON aii.id = air.ai_interview_invite_id
+        AND air.discarded_at IS NULL
+        AND air.created_at = (
+          SELECT MAX(air2.created_at)
+          FROM ai_interview_reports air2
+          WHERE air2.ai_interview_invite_id = aii.id
+            AND air2.discarded_at IS NULL
+        )
        WHERE ai.id = $1
+         AND (
+           -- Active list (default): invite not archived
+           ($2::boolean = false AND aii.discarded_at IS NULL)
+           OR
+           -- Archived list: invite archived
+           ($2::boolean = true AND aii.discarded_at IS NOT NULL)
+         )
+         AND aii.status IN ('Completed','Partially Completed')
        ORDER BY aii.created_at DESC`,
-      [interviewId]
+      [interviewId, isArchived]
     );
 
-    const reports = result.rows.map((row: any) => {
+    // If archived list & report join returned NULL (older data / bad join), fall back and fetch latest report anyway.
+    // This ensures archived candidates still show rating/report.
+    let rows = result.rows;
+    if (isArchived && rows.some((r: any) => !r.report_id)) {
+      try {
+        const fallback = await pool.query(
+          `SELECT 
+            aii.id as invite_id,
+            aii.candidate_name,
+            aii.candidate_email,
+            aii.status,
+            aii.created_at as invited_at,
+            air.id as report_id,
+            air.rating,
+            air.score,
+            air.ai_feedback,
+            ai.interview_title
+           FROM ai_interview_invites aii
+           INNER JOIN ai_interviews ai ON aii.interview_id = ai.id
+           LEFT JOIN ai_interview_reports air
+             ON aii.id = air.ai_interview_invite_id
+            AND air.discarded_at IS NULL
+            AND air.created_at = (
+              SELECT MAX(air2.created_at)
+              FROM ai_interview_reports air2
+              WHERE air2.ai_interview_invite_id = aii.id
+                AND air2.discarded_at IS NULL
+            )
+           WHERE ai.id = $1
+             AND aii.discarded_at IS NOT NULL
+             AND aii.status IN ('Completed','Partially Completed')
+           ORDER BY aii.created_at DESC`,
+          [interviewId]
+        );
+        rows = fallback.rows;
+      } catch (e) {
+        console.warn('Archived report fallback query failed:', e);
+      }
+    }
+
+    const reports = rows.map((row: any) => {
       let parsedScore = null;
       let parsedFeedback = null;
 
@@ -844,20 +1284,26 @@ router.get('/fetch_questions/:interviewId/:inviteId', async (req: Request, res: 
       });
     }
 
-    // Get already answered questions for this invite
+    // Get already answered questions for this invite.
+    // IMPORTANT: We must compare question->question, not answer(transcript)->question.
+    // Otherwise we end up repeating questions and the UI can appear to "autofill" the last answer.
     const answeredResult = await pool.query(
-      `SELECT LOWER(COALESCE(transcript_text, '')) as answered_text FROM ai_interview_report_details 
+      `SELECT LOWER(TRIM(COALESCE(question, ''))) as answered_question
+       FROM ai_interview_report_details
        WHERE ai_interview_invite_id = $1`,
       [inviteId]
     );
 
-    const answeredQuestions = answeredResult.rows.map(r => r.answered_text).filter(t => t);
+    const answeredQuestions = answeredResult.rows
+      .map((r: any) => r.answered_question)
+      .filter((t: any) => t && typeof t === 'string');
 
-    // Filter out already answered questions
+    // Filter out already answered questions (case-insensitive exact match)
     const unansweredQuestions = questionsResult.rows.filter((row: any) => {
       if (answeredQuestions.length === 0) return true;
-      const questionLower = row.question_text.toLowerCase();
-      return !answeredQuestions.some(ans => ans && ans.includes(questionLower));
+      const questionLower = (row.question_text || '').toString().trim().toLowerCase();
+      if (!questionLower) return true;
+      return !answeredQuestions.includes(questionLower);
     });
 
     const questions = (unansweredQuestions.length > 0 ? unansweredQuestions : questionsResult.rows).map((row: any, index: number) => ({
@@ -881,13 +1327,8 @@ router.get('/fetch_questions/:interviewId/:inviteId', async (req: Request, res: 
  * Body:
  *  - ai_interview_invite_id: number
  */
-router.post('/:id/start', authenticateToken, async (req: Request, res: Response) => {
+router.post('/:id/start', async (req: Request, res: Response) => {
   try {
-    if (!req.user) {
-      res.status(401).json({ success: false, error: 'Not authenticated' });
-      return;
-    }
-
     const { id } = req.params;
     const { ai_interview_invite_id } = req.body;
 
@@ -896,10 +1337,23 @@ router.post('/:id/start', authenticateToken, async (req: Request, res: Response)
       return;
     }
 
+    // Public start:
+    // - This endpoint is called when the user clicks "Start Interview"
+    // - It expires the link immediately (status -> In Progress + unique_interview_link -> expired_*)
+    // - It is safe without auth because it requires the invite_id and interview_id to match
+    //   (validated inside startInterviewReport).
     const report = await startInterviewReport(parseInt(id), parseInt(ai_interview_invite_id));
     res.json({ success: true, data: report });
   } catch (error: any) {
     console.error('Start interview report error:', error);
+
+    // If the invite was already used, return a clear 410 Gone so frontend can show "expired".
+    const msg = (error?.message || '').toString();
+    if (msg.toLowerCase().includes('already used')) {
+      res.status(410).json({ success: false, error: 'LINK_EXPIRED', message: msg });
+      return;
+    }
+
     res.status(500).json({ success: false, error: error.message || 'Failed to start interview report' });
   }
 });
@@ -944,10 +1398,141 @@ router.post('/:id/answer', authenticateToken, async (req: Request, res: Response
       que_type,
     });
 
+    // Enqueue partial scoring on every saved answer (debounced by reportId jobId).
+    // This enables partial AI feedback + partial score based on answered questions so far.
+    try {
+      const reportId = Number((result as any)?.report?.id);
+      const inviteId = parseInt(ai_interview_invite_id);
+      if (reportId && inviteId) {
+        await enqueuePartialScoring({ reportId, inviteId, reason: 'answer' });
+      } else {
+        console.warn(
+          `⚠️ enqueuePartialScoring(answer) skipped: reportId=${String(reportId)} inviteId=${String(inviteId)}`
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to enqueue scoring after answer:', e);
+    }
+
     res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Save interview answer error:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to save answer' });
+  }
+});
+
+/**
+ * Mark an interview as ended early (talent skipped/left).
+ * This should:
+ *  - set invite status = 'Partially Completed' (if not already Completed)
+ *  - ensure a report exists
+ *  - trigger AI feedback generation asynchronously (fast response)
+ *
+ * Body:
+ *  - ai_interview_invite_id: number
+ */
+router.post('/:id/end', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+      return;
+    }
+
+    const { id } = req.params;
+    const { ai_interview_invite_id } = req.body;
+
+    if (!ai_interview_invite_id) {
+      res.status(400).json({ success: false, error: 'ai_interview_invite_id is required' });
+      return;
+    }
+
+    const interviewId = parseInt(id);
+    const inviteId = parseInt(ai_interview_invite_id);
+
+    // Ensure report exists (do NOT call startInterviewReport here)
+    const existing = await pool.query(
+      `SELECT * FROM ai_interview_reports
+       WHERE interview_id = $1 AND ai_interview_invite_id = $2 AND discarded_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [interviewId, inviteId]
+    );
+
+    let reportId: number;
+    if (existing.rows.length > 0) {
+      reportId = existing.rows[0].id;
+    } else {
+      const created = await pool.query(
+        `INSERT INTO ai_interview_reports
+         (interview_id, ai_interview_invite_id, interview_start_at, transcript_text, created_at, updated_at)
+         VALUES ($1, $2, NOW()::date, '', NOW(), NOW())
+         RETURNING id`,
+        [interviewId, inviteId]
+      );
+      reportId = created.rows[0].id;
+    }
+
+    // Mark invite as Partially Completed (unless already Completed)
+    await pool.query(
+      `UPDATE ai_interview_invites
+       SET status = CASE
+         WHEN LOWER(status) IN ('completed','complete') THEN status
+         ELSE 'Partially Completed'
+       END,
+       updated_at = NOW()
+       WHERE id = $1`,
+      [inviteId]
+    );
+
+    // Ensure report is eligible for scoring worker:
+    // generateInterviewFeedback requires air.interview_start_at IS NOT NULL
+    try {
+      await pool.query(
+        `UPDATE ai_interview_reports
+         SET interview_start_at = COALESCE(interview_start_at, NOW()::date),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [reportId]
+      );
+    } catch (e) {
+      console.warn('Failed to ensure interview_start_at for partial report:', e);
+    }
+
+    // Enqueue scoring in worker.
+    // When user exits, we want the report ASAP based on last saved answers.
+    // Still keep debounced scoring on each answer/upload for "in progress" partial feedback.
+    //
+    // IMPORTANT:
+    // Only enqueue scoring when there is at least 1 answered question.
+    // If 0 answered questions, we still keep the status as Partially Completed,
+    // but we should not generate an AI report/rating (prevents hallucinated ratings).
+    try {
+      const answeredCountRes = await pool.query(
+        `SELECT COUNT(*)::int as answered_count
+         FROM ai_interview_report_details
+         WHERE ai_interview_report_id = $1
+           AND LENGTH(TRIM(COALESCE(transcript_text, ''))) > 0`,
+        [reportId]
+      );
+      const answeredCount = Number(answeredCountRes.rows?.[0]?.answered_count ?? 0);
+
+      if (answeredCount > 0) {
+        // On end we want the same debounce semantics, but typically immediate.
+        // If you want to delay on end specifically, set PARTIAL_INTERVIEW_FEEDBACK_DELAY_MS accordingly.
+        await enqueuePartialScoring({ reportId, inviteId, reason: 'end' });
+      } else {
+        console.log(
+          `⚠️ end: not enqueuing scoring for report ${reportId} (0 answered questions); status remains Partially Completed`
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to enqueue feedback scoring job for partial interview:', e);
+    }
+
+    res.json({ success: true, data: { report_id: reportId, invite_id: inviteId, status: 'Partially Completed' } });
+  } catch (error: any) {
+    console.error('End interview early error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to end interview' });
   }
 });
 
@@ -989,80 +1574,73 @@ router.post('/upload_video', uploadMiddleware, async (req: Request, res: Respons
       return res.status(400).json({ error: 'interview_id and ai_interview_invite_id are required' });
     }
 
-    // Store file path or use cloud storage
+    // Public URL path for the uploaded file
     const videoPath = `/uploads/interviews/${(req.file as Express.Multer.File).filename}`;
 
-    // Get question weight if question_id provided
-    let questionWeight = 1;
-    if (question_id) {
-      // Try custom questions first
-      let weightResult = await pool.query(
-        `SELECT question_weight FROM ai_interview_custom_questions WHERE id = $1`,
-        [question_id]
+    // IMPORTANT:
+    // Store a FULL URL in DB so report pages can render video without guessing host.
+    // (If you later move uploads to S3/CDN, this is the field to update.)
+    const baseUrl =
+      (process.env.PUBLIC_BASE_URL || '').trim() ||
+      `http://172.17.252.184:${process.env.PORT || 3001}`;
+
+    const videoUrl = `${baseUrl}${videoPath}`;
+
+    // Absolute path on disk (multer stored it here)
+    const filePath = (req.file as Express.Multer.File).path;
+
+    // Enqueue background job (Sidekiq-like). Do NOT block request on DB writes.
+    const job = await interviewVideoQueue.add('processInterviewVideo', {
+      filePath,
+      videoPath: videoUrl,
+      interviewId: Number(interview_id),
+      inviteId: Number(ai_interview_invite_id),
+      question: question || '',
+      queType: que_type || 'general',
+      transcript: transcript || '',
+      questionId: question_id ? Number(question_id) : undefined,
+      questionIndex: questionIndex ? Number(questionIndex) : undefined,
+      isCompleted: is_completed === '1',
+    });
+
+    // Also enqueue delayed scoring on any activity.
+    // If the candidate abandons the interview, this job will eventually run and score the partial report.
+    // If they keep answering, the same jobId will be reused (dedupe) and the latest delay wins.
+    try {
+      const interviewIdNum = Number(interview_id);
+      const inviteIdNum = Number(ai_interview_invite_id);
+
+      const reportRes = await pool.query(
+        `SELECT id FROM ai_interview_reports
+         WHERE interview_id = $1 AND ai_interview_invite_id = $2 AND discarded_at IS NULL
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [interviewIdNum, inviteIdNum]
       );
 
-      // If not found, try generated questions
-      if (weightResult.rows.length === 0) {
-        weightResult = await pool.query(
-          `SELECT question_weight FROM ai_generated_questions WHERE id = $1`,
-          [question_id]
+      if (reportRes.rows.length > 0) {
+        const reportId = Number(reportRes.rows[0].id);
+
+        const delayMs = process.env.PARTIAL_INTERVIEW_FEEDBACK_DELAY_MS
+          ? Number(process.env.PARTIAL_INTERVIEW_FEEDBACK_DELAY_MS)
+          : 2 * 60 * 1000;
+
+        console.log(
+          `🧠 enqueuePartialScoring(upload_activity): reportId=${reportId} inviteId=${inviteIdNum} delay=${delayMs}ms`
         );
+
+        await enqueuePartialScoring({ reportId, inviteId: inviteIdNum, reason: 'upload_activity' });
       }
-
-      if (weightResult.rows.length > 0) {
-        questionWeight = weightResult.rows[0].question_weight || 1;
-      }
+    } catch (e) {
+      console.warn('Failed to enqueue delayed scoring on upload activity:', e);
     }
 
-    // Create or update interview report
-    let reportResult = await pool.query(
-      `SELECT id FROM ai_interview_reports 
-       WHERE interview_id = $1 AND ai_interview_invite_id = $2`,
-      [interview_id, ai_interview_invite_id]
-    );
-
-    let reportId: number;
-    if (reportResult.rows.length === 0) {
-      const createResult = await pool.query(
-        `INSERT INTO ai_interview_reports (interview_id, ai_interview_invite_id, interview_start_at, created_at, updated_at)
-         VALUES ($1, $2, NOW(), NOW(), NOW())
-         RETURNING id`,
-        [interview_id, ai_interview_invite_id]
-      );
-      reportId = createResult.rows[0].id;
-    } else {
-      reportId = reportResult.rows[0].id;
-    }
-
-    // Store response details with proper question weight
-    await pool.query(
-      `INSERT INTO ai_interview_report_details (ai_interview_report_id, ai_interview_invite_id, question, transcript_text, video_url, que_type, question_weight, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-      [reportId, ai_interview_invite_id, question || '', transcript || '', videoPath, que_type || 'general', questionWeight]
-    );
-
-    // If interview is completed, update report status
-    if (is_completed === '1') {
-      await pool.query(
-        `UPDATE ai_interview_reports 
-         SET interview_end_at = NOW(), updated_at = NOW()
-         WHERE id = $1`,
-        [reportId]
-      );
-
-      // Also update interview invite status
-      await pool.query(
-        `UPDATE ai_interview_invites SET status = $1, updated_at = NOW() WHERE id = $2`,
-        ['Completed', ai_interview_invite_id]
-      );
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Video uploaded',
-      report_id: reportId,
-      video_path: videoPath,
-      question_weight: questionWeight
+    // Return immediately so UI never "sticks" on upload.
+    res.status(202).json({
+      success: true,
+      message: 'Video accepted for processing',
+      job_id: job.id,
+      video_path: videoUrl,
     });
   } catch (error: any) {
     console.error('Upload video error:', error);

@@ -109,10 +109,10 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 md:p-8">
+    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-4">
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
             Invite Candidates
           </h1>
@@ -122,10 +122,10 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
         </div>
 
         {/* Add Candidate Form */}
-        <Card className="glass mb-6 p-6 border-0">
+        <Card className="glass mb-4 p-4 border-0">
           <h2 className="text-xl font-semibold text-white mb-4">Add Candidate</h2>
           
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Full Name
@@ -182,12 +182,12 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
 
         {/* Candidates List */}
         {candidates.length > 0 && (
-          <Card className="glass mb-6 p-6 border-0">
+          <Card className="glass mb-4 p-4 border-0">
             <h2 className="text-xl font-semibold text-white mb-4">
               Candidates ({candidates.length})
             </h2>
 
-            <div className="space-y-3">
+            <div className="space-y-2 max-h-[35vh] overflow-auto pr-1">
               {candidates.map((candidate) => (
                 <div
                   key={candidate.id}
@@ -252,7 +252,7 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
 
         {/* No Candidates */}
         {candidates.length === 0 && (
-          <div className="text-center py-8">
+          <div className="text-center py-6">
             <p className="text-slate-400 mb-4">No candidates added yet</p>
             <Button
               onClick={onBack}

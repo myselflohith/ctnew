@@ -1,12 +1,11 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { employerNavItems } from "@/components/layout/navItems";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -14,29 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  Building2,
-  Settings,
-  ArrowLeft,
-  Plus,
-  X,
-  Sparkles,
-  Link as LinkIcon,
-} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/api";
+import { ArrowLeft, Link as LinkIcon, Plus, Sparkles, X } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
 
 interface Requirement {
   id: string;
@@ -65,7 +47,7 @@ const NewJob = () => {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [requirementInput, setRequirementInput] = useState("");
   const [requirementType, setRequirementType] = useState<"mustHave" | "niceToHave">(
-    "mustHave"
+    "mustHave",
   );
   const [requirementWeight, setRequirementWeight] = useState(5);
   const [orgRequirements, setOrgRequirements] = useState<Requirement[]>([]);
@@ -78,9 +60,11 @@ const NewJob = () => {
         const userResponse = await apiClient.getCurrentUser();
         if (userResponse.success && userResponse.user?.company_name) {
           const companyName = userResponse.user.company_name;
-          const reqResponse = await apiClient.getOrganizationRequirements(companyName);
+          const reqResponse =
+            await apiClient.getOrganizationRequirements(companyName);
           if (reqResponse.success && reqResponse.data) {
-            const orgReqs = reqResponse.data.map((req: any) => ({
+            const data = reqResponse.data as any[];
+            const orgReqs = data.map((req: any) => ({
               id: req.id,
               text: req.requirement_text,
               type: req.requirement_type,
@@ -88,7 +72,9 @@ const NewJob = () => {
             }));
             setOrgRequirements(orgReqs);
             // Automatically add must-have requirements to the job
-            const mustHaveReqs = orgReqs.filter((r: Requirement) => r.type === "mustHave");
+            const mustHaveReqs = orgReqs.filter(
+              (r: Requirement) => r.type === "mustHave",
+            );
             if (mustHaveReqs.length > 0) {
               setRequirements(mustHaveReqs);
             }
@@ -138,26 +124,46 @@ const NewJob = () => {
     // Placeholder for AI extraction - will be replaced with actual AI service
     // For now, this is a simple keyword-based extraction
     const commonTechKeywords = [
-      "React", "Vue", "Angular", "TypeScript", "JavaScript", "Node.js", 
-      "Python", "Java", "C++", "Go", "Rust", "PostgreSQL", "MongoDB", 
-      "AWS", "Azure", "GCP", "Docker", "Kubernetes", "GraphQL", "REST"
+      "React",
+      "Vue",
+      "Angular",
+      "TypeScript",
+      "JavaScript",
+      "Node.js",
+      "Python",
+      "Java",
+      "C++",
+      "Go",
+      "Rust",
+      "PostgreSQL",
+      "MongoDB",
+      "AWS",
+      "Azure",
+      "GCP",
+      "Docker",
+      "Kubernetes",
+      "GraphQL",
+      "REST",
     ];
-    
+
     const descriptionLower = formData.description.toLowerCase();
-    const extractedSkills = commonTechKeywords.filter(keyword => 
-      descriptionLower.includes(keyword.toLowerCase())
+    const extractedSkills = commonTechKeywords.filter((keyword) =>
+      descriptionLower.includes(keyword.toLowerCase()),
     );
-    
+
     if (extractedSkills.length > 0) {
       setSkills([...new Set([...skills, ...extractedSkills])]);
       toast({
         title: "Skills Extracted",
-        description: `Added ${extractedSkills.length} skill${extractedSkills.length !== 1 ? 's' : ''} from job description.`,
+        description: `Added ${extractedSkills.length} skill${
+          extractedSkills.length !== 1 ? "s" : ""
+        } from job description.`,
       });
     } else {
       toast({
         title: "No Skills Found",
-        description: "Could not extract skills from description. Please add skills manually.",
+        description:
+          "Could not extract skills from description. Please add skills manually.",
         variant: "destructive",
       });
     }
@@ -189,7 +195,6 @@ const NewJob = () => {
     }
 
     try {
-      // Get company name from user or use default
       const token = apiClient.getToken();
       if (!token) {
         toast({
@@ -210,7 +215,9 @@ const NewJob = () => {
           ? requirements
               .map(
                 (r) =>
-                  `${r.type === "mustHave" ? "Must have" : "Nice to have"} | ${r.text} | Weight: ${r.weight}`
+                  `${
+                    r.type === "mustHave" ? "Must have" : "Nice to have"
+                  } | ${r.text} | Weight: ${r.weight}`,
               )
               .join("\n")
           : undefined;
@@ -219,7 +226,10 @@ const NewJob = () => {
       const jobData = {
         title: formData.title,
         company: companyName,
-        location: formData.jobType === "remote" ? "Remote" : (formData.location || "Not specified"),
+        location:
+          formData.jobType === "remote"
+            ? "Remote"
+            : formData.location || "Not specified",
         type: formData.jobType as "remote" | "hybrid" | "onsite",
         salary: undefined,
         match_score: undefined,
@@ -254,7 +264,7 @@ const NewJob = () => {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
+      navItems={employerNavItems}
       userName="Jane Smith"
       companyName="TechCorp AI"
     >
@@ -272,7 +282,8 @@ const NewJob = () => {
             Post a New Job
           </h1>
           <p className="text-muted-foreground">
-            Fill in the details to post your job and start receiving applications.
+            Fill in the details to post your job and start receiving
+            applications.
           </p>
         </div>
 
@@ -442,7 +453,12 @@ const NewJob = () => {
                 placeholder="Add a skill..."
                 value={skillInput}
                 onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSkill())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSkill();
+                  }
+                }}
               />
               <Button type="button" variant="secondary" onClick={addSkill}>
                 <Plus className="w-4 h-4" />
@@ -477,7 +493,8 @@ const NewJob = () => {
               Requirements
             </h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Add must-have and nice-to-have requirements with weights for AI matching
+              Add must-have and nice-to-have requirements with weights for AI
+              matching
             </p>
 
             <div className="grid md:grid-cols-4 gap-4 mb-4">
@@ -505,7 +522,9 @@ const NewJob = () => {
               <div className="flex gap-2">
                 <Select
                   value={requirementWeight.toString()}
-                  onValueChange={(value) => setRequirementWeight(parseInt(value))}
+                  onValueChange={(value) =>
+                    setRequirementWeight(parseInt(value, 10))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Weight" />
@@ -533,7 +552,9 @@ const NewJob = () => {
                   >
                     <div className="flex items-center gap-3">
                       <Badge
-                        variant={req.type === "mustHave" ? "default" : "secondary"}
+                        variant={
+                          req.type === "mustHave" ? "default" : "secondary"
+                        }
                       >
                         {req.type === "mustHave" ? "Must Have" : "Nice to Have"}
                       </Badge>
@@ -568,8 +589,8 @@ const NewJob = () => {
                   </h2>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Automatically source and rank candidates from our database when the
-                  job is posted. Uses AI to match and score candidates.
+                  Automatically source and rank candidates from our database when
+                  the job is posted. Uses AI to match and score candidates.
                 </p>
               </div>
               <Switch
