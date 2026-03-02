@@ -456,7 +456,7 @@ const Auth = () => {
                 </div>
               )}
 
-              {/* Investor: redirect to full investor signup */}
+              {/* Investor signup - commented out
               {mode === "signup" && selectedRole === "investor" && (
                 <div className="rounded-lg border border-border bg-card/50 p-6 space-y-4">
                   <p className="text-sm text-muted-foreground">
@@ -473,8 +473,10 @@ const Auth = () => {
                   </Button>
                 </div>
               )}
+              */}
 
-              {!(mode === "signup" && selectedRole === "investor") && (
+              {/* Show main form for all roles (investor CTA above commented out) */}
+              {(
               <>
               <form onSubmit={handleSubmit} className="space-y-5">
                 {mode === "signup" && (

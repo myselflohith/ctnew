@@ -49,12 +49,14 @@ const Navbar = () => {
             >
               About
             </Link>
+            {/* Investor signup - commented out
             <Link
               to="/auth/investor"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Investor Registration
             </Link>
+            */}
           </div>
 
           {/* Desktop CTA */}
@@ -112,6 +114,7 @@ const Navbar = () => {
               >
                 About
               </Link>
+              {/* Investor signup - commented out
               <Link
                 to="/auth/investor"
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -119,6 +122,7 @@ const Navbar = () => {
               >
                 Investor Registration
               </Link>
+              */}
               <div className="flex flex-col gap-2 pt-4 border-t border-border/50">
                 <div className="flex items-center justify-between py-2">
                   <span className="text-sm text-muted-foreground">Theme</span>
