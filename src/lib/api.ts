@@ -163,6 +163,13 @@ class ApiClient {
     });
   }
 
+  async resendVerification(email: string) {
+    return this.request('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
   // Resume endpoints
   async getResumes() {
     return this.request('/resumes');

@@ -23,6 +23,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { resendVerification } from "@/lib/auth";
 import { apiClient } from "@/lib/api";
 import {
   Popover,
@@ -81,6 +82,8 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [resendVerificationLoading, setResendVerificationLoading] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -261,7 +264,7 @@ const Auth = () => {
             ? undefined
             : (formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : undefined));
         const organizationIdToSend = selectedRole === "employer" ? undefined : (formData.organizationId ?? undefined);
-        const user = await register({
+        await register({
           email: formData.email,
           password: formData.password,
           firstName: formData.firstName,
@@ -271,49 +274,24 @@ const Auth = () => {
           role: roleMap[selectedRole],
         });
 
-        // Get token from response (it's stored in cookies and localStorage)
-        // Check localStorage first using the correct key
-        let token = localStorage.getItem('auth_token');
-        
-        // If no token in localStorage, try to login to get one for resume upload
-        if (!token && selectedRole === "talent" && resumeFile) {
-          try {
-            const { login } = await import("@/lib/auth");
-            await login(formData.email, formData.password);
-            token = localStorage.getItem('auth_token') || '';
-          } catch (error) {
-            console.warn('Could not auto-login for resume upload:', error);
-          }
-        }
-
-        // Upload resume if talent role and file is selected
-        if (selectedRole === "talent" && resumeFile && token) {
-          const uploadSuccess = await handleResumeUpload(token);
-          if (!uploadSuccess) {
-            // Resume upload failed but we'll continue
-            console.warn('Resume upload failed, but account creation succeeded');
-          }
-        }
-
         toast({
           title: "Account created!",
-          description: "Welcome to CardinalTalent!",
+          description: "Check your email to verify your account before logging in.",
         });
 
-        // Navigate to appropriate dashboard based on role
-        const dashboardRoutes: Record<Role, string> = {
-          talent: "/talent/dashboard",
-          employer: "/employer/dashboard",
-          recruiter: "/recruiter/dashboard",
-          admin: "/admin/dashboard",
-          investor: "/investors",
-        };
-
-        navigate(dashboardRoutes[user.role]);
+        // After signup, do not auto-login; redirect to signin screen
+        setMode("signin");
+        setStep("form");
+        // After signup, do not auto-login; redirect to signin screen
+        setMode("signin");
+        setStep("form");
+        setShowResendVerification(false);
       } else {
         // Login existing user
         const { login } = await import("@/lib/auth");
         const user = await login(formData.email, formData.password);
+
+        setShowResendVerification(false);
 
         toast({
           title: "Welcome back!",
@@ -332,11 +310,15 @@ const Auth = () => {
         navigate(dashboardRoutes[user.role]);
       }
     } catch (error: any) {
+      const message = error?.message || "Authentication failed. Please try again.";
       toast({
         title: "Error",
-        description: error.message || "Authentication failed. Please try again.",
+        description: message,
         variant: "destructive",
       });
+      if (mode === "signin" && message.toLowerCase().includes("verify your email")) {
+        setShowResendVerification(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -720,13 +702,42 @@ const Auth = () => {
                 )}
 
                 {mode === "signin" && (
-                  <div className="text-right">
+                  <div className="flex items-center justify-between text-sm">
                     <Link
                       to="/forgot-password"
-                      className="text-sm text-primary hover:underline"
+                      className="text-primary hover:underline"
                     >
                       Forgot password?
                     </Link>
+                    {showResendVerification && (
+                      <button
+                        type="button"
+                        className="text-primary hover:underline disabled:opacity-60"
+                        disabled={resendVerificationLoading || !formData.email.trim()}
+                        onClick={async () => {
+                          if (!formData.email.trim()) return;
+                          try {
+                            setResendVerificationLoading(true);
+                            await resendVerification(formData.email.trim());
+                            toast({
+                              title: "Verification email",
+                              description:
+                                "If an account exists, a verification email has been sent.",
+                            });
+                          } catch (err: any) {
+                            toast({
+                              title: "Error sending verification",
+                              description: err?.message || "Unable to resend verification email.",
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setResendVerificationLoading(false);
+                          }
+                        }}
+                      >
+                        {resendVerificationLoading ? "Sending..." : "Resend verification email"}
+                      </button>
+                    )}
                   </div>
                 )}
 

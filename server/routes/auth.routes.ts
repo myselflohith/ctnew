@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import {
   registerUser,
   loginUser,
@@ -15,7 +16,7 @@ import {
   normalizeCompanyName,
   findOrganizationByNormalizedName,
 } from '../services/organization.service.js';
-import { sendCompanyApprovalRequestEmail } from '../services/email.service.js';
+import { sendCompanyApprovalRequestEmail, sendVerificationEmail } from '../services/email.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 // Import ROLE_ENUM for validation - investor=2, admin=3, talent=4, employer=5, recruiter=6
@@ -71,19 +72,29 @@ router.post('/register', async (req: Request, res: Response) => {
       linkedinUrl: linkedinUrl ?? null,
     });
 
-    // Set token in cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    // Send verification email (do not log the user in yet)
+    try {
+      await sendVerificationEmail(
+        user.email,
+        [user.first_name, user.last_name].filter(Boolean).join(' ') || 'User',
+        // registerUser already generated verification_token; lookup fresh user to get it
+        (await (async () => {
+          const { query } = await import('../database/connection.js');
+          const result = await query(
+            'SELECT verification_token FROM users WHERE email = $1 LIMIT 1',
+            [user.email.toLowerCase()]
+          );
+          return result.rows[0]?.verification_token as string;
+        })())
+      );
+    } catch (emailError) {
+      console.error('Failed to send verification email:', emailError);
+    }
 
     res.status(201).json({
       success: true,
       user,
-      token,
-      message: 'User registered successfully',
+      message: 'User registered successfully. Please check your email to verify your account.',
     });
   } catch (error: any) {
     console.error('Registration error:', error);
@@ -178,6 +189,43 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
+// Verify email by token
+router.get('/verify-email', async (req: Request, res: Response) => {
+  try {
+    const token = (req.query.token || '').toString().trim();
+    if (!token) {
+      res.status(400).json({ success: false, error: 'Missing verification token' });
+      return;
+    }
+
+    const { query } = await import('../database/connection.js');
+    const result = await query(
+      'SELECT id FROM users WHERE verification_token = $1 LIMIT 1',
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(400).json({ success: false, error: 'Invalid or expired verification token' });
+      return;
+    }
+
+    const userId = result.rows[0].id;
+
+    await query(
+      'UPDATE users SET email_verified = true, verification_token = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully. You can now log in.',
+    });
+  } catch (error: any) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to verify email' });
+  }
+});
+
 // Update current user (basic profile)
 router.put('/me', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -198,6 +246,56 @@ router.put('/me', authenticateToken, async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update user error:', error);
     res.status(500).json({ error: error.message || 'Failed to update user' });
+  }
+});
+
+// Resend verification email
+router.post('/resend-verification', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body as { email?: string };
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!normalizedEmail) {
+      res.status(400).json({ success: false, error: 'Email is required' });
+      return;
+    }
+
+    const { query } = await import('../database/connection.js');
+    const result = await query(
+      'SELECT id, first_name, last_name, email_verified FROM users WHERE email = $1 LIMIT 1',
+      [normalizedEmail]
+    );
+
+    if (result.rows.length === 0) {
+      // Do not reveal whether user exists
+      res.json({ success: true, message: 'If an account exists, a verification email has been sent.' });
+      return;
+    }
+
+    const row = result.rows[0];
+    if (row.email_verified) {
+      res.json({ success: true, message: 'Your email is already verified.' });
+      return;
+    }
+
+    const verificationToken = uuidv4();
+    await query(
+      'UPDATE users SET verification_token = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [verificationToken, row.id]
+    );
+
+    await sendVerificationEmail(
+      normalizedEmail,
+      [row.first_name, row.last_name].filter(Boolean).join(' ') || 'User',
+      verificationToken
+    );
+
+    res.json({
+      success: true,
+      message: 'Verification email sent. Please check your inbox.',
+    });
+  } catch (error: any) {
+    console.error('Resend verification error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to resend verification email' });
   }
 });
 

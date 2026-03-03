@@ -250,6 +250,10 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
     throw new Error('Invalid email or password');
   }
 
+  if (!user.email_verified) {
+    throw new Error('Please verify your email before logging in.');
+  }
+
   // Remove encrypted_password from user object
   delete user.encrypted_password;
 

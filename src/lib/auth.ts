@@ -66,3 +66,7 @@ export async function forgotPassword(email: string): Promise<void> {
 export async function resetPassword(token: string, password: string): Promise<void> {
   await apiClient.resetPassword(token, password);
 }
+
+export async function resendVerification(email: string): Promise<void> {
+  await apiClient.resendVerification(email);
+}

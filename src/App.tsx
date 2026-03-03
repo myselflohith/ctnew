@@ -61,6 +61,7 @@ import AdminOrganizations from "./pages/admin/Organizations";
 import AdminUsers from "./pages/admin/Users";
 import AdminSecurity from "./pages/admin/Security";
 import AdminSettings from "./pages/admin/Settings";
+import VerifyEmail from "./pages/VerifyEmail";
 
 const queryClient = new QueryClient();
 
@@ -79,6 +80,7 @@ const App = () => (
             <Route path="/auth/investor" element={<InvestorSignup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/employers" element={<Employers />} />
             <Route path="/about" element={<About />} />
