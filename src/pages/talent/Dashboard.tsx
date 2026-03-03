@@ -11,7 +11,6 @@ import {
   Briefcase,
   Heart,
   Settings,
-  TrendingUp,
   CheckCircle,
   Clock,
   Star,
@@ -80,15 +79,7 @@ const TalentDashboard = () => {
       </div>
 
       {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <MetricCard
-          title="Profile Views"
-          value={124}
-          change="+12% this week"
-          changeType="positive"
-          icon={<TrendingUp className="w-6 h-6" />}
-          variant="cardinal"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <MetricCard
           title="Applications Sent"
           value={applications.length}
@@ -127,7 +118,7 @@ const TalentDashboard = () => {
               Based on your profile and preferences
             </p>
           </div>
-          <Button variant="ghost" className="group">
+          <Button variant="ghost" className="group" onClick={() => navigate("/talent/jobs")}>
             View All Jobs
             <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
           </Button>
