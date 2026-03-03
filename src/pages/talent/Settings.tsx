@@ -27,10 +27,6 @@ import {
   FileText,
   Heart,
   Settings,
-  User,
-  Bell,
-  Shield,
-  Zap,
   Upload,
   Linkedin,
   Download,
@@ -38,11 +34,12 @@ import {
   Star,
   Calendar,
 } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useResumes } from "@/hooks/useResumes";
 import { apiClient } from "@/lib/api";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
@@ -53,13 +50,87 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/talent/settings" },
 ];
 
+type User = {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string;
+  company_name?: string | null;
+  role?: string;
+};
+
 const TalentSettings = () => {
   const { resumes, loading, uploadResume, setDefaultResume, deleteResume } = useResumes();
+  const { toast: toastHook } = useToast();
+  const [user, setUser] = useState<User | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [saving, setSaving] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [autoApplyEnabled, setAutoApplyEnabled] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [resumeToDelete, setResumeToDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .getCurrentUser()
+      .then((res: any) => {
+        if (cancelled) return;
+        if (res.success && res.user) {
+          setUser(res.user);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUser(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      setFirstName(user.first_name ?? "");
+      setLastName(user.last_name ?? "");
+    }
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      toastHook({
+        title: "Name required",
+        description: "First name and last name cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res: any = await apiClient.updateCurrentUser({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+      if (res.success && res.user) {
+        setUser(res.user);
+        toastHook({
+          title: "Saved",
+          description: "Your profile has been updated.",
+        });
+      } else {
+        throw new Error(res?.error || "Failed to save changes");
+      }
+    } catch (error: any) {
+      toastHook({
+        title: "Error saving changes",
+        description: error?.message || "Unable to update your profile.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -105,8 +176,12 @@ const TalentSettings = () => {
     return `${(kb / 1024).toFixed(1)} MB`;
   };
 
+  const displayName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ") || "Talent"
+    : "Talent";
+
   return (
-    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+    <DashboardLayout role="talent" navItems={navItems} userName={displayName}>
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
           Settings
@@ -116,69 +191,70 @@ const TalentSettings = () => {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Sidebar */}
-        <div className="glass rounded-2xl p-4">
-          <nav className="space-y-1">
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary font-medium">
-              <User className="w-5 h-5" />
-              Profile
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <Bell className="w-5 h-5" />
-              Notifications
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <Shield className="w-5 h-5" />
-              Privacy
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <Zap className="w-5 h-5" />
-              Auto Apply
-            </button>
-          </nav>
-        </div>
-
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="space-y-6">
           {/* Profile Section */}
           <div className="glass rounded-2xl p-6">
             <h2 className="font-display text-xl font-semibold text-foreground mb-6">
               Profile Information
             </h2>
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" defaultValue="John" />
+            {loadingUser ? (
+              <p className="text-sm text-muted-foreground">Loading profile...</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Last name"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" defaultValue="Doe" />
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={user?.email ?? ""}
+                    readOnly
+                    className="bg-muted/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input id="phone" type="tel" placeholder="Optional" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="linkedin" className="flex items-center gap-2">
+                    <Linkedin className="w-4 h-4" />
+                    LinkedIn URL
+                  </Label>
+                  <Input id="linkedin" type="url" placeholder="https://linkedin.com/in/yourprofile" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input id="location" placeholder="e.g. City, Country" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" defaultValue="john.doe@email.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" type="tel" defaultValue="+1 (555) 123-4567" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="linkedin" className="flex items-center gap-2">
-                  <Linkedin className="w-4 h-4" />
-                  LinkedIn URL
-                </Label>
-                <Input id="linkedin" type="url" placeholder="https://linkedin.com/in/yourprofile" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input id="location" defaultValue="San Francisco, CA" />
-              </div>
-            </div>
-            <Button variant="hero" className="mt-6">
-              Save Changes
+            )}
+            <Button
+              variant="hero"
+              className="mt-6"
+              disabled={loadingUser || saving}
+              onClick={handleSaveProfile}
+            >
+              {saving ? "Saving…" : "Save Changes"}
             </Button>
           </div>
 
@@ -307,7 +383,7 @@ const TalentSettings = () => {
                     Filter by work location preference
                   </p>
                 </div>
-                <Select defaultValue="remote">
+                <Select>
                   <SelectTrigger className="w-[160px]">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
@@ -328,7 +404,6 @@ const TalentSettings = () => {
                 <Input 
                   type="text" 
                   placeholder="e.g. $120,000" 
-                  defaultValue="$120,000"
                   className="w-[160px]"
                 />
               </div>
@@ -337,7 +412,6 @@ const TalentSettings = () => {
               Upgrade to Premium
             </Button>
           </div>
-        </div>
       </div>
 
       {/* Delete Confirmation Dialog */}

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import {
   CreditCard,
   Linkedin,
 } from "lucide-react";
+import { apiClient } from "@/lib/api";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/recruiter/dashboard" },
@@ -24,13 +26,43 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/recruiter/settings" },
 ];
 
+type User = {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string;
+  company_name?: string | null;
+};
+
 const RecruiterSettings = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .getCurrentUser()
+      .then((res: any) => {
+        if (cancelled) return;
+        if (res.success && res.user) setUser(res.user);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUser(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const displayName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ") || "Recruiter"
+    : "Recruiter";
+
   return (
     <DashboardLayout
       role="recruiter"
       navItems={navItems}
-      userName="Mike Johnson"
-      companyName="Elite Staffing"
+      userName={displayName}
+      companyName={user?.company_name ?? undefined}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
@@ -71,38 +103,42 @@ const RecruiterSettings = () => {
             <h2 className="font-display text-xl font-semibold text-foreground mb-6">
               Profile Information
             </h2>
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" defaultValue="Mike" />
+            {loadingUser ? (
+              <p className="text-sm text-muted-foreground">Loading profile...</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input id="firstName" value={user?.first_name ?? ""} readOnly className="bg-muted/50" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input id="lastName" value={user?.last_name ?? ""} readOnly className="bg-muted/50" />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" defaultValue="Johnson" />
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={user?.email ?? ""} readOnly className="bg-muted/50" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input id="phone" type="tel" placeholder="Optional" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="linkedin" className="flex items-center gap-2">
+                    <Linkedin className="w-4 h-4" />
+                    LinkedIn URL
+                  </Label>
+                  <Input id="linkedin" type="url" placeholder="Optional" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="company">Company</Label>
+                  <Input id="company" value={user?.company_name ?? ""} readOnly className="bg-muted/50" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" defaultValue="mike@elitestaffing.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" type="tel" defaultValue="+1 (555) 123-4567" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="linkedin" className="flex items-center gap-2">
-                  <Linkedin className="w-4 h-4" />
-                  LinkedIn URL
-                </Label>
-                <Input id="linkedin" type="url" placeholder="https://linkedin.com/in/yourprofile" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
-                <Input id="company" defaultValue="Elite Staffing" />
-              </div>
-            </div>
-            <Button variant="hero" className="mt-6">
+            )}
+            <Button variant="hero" className="mt-6" disabled={loadingUser}>
               Save Changes
             </Button>
           </div>
