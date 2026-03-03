@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Briefcase,
   User,
   Building2,
   Users,
@@ -22,6 +21,7 @@ import {
   ChevronDown,
   TrendingUp,
 } from "lucide-react";
+import cardinalLogo from "@/assets/cardinal-logo.png";
 import { useToast } from "@/hooks/use-toast";
 import { resendVerification } from "@/lib/auth";
 import { apiClient } from "@/lib/api";
@@ -361,9 +361,7 @@ const Auth = () => {
         </div>
         <div className="relative z-10 flex flex-col justify-center items-center w-full p-12">
           <Link to="/" className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cardinal to-amber flex items-center justify-center">
-              <Briefcase className="w-6 h-6 text-white" />
-            </div>
+            <img src={cardinalLogo} alt="CardinalTalent" className="w-12 h-12 object-contain" />
             <span className="font-display text-3xl font-bold text-gradient">
               CardinalTalent
             </span>
@@ -386,9 +384,7 @@ const Auth = () => {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <Link to="/" className="flex lg:hidden items-center gap-2 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cardinal to-amber flex items-center justify-center">
-              <Briefcase className="w-5 h-5 text-white" />
-            </div>
+            <img src={cardinalLogo} alt="CardinalTalent" className="w-10 h-10 object-contain" />
             <span className="font-display text-xl font-bold text-gradient">
               CardinalTalent
             </span>
