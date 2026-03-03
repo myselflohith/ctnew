@@ -25,7 +25,7 @@ const roles = [
   {
     id: "employer",
     icon: Building2,
-    title: "Employer",
+    title: "Startup",
     description:
       "Post jobs and discover top talent. Our AI does the heavy lifting to find your perfect candidates.",
     features: ["Smart Sourcing", "Candidate Ranking", "Team Collaboration"],

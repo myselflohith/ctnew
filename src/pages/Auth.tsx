@@ -50,16 +50,17 @@ const publicRoles: { id: Exclude<Role, "admin">; icon: React.ElementType; label:
     label: "Job Seeker",
     description: "Find and apply to jobs",
   },
-  {
-    id: "investor",
-    icon: TrendingUp,
-    label: "Investor",
-    description: "Discover deal flow and connect with founders",
-  },
+  // Investor role temporarily hidden from auth signup
+  // {
+  //   id: "investor",
+  //   icon: TrendingUp,
+  //   label: "Investor",
+  //   description: "Discover deal flow and connect with founders",
+  // },
   {
     id: "employer",
     icon: Building2,
-    label: "Employer",
+    label: "Startup",
     description: "Post jobs and hire talent",
   },
 ];
@@ -667,24 +668,55 @@ const Auth = () => {
                 )}
 
                 {mode === "signup" && (
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                    <Checkbox
-                      id="terms"
-                      checked={acceptedTerms}
-                      onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
-                      className="mt-0.5"
-                    />
-                    <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
-                      I agree to the{" "}
-                      <Link to="/privacy" className="text-primary hover:underline">
-                        Privacy Policy
-                      </Link>{" "}
-                      and{" "}
-                      <Link to="/terms" className="text-primary hover:underline">
-                        Terms of Service
-                      </Link>
-                    </label>
-                  </div>
+                  <>
+                    <div className="flex items-start gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
+                      <Checkbox
+                        id="terms"
+                        checked={acceptedTerms}
+                        onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                        className="mt-0.5"
+                      />
+                      <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
+                        I agree to the{" "}
+                        <a
+                          href="https://cardinaltalent.ai/privacy_policy"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          Privacy Policy
+                        </a>{" "}
+                        and{" "}
+                        <a
+                          href="https://cardinaltalent.ai/terms_of_service"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          Terms of Service
+                        </a>
+                      </label>
+                    </div>
+
+                    {selectedRole === "talent" && (
+                      <div className="flex items-start gap-3 p-4 rounded-lg bg-secondary/20 border border-dashed border-border">
+                        <Checkbox
+                          id="talent_notifications"
+                          // This is UX-only for now; backend logic can be wired later
+                          checked
+                          className="mt-0.5"
+                          onChange={() => {}}
+                        />
+                        <label
+                          htmlFor="talent_notifications"
+                          className="text-sm text-muted-foreground leading-relaxed cursor-pointer"
+                        >
+                          I agree to receive email and SMS notifications about interview requests from matching
+                          companies.
+                        </label>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {mode === "signin" && (
