@@ -15,6 +15,7 @@ import {
   getOrganizationByEmailDomain,
   normalizeCompanyName,
   findOrganizationByNormalizedName,
+  createOrganization,
 } from '../services/organization.service.js';
 import { sendCompanyApprovalRequestEmail, sendVerificationEmail } from '../services/email.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
@@ -417,6 +418,11 @@ router.post('/employer/validate-company', authenticateToken, async (req: Request
       res.json({ success: true, found: false });
       return;
     }
+    const status = (org.status || '').toString().toLowerCase();
+    if (status === 'pending') {
+      res.json({ success: true, found: false });
+      return;
+    }
     res.json({ success: true, found: true, organization: { id: org.id, name: org.name } });
   } catch (error: any) {
     console.error('Validate company error:', error);
@@ -444,7 +450,7 @@ router.post('/employer/set-company', authenticateToken, async (req: Request, res
   }
 });
 
-// Request company approval: send email to internal team via AWS SES (company not in approved list).
+// Request company approval: create org with status pending (if not exists), then send email to internal team.
 router.post('/employer/request-company-approval', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user || req.user.role !== 'employer') {
@@ -456,10 +462,23 @@ router.post('/employer/request-company-approval', authenticateToken, async (req:
       res.status(400).json({ error: 'Company name is required' });
       return;
     }
+    const normalizedName = normalizeCompanyName(companyName.trim());
+    if (!normalizedName) {
+      res.status(400).json({ error: 'Company name is required' });
+      return;
+    }
+    const existing = await findOrganizationByNormalizedName(normalizedName);
+    if (!existing) {
+      await createOrganization({
+        name: normalizedName,
+        status: 'pending',
+        owner_id: req.user.id ? Number(req.user.id) : undefined,
+      });
+    }
     await sendCompanyApprovalRequestEmail(
       displayName || 'User',
       userEmail || req.user.email || '',
-      companyName.trim()
+      normalizedName
     );
     res.json({ success: true });
   } catch (error: any) {

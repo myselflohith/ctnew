@@ -21,6 +21,8 @@ import {
   Plus,
   MoreVertical,
   Filter,
+  CheckCircle,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,7 +52,7 @@ const defaultCreateForm = {
   website_url: "",
 };
 
-type OrgRow = { id: string; name?: string | null; company_name?: string | null; industry?: string | null; description?: string | null; location?: string | null; website_url?: string | null; user_count?: number; job_count?: number; created_at?: string };
+type OrgRow = { id: string; name?: string | null; company_name?: string | null; industry?: string | null; description?: string | null; location?: string | null; website_url?: string | null; user_count?: number; job_count?: number; created_at?: string; status?: string | null };
 
 const AdminOrganizations = () => {
   const { toast } = useToast();
@@ -65,6 +67,8 @@ const AdminOrganizations = () => {
   const [viewOrg, setViewOrg] = useState<OrgRow | null>(null);
   const [editingOrg, setEditingOrg] = useState<OrgRow | null>(null);
   const [editForm, setEditForm] = useState(defaultCreateForm);
+  const [verifyingOrg, setVerifyingOrg] = useState<OrgRow | null>(null);
+  const [verifyForm, setVerifyForm] = useState(defaultCreateForm);
 
   const fetchOrganizations = useCallback(async () => {
     try {
@@ -175,7 +179,72 @@ const AdminOrganizations = () => {
     navigate(`/admin/users?organization=${encodeURIComponent(org.id)}&organizationName=${encodeURIComponent(String(name))}`);
   };
 
-  const filteredOrganizations = organizations.filter((org) => {
+  const pendingOrganizations = organizations.filter(
+    (org) => (org.status || "").toString().toLowerCase() === "pending"
+  );
+  const approvedOrganizations = organizations.filter(
+    (org) => (org.status || "").toString().toLowerCase() !== "pending"
+  );
+
+  const openVerify = (org: OrgRow) => {
+    setVerifyingOrg(org);
+    setVerifyForm({
+      name: (org.name ?? org.company_name ?? "").toString(),
+      industry: (org.industry ?? "").toString(),
+      description: (org.description ?? "").toString(),
+      location: (org.location ?? "").toString(),
+      website_url: (org.website_url ?? "").toString(),
+    });
+  };
+
+  const handleVerifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyingOrg?.id) return;
+    const name = (verifyingOrg.name ?? verifyingOrg.company_name ?? "").toString().trim();
+    if (!name) {
+      toast({
+        title: "Name required",
+        description: "Organization name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      const saveRes = await apiClient.saveOrganization({
+        id: verifyingOrg.id,
+        name,
+        industry: verifyForm.industry.trim() || undefined,
+        description: verifyForm.description.trim() || undefined,
+        location: verifyForm.location.trim() || undefined,
+        website_url: verifyForm.website_url.trim() || undefined,
+      });
+      if (!saveRes.success || !saveRes.data) {
+        throw new Error("Failed to save organization details");
+      }
+      const verifyRes = await apiClient.verifyOrganization(verifyingOrg.id);
+      if (!verifyRes.success) {
+        throw new Error("Failed to verify organization");
+      }
+      toast({
+        title: "Organization verified",
+        description: `${name} is now approved.`,
+      });
+      setVerifyingOrg(null);
+      fetchOrganizations();
+    } catch (error: any) {
+      const msg = error?.message || error?.error || "Failed to verify organization.";
+      toast({
+        title: "Verification failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredOrganizations = approvedOrganizations.filter((org) => {
     const matchesSearch = !searchQuery
       ? true
       : (() => {
@@ -199,8 +268,9 @@ const AdminOrganizations = () => {
   });
 
   const totalOrgs = organizations.length;
-  const activeOrgs = organizations.filter((org) => (org.user_count ?? 0) > 0).length;
-  const trialOrgs = organizations.filter((org) => (org.user_count ?? 0) === 0).length;
+  const pendingCount = pendingOrganizations.length;
+  const activeOrgs = approvedOrganizations.filter((org) => (org.user_count ?? 0) > 0).length;
+  const trialOrgs = approvedOrganizations.filter((org) => (org.user_count ?? 0) === 0).length;
   const suspendedOrgs = 0; // Not implemented yet
 
   return (
@@ -393,6 +463,136 @@ const AdminOrganizations = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Verify Organization Dialog */}
+      <Dialog open={!!verifyingOrg} onOpenChange={(open) => !open && setVerifyingOrg(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Verify organization</DialogTitle>
+            <DialogDescription>
+              Review and complete the basic organization details before approving.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleVerifySubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={
+                  verifyingOrg
+                    ? (verifyingOrg.name ?? verifyingOrg.company_name ?? "").toString()
+                    : ""
+                }
+                readOnly
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="verify-org-industry">Industry</Label>
+              <Input
+                id="verify-org-industry"
+                placeholder="e.g. Technology"
+                value={verifyForm.industry}
+                onChange={(e) => setVerifyForm((p) => ({ ...p, industry: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="verify-org-description">Description</Label>
+              <Input
+                id="verify-org-description"
+                placeholder="Brief description"
+                value={verifyForm.description}
+                onChange={(e) => setVerifyForm((p) => ({ ...p, description: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="verify-org-location">Location</Label>
+              <Input
+                id="verify-org-location"
+                placeholder="e.g. San Francisco, CA"
+                value={verifyForm.location}
+                onChange={(e) => setVerifyForm((p) => ({ ...p, location: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="verify-org-website">Website URL</Label>
+              <Input
+                id="verify-org-website"
+                type="url"
+                placeholder="https://..."
+                value={verifyForm.website_url}
+                onChange={(e) => setVerifyForm((p) => ({ ...p, website_url: e.target.value }))}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVerifyingOrg(null)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="hero" disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save & Verify"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pending approval */}
+      {pendingOrganizations.length > 0 && (
+        <div className="glass rounded-2xl p-6 mb-8 border border-amber-500/30">
+          <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            Pending approval ({pendingCount})
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            These organizations were requested by employers. Verify to approve them (duplicate names are blocked).
+          </p>
+          <div className="space-y-3">
+            {pendingOrganizations.map((org) => (
+              <div
+                key={org.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-secondary/30"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">{org.name ?? org.company_name ?? "—"}</p>
+                    {org.created_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Requested {formatDistanceToNow(new Date(org.created_at), { addSuffix: true })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="hero"
+                  size="sm"
+                  className="gap-2 shrink-0"
+                  disabled={saving}
+                  onClick={() => openVerify(org)}
+                >
+                  {saving && verifyingOrg?.id === org.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4" />
+                  )}
+                  {saving && verifyingOrg?.id === org.id ? "Verifying…" : "Verify"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Search and Filter */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
         <div className="relative flex-1">
@@ -426,10 +626,14 @@ const AdminOrganizations = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <div className="glass rounded-xl p-4 text-center">
           <p className="text-2xl font-bold text-foreground">{totalOrgs}</p>
-          <p className="text-sm text-muted-foreground">Total Organizations</p>
+          <p className="text-sm text-muted-foreground">Total</p>
+        </div>
+        <div className="glass rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{pendingCount}</p>
+          <p className="text-sm text-muted-foreground">Pending</p>
         </div>
         <div className="glass rounded-xl p-4 text-center">
           <p className="text-2xl font-bold text-primary">{activeOrgs}</p>

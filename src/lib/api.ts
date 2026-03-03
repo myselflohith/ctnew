@@ -392,6 +392,13 @@ class ApiClient {
     return this.request('/organizations/all');
   }
 
+  /** Verify (approve) a pending organization. Admin only. */
+  async verifyOrganization(organizationId: string) {
+    return this.request<{ success: boolean; data: any }>(`/organizations/verify/${organizationId}`, {
+      method: 'PUT',
+    });
+  }
+
   async getAllUsers() {
     return this.request('/auth/all');
   }

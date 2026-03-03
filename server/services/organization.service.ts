@@ -125,6 +125,47 @@ export async function findOrganizationByNormalizedName(normalizedName: string): 
   return result.rows[0] || null;
 }
 
+/** Find an approved/active organization with the same normalized name, excluding given id (for duplicate check). */
+export async function findApprovedOrganizationByNormalizedNameExcludingId(
+  normalizedName: string,
+  excludeId: string
+): Promise<Organization | null> {
+  if (!normalizedName || !excludeId) return null;
+  const result = await query(
+    `SELECT * FROM organizations
+     WHERE id != $2
+       AND (discarded_at IS NULL AND (is_deleted IS NOT TRUE OR is_deleted IS NULL))
+       AND (status IS NULL OR LOWER(TRIM(status)) IN ('approved', 'active'))
+       AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(name,''), '\\s+', ' ', 'g'))) = LOWER($1)
+     LIMIT 1`,
+    [normalizedName, excludeId]
+  );
+  return result.rows[0] || null;
+}
+
+/** Verify (approve) a pending organization; throws if duplicate approved name exists. */
+export async function verifyOrganization(organizationId: string): Promise<Organization> {
+  const org = await getOrganizationById(organizationId);
+  if (!org) {
+    throw new Error('Organization not found');
+  }
+  const normalizedName = normalizeCompanyName(org.name || '');
+  if (!normalizedName) {
+    throw new Error('Organization has no valid name');
+  }
+  const duplicate = await findApprovedOrganizationByNormalizedNameExcludingId(normalizedName, organizationId);
+  if (duplicate) {
+    throw new Error('An approved organization with this name already exists. Cannot approve duplicate.');
+  }
+  await query(
+    `UPDATE organizations SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    [organizationId]
+  );
+  const updated = await getOrganizationById(organizationId);
+  if (!updated) throw new Error('Organization not found after update');
+  return updated;
+}
+
 // Get organization by name (for backward compat with routes using companyName param)
 export async function getOrganizationByName(name: string): Promise<Organization | null> {
   const result = await query(

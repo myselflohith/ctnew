@@ -11,6 +11,7 @@ import {
   searchOrganizationsForSignup,
   normalizeCompanyName,
   findOrganizationByNormalizedName,
+  verifyOrganization,
 } from '../services/organization.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
@@ -63,6 +64,33 @@ router.get('/approved-names', authenticateToken, async (req: Request, res: Respo
   } catch (error: any) {
     console.error('Get approved organization names error:', error);
     res.status(500).json({ error: error.message || 'Failed to get approved organization names' });
+  }
+});
+
+// Verify (approve) a pending organization – admin only; must be before /:companyName
+router.put('/verify/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const org = await verifyOrganization(req.params.id);
+    res.json({ success: true, data: org });
+  } catch (error: any) {
+    if (error.message?.includes('duplicate') || error.message?.includes('already exists')) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    if (error.message === 'Organization not found') {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    console.error('Verify organization error:', error);
+    res.status(500).json({ error: error.message || 'Failed to verify organization' });
   }
 });
 
