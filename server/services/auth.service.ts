@@ -304,6 +304,19 @@ export async function verifyToken(token: string): Promise<User | null> {
   }
 }
 
+// Update current user's basic profile (first/last name only for now)
+export async function updateUserNames(userId: string, firstName: string, lastName: string): Promise<User> {
+  await query(
+    'UPDATE users SET first_name = $1, last_name = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+    [firstName || null, lastName || null, userId]
+  );
+  const user = await getUserById(userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+  return user;
+}
+
 // Logout user
 export async function logoutUser(token: string): Promise<void> {
   await query('DELETE FROM sessions WHERE token = $1', [token]);

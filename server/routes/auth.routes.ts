@@ -8,6 +8,7 @@ import {
   getUserById,
   getAllUsers,
   setEmployerCompany,
+  updateUserNames,
 } from '../services/auth.service.js';
 import {
   getOrganizationByEmailDomain,
@@ -174,6 +175,29 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
+// Update current user (basic profile)
+router.put('/me', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { firstName, lastName } = req.body as { firstName?: string; lastName?: string };
+
+    if (!firstName || !lastName) {
+      res.status(400).json({ error: 'First name and last name are required' });
+      return;
+    }
+
+    const updatedUser = await updateUserNames(req.user.id, firstName, lastName);
+    res.json({ success: true, user: updatedUser });
+  } catch (error: any) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update user' });
   }
 });
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,11 +12,10 @@ import {
   Settings,
   Calendar,
   User,
-  Bell,
-  Shield,
-  CreditCard,
-  UserPlus,
 } from "lucide-react";
+import { apiClient } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import type { User as AuthUser } from "@/lib/auth";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
@@ -27,12 +27,77 @@ const navItems = [
 ];
 
 const EmployerSettings = () => {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .getCurrentUser()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.user) {
+          setUser(res.user);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUser(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      setFirstName(user.first_name ?? "");
+      setLastName(user.last_name ?? "");
+    }
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      toast({
+        title: "Name required",
+        description: "First name and last name cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      const res = await apiClient.updateCurrentUser({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+      if (res.success && res.user) {
+        setUser(res.user);
+        toast({
+          title: "Saved",
+          description: "Your name has been updated.",
+        });
+      } else {
+        throw new Error(res.error || "Failed to save changes");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error saving changes",
+        description: error?.message || "Unable to update your name.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <DashboardLayout
       role="employer"
       navItems={navItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
+      userName={
+        user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : "Employer"
+      }
+      companyName={user?.company_name ?? undefined}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
@@ -43,61 +108,59 @@ const EmployerSettings = () => {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Sidebar */}
-        <div className="glass rounded-2xl p-4">
-          <nav className="space-y-1">
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary font-medium">
-              <User className="w-5 h-5" />
-              Account
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <UserPlus className="w-5 h-5" />
-              Team Members
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <Bell className="w-5 h-5" />
-              Notifications
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <Shield className="w-5 h-5" />
-              Security
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-secondary/50 transition-colors">
-              <CreditCard className="w-5 h-5" />
-              Billing
-            </button>
-          </nav>
-        </div>
-
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* Main Content (no left nav) */}
+      <div className="space-y-6">
           {/* Account Section */}
           <div className="glass rounded-2xl p-6">
             <h2 className="font-display text-xl font-semibold text-foreground mb-6">
               Account Information
             </h2>
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="company">Company</Label>
+                <Input
+                  id="company"
+                  value={user?.company_name ?? ""}
+                  readOnly
+                />
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" defaultValue="Jane" />
+                  <Input
+                    id="firstName"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" defaultValue="Smith" />
+                  <Input
+                    id="lastName"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" defaultValue="jane@techcorp.ai" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={user?.email ?? ""}
+                  readOnly
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
-                <Input id="role" defaultValue="Hiring Manager" />
+                <Input
+                  id="role"
+                  value={user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : ""}
+                  readOnly
+                />
               </div>
             </div>
-            <Button variant="hero" className="mt-6">
+            <Button variant="hero" className="mt-6" onClick={handleSave} disabled={loadingUser}>
               Save Changes
             </Button>
           </div>
@@ -147,42 +210,6 @@ const EmployerSettings = () => {
             </div>
           </div>
 
-          {/* Team Members */}
-          <div className="glass rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display text-xl font-semibold text-foreground">
-                Team Members
-              </h2>
-              <Button variant="outline" size="sm">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Invite Member
-              </Button>
-            </div>
-            <div className="space-y-4">
-              {[
-                { name: "Jane Smith", email: "jane@techcorp.ai", role: "Admin" },
-                { name: "Mark Wilson", email: "mark@techcorp.ai", role: "Recruiter" },
-                { name: "Lisa Chen", email: "lisa@techcorp.ai", role: "Hiring Manager" },
-              ].map((member, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-4 rounded-xl bg-secondary/30"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white font-semibold">
-                      {member.name.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{member.name}</p>
-                      <p className="text-sm text-muted-foreground">{member.email}</p>
-                    </div>
-                  </div>
-                  <span className="text-sm text-muted-foreground">{member.role}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
     </DashboardLayout>
   );

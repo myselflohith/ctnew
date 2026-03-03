@@ -142,6 +142,13 @@ class ApiClient {
     return this.request('/auth/me');
   }
 
+  async updateCurrentUser(data: { firstName?: string; lastName?: string }) {
+    return this.request('/auth/me', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   async forgotPassword(email: string) {
     return this.request('/auth/forgot-password', {
       method: 'POST',
