@@ -2,6 +2,16 @@ import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 
 const EMAIL_FROM = 'cardin@cardinaltalent.ai';
 
+/** Base URL for the frontend (reset password, verify email links). Prefer SITE_URL, then APP_URL, then CLIENT_URL from .env. */
+function getSiteUrl(): string {
+  return (
+    process.env.SITE_URL ||
+    process.env.APP_URL ||
+    process.env.CLIENT_URL ||
+    'http://localhost:5173'
+  ).replace(/\/$/, '');
+}
+
 // Support both AWS_* and SES_* env vars (e.g. from production .env)
 const AWS_REGION = process.env.AWS_REGION || process.env.SES_REGION || 'us-east-1';
 const AWS_ACCESS_KEY = process.env.AWS_ACCESS_KEY || process.env.SES_ACCESS_KEY || '';
@@ -183,7 +193,7 @@ export async function sendPasswordResetEmail(
   name: string,
   resetToken: string
 ): Promise<void> {
-  const resetUrl = `${process.env.APP_URL || 'http://172.17.252.184:5173'}/reset-password?token=${resetToken}`;
+  const resetUrl = `${getSiteUrl()}/reset-password?token=${resetToken}`;
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -204,7 +214,7 @@ export async function sendPasswordResetEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
-        <a href="${process.env.APP_URL || 'http://172.17.252.184:5173'}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+        <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
     </p>
   `;
 
@@ -224,7 +234,7 @@ export async function sendVerificationEmail(
   name: string,
   verificationToken: string
 ): Promise<void> {
-  const verifyUrl = `${process.env.APP_URL || 'http://172.17.252.184:5173'}/verify-email?token=${verificationToken}`;
+  const verifyUrl = `${getSiteUrl()}/verify-email?token=${verificationToken}`;
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -244,7 +254,7 @@ export async function sendVerificationEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
-        <a href="${process.env.APP_URL || 'http://172.17.252.184:5173'}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+        <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
     </p>
   `;
 
@@ -284,7 +294,7 @@ export async function sendInterviewInviteEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
-        <a href="${process.env.APP_URL || 'http://172.17.252.184:5173'}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+        <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
     </p>
   `;
 
