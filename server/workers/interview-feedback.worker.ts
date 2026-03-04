@@ -1,23 +1,19 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
 import pool from '../database/connection.js';
 import { generateInterviewFeedback } from '../jobs/interview-feedback.js';
 import type { ScoreInterviewFeedbackJobData } from '../queues/interview-feedback.queue.js';
 
-function getRedisConnection() {
+function getRedisConnectionOptions(): { url?: string; host?: string; port?: number; password?: string; maxRetriesPerRequest: null } {
   const url = process.env.REDIS_URL;
   if (url && url.trim().length > 0) {
-    return new IORedis(url, {
-      maxRetriesPerRequest: null,
-    });
+    return { url: url.trim(), maxRetriesPerRequest: null };
   }
-
-  return new IORedis({
-    host: (process.env.REDIS_HOST || '127.0.0.1').toString(),
+  return {
+    host: process.env.REDIS_HOST || '127.0.0.1',
     port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379,
-    password: process.env.REDIS_PASSWORD ? process.env.REDIS_PASSWORD.toString() : undefined,
+    password: process.env.REDIS_PASSWORD || undefined,
     maxRetriesPerRequest: null,
-  });
+  };
 }
 
 async function shouldScore(reportId: number, inviteId: number, force = false) {
@@ -72,7 +68,7 @@ async function shouldScore(reportId: number, inviteId: number, force = false) {
 }
 
 export function startInterviewFeedbackWorker() {
-  const connection = getRedisConnection();
+  const connection = getRedisConnectionOptions();
 
   const worker = new Worker<ScoreInterviewFeedbackJobData>(
     'interview-feedback',

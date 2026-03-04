@@ -20,8 +20,8 @@ import {
   saveInterviewAnswer,
 } from '../services/interview.service.js';
 import { generateInterviewFeedback } from '../jobs/interview-feedback.js';
-import { interviewVideoQueue } from '../queues/interview-video.queue.js';
-import { interviewFeedbackQueue } from '../queues/interview-feedback.queue.js';
+import { interviewVideoQueue, type InterviewVideoJobName } from '../queues/interview-video.queue.js';
+import { interviewFeedbackQueue, type ScoreInterviewFeedbackJobName } from '../queues/interview-feedback.queue.js';
 
 const enqueuePartialScoring = async (params: { reportId: number; inviteId: number; reason?: string }) => {
   const delayMs = process.env.PARTIAL_INTERVIEW_FEEDBACK_DELAY_MS
@@ -49,8 +49,8 @@ const enqueuePartialScoring = async (params: { reportId: number; inviteId: numbe
     }
 
     await interviewFeedbackQueue.add(
-      'scoreInterviewFeedback',
-      { reportId: params.reportId, inviteId: params.inviteId, force: true } as any,
+      'scoreInterviewFeedback' as ScoreInterviewFeedbackJobName,
+      { reportId: params.reportId, inviteId: params.inviteId, force: true },
       { delay: delayMs, jobId: `score-report-${params.reportId}` }
     );
 
@@ -587,7 +587,7 @@ router.post('/:id/submit_report', authenticateToken, async (req: Request, res: R
       // This keeps the "finish interview" UX fast.
       try {
         await interviewFeedbackQueue.add(
-          'scoreInterviewFeedback',
+          'scoreInterviewFeedback' as ScoreInterviewFeedbackJobName,
           { reportId: report.id, inviteId: inviteIdNum },
           { jobId: `score-report-${report.id}` }
         );
@@ -1590,7 +1590,7 @@ router.post('/upload_video', uploadMiddleware, async (req: Request, res: Respons
     const filePath = (req.file as Express.Multer.File).path;
 
     // Enqueue background job (Sidekiq-like). Do NOT block request on DB writes.
-    const job = await interviewVideoQueue.add('processInterviewVideo', {
+    const job = await interviewVideoQueue.add('processInterviewVideo' as InterviewVideoJobName, {
       filePath,
       videoPath: videoUrl,
       interviewId: Number(interview_id),

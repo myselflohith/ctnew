@@ -1,5 +1,4 @@
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
 
 export type InterviewVideoJobName = 'processInterviewVideo';
 
@@ -28,27 +27,23 @@ export interface ProcessInterviewVideoJobData {
   isCompleted?: boolean;
 }
 
-function getRedisConnection() {
+function getRedisConnectionOptions(): { url?: string; host?: string; port?: number; password?: string; maxRetriesPerRequest: null } {
   const url = process.env.REDIS_URL;
   if (url && url.trim().length > 0) {
-    return new IORedis(url, {
-      maxRetriesPerRequest: null,
-    });
+    return { url: url.trim(), maxRetriesPerRequest: null };
   }
-
-  // Local default
-  return new IORedis({
+  return {
     host: process.env.REDIS_HOST || '127.0.0.1',
     port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379,
     password: process.env.REDIS_PASSWORD || undefined,
     maxRetriesPerRequest: null,
-  });
+  };
 }
 
-export const interviewVideoQueue = new Queue<ProcessInterviewVideoJobData, any, InterviewVideoJobName>(
+export const interviewVideoQueue = new Queue<ProcessInterviewVideoJobData, unknown, InterviewVideoJobName>(
   'interview-video',
   {
-    connection: getRedisConnection(),
+    connection: getRedisConnectionOptions(),
     defaultJobOptions: {
       attempts: 5,
       backoff: { type: 'exponential', delay: 2000 },
