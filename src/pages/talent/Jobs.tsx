@@ -22,14 +22,6 @@ import { useState, useEffect } from "react";
 import { useJobs } from "@/contexts/JobsContext";
 import { toast } from "sonner";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
-  { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
-  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
-  { icon: Settings, label: "Settings", path: "/talent/settings" },
-];
 
 const TalentJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,7 +99,7 @@ const TalentJobs = () => {
   const someSelected = selectedJobs.length > 0;
 
   return (
-    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+    <DashboardLayout role="talent">
       <div className="mb-8 flex items-start justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">

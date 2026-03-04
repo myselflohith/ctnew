@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getCurrentUser } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { adminNavItems, employerNavItems, recruiterNavItems, talentNavItems } from "@/components/layout/navItems";
 
 interface NavItem {
   icon: React.ElementType;
@@ -37,7 +38,7 @@ interface NavItem {
 interface DashboardLayoutProps {
   children: ReactNode;
   role: "talent" | "employer" | "recruiter" | "admin";
-  navItems: NavItem[];
+  navItems?: NavItem[];
   userName?: string;
   companyName?: string;
 }
@@ -53,14 +54,52 @@ const DashboardLayout = ({
   const navigate = useNavigate();
   const [user, setUser] = useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
 
+  const defaultNavItems = (() => {
+    switch (role) {
+      case "talent":
+        return talentNavItems;
+      case "employer":
+        return employerNavItems;
+      case "recruiter":
+        return recruiterNavItems;
+      case "admin":
+        return adminNavItems;
+      default:
+        return [];
+    }
+  })();
+
+  const resolvedNavItems = navItems ?? defaultNavItems;
+
   useEffect(() => {
-    getCurrentUser().then(setUser);
+    // Persist the last known user in sessionStorage to avoid name flicker
+    // on route changes while getCurrentUser() revalidates.
+    try {
+      const cached = sessionStorage.getItem("ct.currentUser");
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+    } catch {
+      // ignore cache errors
+    }
+
+    getCurrentUser().then((u) => {
+      setUser(u);
+      try {
+        if (u) sessionStorage.setItem("ct.currentUser", JSON.stringify(u));
+      } catch {
+        // ignore cache errors
+      }
+    });
   }, []);
 
+  // Avoid showing "User" flicker before async getCurrentUser() resolves.
+  // If no name is available yet, render an empty string (avatar falls back to "?").
   const displayName =
-    [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
     userNameProp ||
-    "User";
+    [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
+    user?.email ||
+    "";
   const displayCompany = user?.company_name ?? companyNameProp ?? undefined;
 
   const handleLogout = async () => {
@@ -85,7 +124,7 @@ const DashboardLayout = ({
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
-          {navItems.map((item) => {
+          {resolvedNavItems.map((item) => {
             const isActive =
               location.pathname === item.path ||
               location.pathname.startsWith(item.path + "/");
@@ -112,11 +151,11 @@ const DashboardLayout = ({
             <DropdownMenuTrigger asChild>
               <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-sidebar-accent transition-colors">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white font-semibold">
-                  {displayName.charAt(0)}
+                  {(displayName || "?").charAt(0)}
                 </div>
                 <div className="flex-1 text-left">
                   <p className="text-sm font-medium text-sidebar-foreground">
-                    {displayName}
+                    {displayName || " "}
                   </p>
                   {displayCompany && (
                     <p className="text-xs text-muted-foreground">{displayCompany}</p>
@@ -126,9 +165,13 @@ const DashboardLayout = ({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => navigate(`/${role}/settings`)}>
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
+              <DropdownMenuItem
+                onClick={() =>
+                  navigate(role === "talent" ? "/talent/profile" : `/${role}/settings`)
+                }
+              >
+                <User className="w-4 h-4 mr-2" />
+                Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">

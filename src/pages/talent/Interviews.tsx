@@ -3,19 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  LayoutDashboard,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Search,
-  FileText,
-  Heart,
-  Settings,
   Calendar,
-  Building2,
   MapPin,
-  Clock,
   Video,
   Phone,
   Play,
-  CheckCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,19 +23,13 @@ import { useJobs } from "@/contexts/JobsContext";
 import { apiClient } from "@/lib/api";
 import { StartInterviewModal, type CandidateInfo } from "@/components/interview/StartInterviewModal";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
-  { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
-  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
-  { icon: Settings, label: "Settings", path: "/talent/settings" },
-];
 
 const TalentInterviews = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterMode, setFilterMode] = useState<"all" | "pending" | "completed">("pending");
   const [interviews, setInterviews] = useState<any[]>([]);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
   const { applications } = useJobs();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -56,30 +50,37 @@ const TalentInterviews = () => {
         const response = await apiClient.request('/interviews/talent/scheduled');
         const interviewList = (response?.data || []) as any[];
         if (Array.isArray(interviewList) && interviewList.length > 0) {
-          setInterviews((interviewList).map((interview: any) => ({
-            id: interview.id,
-            inviteId: interview.invite_id,
-            jobTitle: interview.job_title || interview.interview_title || "Interview",
-            company: interview.company || "Company",
-            location: interview.location || "Remote",
-            interviewType: interview.type_of_interview || "Practice",
-            scheduledDate: interview.invite_created_at 
-              ? new Date(interview.invite_created_at).toLocaleDateString()
-              : "TBD",
-            inviteStatus: interview.invite_status || "Pending",
-            // Treat as completed only when invite status is actually Completed.
-            // Previously this used `interview.completed > 0` (report_count), which is also true for partial reports.
-            completed: String(interview.invite_status || "").toLowerCase() === "completed",
-            uniqueLink: interview.unique_interview_link,
-            interviewTitle: interview.interview_title,
-            interviewCategory: interview.interview_category || "General",
-            candidateEmail: interview.candidate_email,
-            candidateName: interview.candidate_name,
-            phoneNum: interview.phone_num,
-            answeredCount: Number(interview.answered_count ?? 0),
-            totalQuestions: Number(interview.total_questions ?? 0),
-            completionPercentage: Number(interview.completion_percentage ?? 0),
-          })));
+          setInterviews(interviewList.map((interview: any) => {
+            const createdAtRaw = interview.invite_created_at
+              ? Number(new Date(interview.invite_created_at).getTime())
+              : 0;
+
+            return {
+              id: interview.id,
+              inviteId: interview.invite_id,
+              jobTitle: interview.job_title || interview.interview_title || "Interview",
+              company: interview.company || "Company",
+              location: interview.location || "Remote",
+              interviewType: interview.type_of_interview || "Practice",
+              scheduledDate: interview.invite_created_at
+                ? new Date(interview.invite_created_at).toLocaleDateString()
+                : "TBD",
+              inviteStatus: interview.invite_status || "Pending",
+              // Treat as completed only when invite status is actually Completed.
+              // Previously this used `interview.completed > 0` (report_count), which is also true for partial reports.
+              completed: String(interview.invite_status || "").toLowerCase() === "completed",
+              createdAtRaw,
+              uniqueLink: interview.unique_interview_link,
+              interviewTitle: interview.interview_title,
+              interviewCategory: interview.interview_category || "General",
+              candidateEmail: interview.candidate_email,
+              candidateName: interview.candidate_name,
+              phoneNum: interview.phone_num,
+              answeredCount: Number(interview.answered_count ?? 0),
+              totalQuestions: Number(interview.total_questions ?? 0),
+              completionPercentage: Number(interview.completion_percentage ?? 0),
+            };
+          }));
         } else {
           setInterviews([]);
         }
@@ -98,16 +99,30 @@ const TalentInterviews = () => {
     }
   }, []);
 
-  // Filter interviews based on search query
-  const filteredInterviews = interviews.filter((interview) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      interview.jobTitle.toLowerCase().includes(query) ||
-      interview.company.toLowerCase().includes(query) ||
-      interview.location.toLowerCase().includes(query)
-    );
-  });
+  // Filter interviews based on toggle + search query
+  const filteredInterviews = interviews
+    .filter((interview) => {
+      if (filterMode === "all") return true;
+      const status = String(interview.inviteStatus || "").toLowerCase();
+      if (filterMode === "pending") return status === "pending";
+      if (filterMode === "completed") return status === "completed";
+      return true;
+    })
+    .filter((interview) => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        interview.jobTitle.toLowerCase().includes(query) ||
+        interview.company.toLowerCase().includes(query) ||
+        interview.location.toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      const aTime = Number(a?.createdAtRaw ?? 0);
+      const bTime = Number(b?.createdAtRaw ?? 0);
+      return sortOrder === "asc" ? aTime - bTime : bTime - aTime;
+    });
+
 
   const getInterviewIcon = (type: string) => {
     switch (type) {
@@ -137,7 +152,7 @@ const TalentInterviews = () => {
   };
 
   return (
-    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+    <DashboardLayout role="talent">
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
           Interviews Scheduled
@@ -147,8 +162,50 @@ const TalentInterviews = () => {
         </p>
       </div>
 
-      {/* Search */}
-      <div className="glass rounded-2xl p-4 mb-8">
+      {/* Filter Toggle + Search */}
+      <div className="glass rounded-2xl p-4 mb-8 space-y-4">
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={filterMode === "pending" ? "hero" : "outline"}
+            size="sm"
+            onClick={() => setFilterMode("pending")}
+          >
+            Scheduled Interviews
+          </Button>
+          <Button
+            type="button"
+            variant={filterMode === "completed" ? "hero" : "outline"}
+            size="sm"
+            onClick={() => setFilterMode("completed")}
+          >
+            Completed Interviews
+          </Button>
+          <Button
+            type="button"
+            variant={filterMode === "all" ? "hero" : "outline"}
+            size="sm"
+            onClick={() => setFilterMode("all")}
+          >
+            All Interviews
+          </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Sort</span>
+            <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as "asc" | "desc")}>
+              <SelectTrigger className="h-9 w-[140px]">
+                <SelectValue placeholder="Sort order" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Newest first</SelectItem>
+                <SelectItem value="asc">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input

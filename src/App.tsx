@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { JobsProvider } from "@/contexts/JobsContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 
@@ -101,7 +101,8 @@ const App = () => (
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />
             <Route path="/interview/:token/access" element={<InterviewAccessGate />} />
             <Route path="/interview/:token/session" element={<TalentInterviewSession />} />
-            <Route path="/talent/settings" element={<TalentSettings />} />
+            <Route path="/talent/profile" element={<TalentSettings />} />
+            <Route path="/talent/settings" element={<Navigate to="/talent/profile" replace />} />
             
             {/* Employer routes: set-company is unwrapped; all others require company (redirect if missing) */}
             <Route path="/employer/set-company" element={<EmployerSetCompany />} />

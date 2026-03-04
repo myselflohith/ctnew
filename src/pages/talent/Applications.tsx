@@ -18,14 +18,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
-  { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
-  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
-  { icon: Settings, label: "Settings", path: "/talent/settings" },
-];
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -73,7 +65,7 @@ const TalentApplications = () => {
   };
 
   return (
-    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+    <DashboardLayout role="talent">
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
           My Applications

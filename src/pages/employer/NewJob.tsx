@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { employerNavItems } from "@/components/layout/navItems";
@@ -120,50 +120,36 @@ const NewJob = () => {
     setRequirements(requirements.filter((r) => r.id !== id));
   };
 
-  const extractSkillsFromDescription = () => {
-    // Placeholder for AI extraction - will be replaced with actual AI service
-    // For now, this is a simple keyword-based extraction
-    const commonTechKeywords = [
-      "React",
-      "Vue",
-      "Angular",
-      "TypeScript",
-      "JavaScript",
-      "Node.js",
-      "Python",
-      "Java",
-      "C++",
-      "Go",
-      "Rust",
-      "PostgreSQL",
-      "MongoDB",
-      "AWS",
-      "Azure",
-      "GCP",
-      "Docker",
-      "Kubernetes",
-      "GraphQL",
-      "REST",
-    ];
+  const extractSkillsFromDescription = async () => {
+    if (!formData.description?.trim()) return;
 
-    const descriptionLower = formData.description.toLowerCase();
-    const extractedSkills = commonTechKeywords.filter((keyword) =>
-      descriptionLower.includes(keyword.toLowerCase()),
-    );
+    try {
+      const resp = await apiClient.extractJobSkills(formData.description);
+      const extractedSkills: string[] = resp?.data?.skills || [];
 
-    if (extractedSkills.length > 0) {
-      setSkills([...new Set([...skills, ...extractedSkills])]);
+      if (extractedSkills.length > 0) {
+        setSkills([...new Set([...skills, ...extractedSkills])]);
+        toast({
+          title: "Skills Extracted",
+          description: `Added ${extractedSkills.length} skill${
+            extractedSkills.length !== 1 ? "s" : ""
+          } from job description.`,
+        });
+      } else {
+        toast({
+          title: "No Skills Found",
+          description:
+            "Could not extract skills from description. Please add skills manually.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Error extracting skills:", error);
       toast({
-        title: "Skills Extracted",
-        description: `Added ${extractedSkills.length} skill${
-          extractedSkills.length !== 1 ? "s" : ""
-        } from job description.`,
-      });
-    } else {
-      toast({
-        title: "No Skills Found",
+        title: "Extraction Failed",
         description:
-          "Could not extract skills from description. Please add skills manually.",
+          error?.message ||
+          "Failed to extract skills from description. Please try again.",
         variant: "destructive",
       });
     }
@@ -236,6 +222,8 @@ const NewJob = () => {
         skills: skills,
         description: formData.description,
         addNotes,
+        // Back-end will parse requirements when enabled (mirrors ch-job-marketplace "autopilot_sourcing")
+        autopilot_sourcing: Boolean(formData.autoSource),
       };
 
       // Create the job via API
@@ -440,11 +428,11 @@ const NewJob = () => {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={extractSkillsFromDescription}
+                onClick={() => void extractSkillsFromDescription()}
                 disabled={!formData.description}
               >
                 <Sparkles className="w-4 h-4 mr-2" />
-                Extract from Description
+                Extract from Job Description
               </Button>
             </div>
 
@@ -489,9 +477,79 @@ const NewJob = () => {
 
           {/* Requirements */}
           <div className="glass rounded-2xl p-6">
-            <h2 className="font-display text-xl font-semibold text-foreground mb-2">
-              Requirements
-            </h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display text-xl font-semibold text-foreground">
+                Requirements
+              </h2>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const run = async () => {
+                    if (!formData.description?.trim()) return;
+
+                    try {
+                      const resp = await apiClient.extractJobRequirements(formData.description);
+                      const mustHave = Array.isArray(resp?.data?.must_have) ? resp.data.must_have : [];
+                      const niceToHave = Array.isArray(resp?.data?.nice_to_have) ? resp.data.nice_to_have : [];
+
+                      const toAdd: Requirement[] = [
+                        ...mustHave.map((r: any) => ({
+                          id: `${Date.now()}-mh-${r.requirement}`,
+                          text: r.requirement,
+                          type: "mustHave" as const,
+                          weight: typeof r.weightage === "number" ? r.weightage : 5,
+                        })),
+                        ...niceToHave.map((r: any) => ({
+                          id: `${Date.now()}-nt-${r.requirement}`,
+                          text: r.requirement,
+                          type: "niceToHave" as const,
+                          weight: typeof r.weightage === "number" ? r.weightage : 3,
+                        })),
+                      ];
+
+                      if (toAdd.length > 0) {
+                        setRequirements((prev) => {
+                          const existingTexts = new Set(prev.map((r) => r.text));
+                          const merged = [...prev];
+                          for (const r of toAdd) {
+                            if (!existingTexts.has(r.text)) merged.push(r);
+                          }
+                          return merged;
+                        });
+                        toast({
+                          title: "Requirements Extracted",
+                          description: `Added ${toAdd.length} requirement${toAdd.length !== 1 ? "s" : ""} from job description.`,
+                        });
+                      } else {
+                        toast({
+                          title: "No Requirements Found",
+                          description:
+                            "Could not extract requirements from description. Please add requirements manually.",
+                          variant: "destructive",
+                        });
+                      }
+                    } catch (error: any) {
+                      console.error("Error extracting requirements:", error);
+                      toast({
+                        title: "Extraction Failed",
+                        description:
+                          error?.message ||
+                          "Failed to extract requirements from description. Please try again.",
+                        variant: "destructive",
+                      });
+                    }
+                  };
+
+                  void run();
+                }}
+                disabled={!formData.description}
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Extract from Job Description
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground mb-6">
               Add must-have and nice-to-have requirements with weights for AI
               matching

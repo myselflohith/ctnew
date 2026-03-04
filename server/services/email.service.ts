@@ -2,14 +2,19 @@ import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 
 const EMAIL_FROM = 'cardin@cardinaltalent.ai';
 
-/** Base URL for the frontend (reset password, verify email links). Prefer SITE_URL, then APP_URL, then CLIENT_URL from .env. */
-function getSiteUrl(): string {
+/**
+ * Base URL for the frontend (reset password, verify email links).
+ * Prefer FRONTEND_URL, then PUBLIC_APP_URL, then APP_URL, then SITE_URL/CLIENT_URL.
+ */
+function getFrontendBaseUrl(): string {
   return (
-    process.env.SITE_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.PUBLIC_APP_URL ||
     process.env.APP_URL ||
+    process.env.SITE_URL ||
     process.env.CLIENT_URL ||
-    'http://localhost:5173'
-  ).replace(/\/$/, '');
+    'https://ctnew.cardinaltalent.ai'
+  ).trim().replace(/\/$/, '');
 }
 
 // Support both AWS_* and SES_* env vars (e.g. from production .env)
@@ -66,7 +71,12 @@ async function sendEmailViaSES(
 }
 
 // Helper function to generate the common email HTML structure
-function generateEmailHtml(title: string, headerContent: string, bodyContent: string, footerContent: string): string {
+function generateEmailHtml(
+  title: string,
+  headerContent: string,
+  bodyContent: string,
+  footerContent: string
+): string {
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -193,7 +203,20 @@ export async function sendPasswordResetEmail(
   name: string,
   resetToken: string
 ): Promise<void> {
+<<<<<<< HEAD
+<<<<<<< Updated upstream
   const resetUrl = `${getSiteUrl()}/reset-password?token=${resetToken}`;
+=======
+  const appUrl =
+    (process.env.APP_URL || process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '') ||
+    'https://ctnew.cardinaltalent.ai';
+
+  const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+>>>>>>> Stashed changes
+=======
+  const appUrl = getFrontendBaseUrl();
+  const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+>>>>>>> 163a6076 (Worked on Talent and Employer Side)
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -214,11 +237,24 @@ export async function sendPasswordResetEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
+<<<<<<< HEAD
+<<<<<<< Updated upstream
         <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> Stashed changes
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> 163a6076 (Worked on Talent and Employer Side)
     </p>
   `;
 
-  const html = generateEmailHtml('CardinalTalent Password Reset', headerContent, bodyContent, footerContent);
+  const html = generateEmailHtml(
+    'CardinalTalent Password Reset',
+    headerContent,
+    bodyContent,
+    footerContent
+  );
 
   try {
     await sendEmailViaSES(email, 'Password Reset Request - CardinalTalent', html, EMAIL_FROM);
@@ -234,7 +270,20 @@ export async function sendVerificationEmail(
   name: string,
   verificationToken: string
 ): Promise<void> {
+<<<<<<< HEAD
+<<<<<<< Updated upstream
   const verifyUrl = `${getSiteUrl()}/verify-email?token=${verificationToken}`;
+=======
+  const appUrl =
+    (process.env.APP_URL || process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '') ||
+    'https://ctnew.cardinaltalent.ai';
+
+  const verifyUrl = `${appUrl}/verify-email?token=${verificationToken}`;
+>>>>>>> Stashed changes
+=======
+  const appUrl = getFrontendBaseUrl();
+  const verifyUrl = `${appUrl}/verify-email?token=${verificationToken}`;
+>>>>>>> 163a6076 (Worked on Talent and Employer Side)
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -254,11 +303,24 @@ export async function sendVerificationEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
+<<<<<<< HEAD
+<<<<<<< Updated upstream
         <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> Stashed changes
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> 163a6076 (Worked on Talent and Employer Side)
     </p>
   `;
 
-  const html = generateEmailHtml('CardinalTalent Email Verification', headerContent, bodyContent, footerContent);
+  const html = generateEmailHtml(
+    'CardinalTalent Email Verification',
+    headerContent,
+    bodyContent,
+    footerContent
+  );
 
   try {
     await sendEmailViaSES(email, 'Verify Your Email - CardinalTalent', html, EMAIL_FROM);
@@ -275,6 +337,8 @@ export async function sendInterviewInviteEmail(
   interviewTitle: string,
   interviewLink: string
 ): Promise<void> {
+  const appUrl = getFrontendBaseUrl();
+
   const headerContent = `
     <h1>CardinalTalent</h1>
   `;
@@ -294,14 +358,32 @@ export async function sendInterviewInviteEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
+<<<<<<< HEAD
+<<<<<<< Updated upstream
         <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+=======
+        <a href="${(process.env.APP_URL || '').replace(/\/$/, '')}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> Stashed changes
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> 163a6076 (Worked on Talent and Employer Side)
     </p>
   `;
 
-  const html = generateEmailHtml('CardinalTalent Interview Invitation', headerContent, bodyContent, footerContent);
+  const html = generateEmailHtml(
+    'CardinalTalent Interview Invitation',
+    headerContent,
+    bodyContent,
+    footerContent
+  );
 
   try {
-    await sendEmailViaSES(candidateEmail, `Interview Invitation - ${interviewTitle} - CardinalTalent`, html, EMAIL_FROM);
+    await sendEmailViaSES(
+      candidateEmail,
+      `Interview Invitation - ${interviewTitle} - CardinalTalent`,
+      html,
+      EMAIL_FROM
+    );
     console.log(`Interview invite email sent to ${candidateEmail}`);
   } catch (error) {
     console.error('Error sending interview invite email:', error);
@@ -309,7 +391,7 @@ export async function sendInterviewInviteEmail(
   }
 }
 
-const COMPANY_APPROVAL_REQUEST_TO = process.env.COMPANY_APPROVAL_REQUEST_EMAIL || 'lokesha@poornam.com';
+const COMPANY_APPROVAL_REQUEST_TO = process.env.COMPANY_APPROVAL_REQUEST_EMAIL || 'talent@yopmail.com';
 
 /** Send company approval request to internal team (AWS SES). Used when employer enters an unapproved company. */
 export async function sendCompanyApprovalRequestEmail(
@@ -335,7 +417,12 @@ export async function sendCompanyApprovalRequestEmail(
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
   `;
 
-  const html = generateEmailHtml('CardinalTalent - Company approval request', headerContent, bodyContent, footerContent);
+  const html = generateEmailHtml(
+    'CardinalTalent - Company approval request',
+    headerContent,
+    bodyContent,
+    footerContent
+  );
 
   try {
     const fromDisplayName = userEmail ? `${displayName} <${userEmail}>` : displayName;
@@ -346,7 +433,9 @@ export async function sendCompanyApprovalRequestEmail(
       EMAIL_FROM,
       { replyTo: userEmail || undefined, fromDisplayName: fromDisplayName }
     );
-    console.log(`Company approval request email sent to ${COMPANY_APPROVAL_REQUEST_TO} for company: ${companyName}`);
+    console.log(
+      `Company approval request email sent to ${COMPANY_APPROVAL_REQUEST_TO} for company: ${companyName}`
+    );
   } catch (error) {
     console.error('Error sending company approval request email:', error);
     throw new Error('Failed to send company approval request email');

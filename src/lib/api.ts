@@ -216,6 +216,53 @@ class ApiClient {
     return `${API_BASE_URL}/resumes/${resumeId}/download`;
   }
 
+  async extractResumeSkills(resumeId?: string) {
+    return this.request<{ skills: string[] }>('/resumes/extract-skills', {
+      method: 'POST',
+      body: JSON.stringify({ resumeId }),
+    });
+  }
+
+  // Profile endpoints
+  async updateTalentProfile(data: {
+    first_name?: string | null;
+    last_name?: string | null;
+    phone?: string | null;
+    location?: string | null;
+    linkedin_profile_url?: string | null;
+    photo_url?: string | null;
+    remote_interest?: string | boolean | null;
+    salary_expectations?: string | null;
+    skills?: string[] | null;
+  }) {
+    return this.request('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadTalentPhoto(file: File) {
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    const headers: HeadersInit = {};
+    const liveToken = localStorage.getItem('auth_token');
+    if (liveToken) headers['Authorization'] = `Bearer ${liveToken}`;
+
+    const response = await fetch(`${API_BASE_URL}/uploads/profile-photo`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Upload failed');
+    }
+    return data as { success: boolean; url: string; user: any };
+  }
+
   // Job endpoints
   async getAvailableJobs() {
     return this.request('/jobs/available');
@@ -314,6 +361,23 @@ class ApiClient {
 
   async getJobApplications(jobId: string) {
     return this.request(`/jobs/${jobId}/applications`);
+  }
+
+  async extractJobSkills(jobDescription: string) {
+    return this.request<{ skills: string[] }>('/jobs/extract-skills', {
+      method: 'POST',
+      body: JSON.stringify({ jobDescription }),
+    });
+  }
+
+  async extractJobRequirements(jobDescription: string) {
+    return this.request<{ must_have: { requirement: string; weightage: number }[]; nice_to_have: { requirement: string; weightage: number }[] }>(
+      '/jobs/extract-requirements',
+      {
+        method: 'POST',
+        body: JSON.stringify({ jobDescription }),
+      }
+    );
   }
 
   // Organization endpoints

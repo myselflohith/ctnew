@@ -4,36 +4,23 @@ import JobCard from "@/components/dashboard/JobCard";
 import ApplyModal from "@/components/talent/ApplyModal";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Button } from "@/components/ui/button";
-import {
-  LayoutDashboard,
-  Search,
-  FileText,
-  Briefcase,
-  Heart,
-  Settings,
-  CheckCircle,
-  Clock,
-  Star,
-  ArrowRight,
-  Calendar,
-} from "lucide-react";
+import { FileText, Clock, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 import { toast } from "sonner";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
-  { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
-  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
-  { icon: Settings, label: "Settings", path: "/talent/settings" },
-];
-
 const TalentDashboard = () => {
   const navigate = useNavigate();
-  const { availableJobs, saveJob, applyToJob, applications, loading } = useJobs();
+  const {
+    availableJobs,
+    saveJob,
+    applyToJob,
+    applications,
+    applicationsTodayCount,
+    scheduledInterviewsCount,
+    scheduledInterviewsTodayCount,
+  } = useJobs();
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
@@ -65,12 +52,12 @@ const TalentDashboard = () => {
   };
 
   return (
-    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+    <DashboardLayout role="talent">
       {/* Header */}
       <div className="mb-8">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-            Welcome back, John! 👋
+            Welcome back! 👋
           </h1>
           <p className="text-muted-foreground">
             Here's what's happening with your job search.
@@ -79,12 +66,14 @@ const TalentDashboard = () => {
       </div>
 
       {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <MetricCard
           title="Applications Sent"
           value={applications.length}
-          change="3 this week"
-          changeType="neutral"
+          change={
+            applicationsTodayCount > 0 ? `+${applicationsTodayCount} today` : undefined
+          }
+          changeType={applicationsTodayCount > 0 ? "positive" : "neutral"}
           icon={<FileText className="w-6 h-6" />}
           variant="amber"
           onClick={() => navigate("/talent/applications")}
@@ -92,18 +81,17 @@ const TalentDashboard = () => {
         />
         <MetricCard
           title="Interviews Scheduled"
-          value={applications.filter(a => a.status === "Interview Scheduled").length}
-          change="+2 new"
-          changeType="positive"
+          value={scheduledInterviewsCount}
+          change={
+            scheduledInterviewsTodayCount > 0
+              ? `+${scheduledInterviewsTodayCount} today`
+              : undefined
+          }
+          changeType={scheduledInterviewsTodayCount > 0 ? "positive" : "neutral"}
           icon={<Clock className="w-6 h-6" />}
           variant="success"
           onClick={() => navigate("/talent/interviews")}
           className="cursor-pointer"
-        />
-        <MetricCard
-          title="Profile Strength"
-          value="85%"
-          icon={<Star className="w-6 h-6" />}
         />
       </div>
 
@@ -118,7 +106,12 @@ const TalentDashboard = () => {
               Based on your profile and preferences
             </p>
           </div>
-          <Button variant="ghost" className="group" onClick={() => navigate("/talent/jobs")}>
+
+          <Button
+            variant="ghost"
+            className="group"
+            onClick={() => navigate("/talent/jobs")}
+          >
             View All Jobs
             <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
           </Button>

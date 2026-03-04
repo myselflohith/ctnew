@@ -53,6 +53,13 @@ function formatUserResponse(userRow: any): User {
     organization_id: userRow.organization_id ?? null,
     role: getRoleString(userRow.role) as any,
     email_verified: userRow.email_verified,
+    phone: userRow.phone ?? null,
+    location: userRow.location ?? null,
+    linkedin_profile_url: userRow.linkedin_profile_url ?? null,
+    photo_url: userRow.photo_url ?? null,
+    remote_interest: userRow.remote_interest ?? null,
+    salary_expectations: userRow.salary_expectations ?? null,
+    skills: Array.isArray(userRow.skills) ? userRow.skills : null,
     created_at: userRow.created_at,
     updated_at: userRow.updated_at,
   };
@@ -67,6 +74,13 @@ export interface User {
   organization_id: string | null;
   role: 'talent' | 'employer' | 'recruiter' | 'admin' | 'investor';
   email_verified: boolean;
+  phone?: string | null;
+  location?: string | null;
+  linkedin_profile_url?: string | null;
+  photo_url?: string | null;
+  remote_interest?: string | null;
+  salary_expectations?: string | null;
+  skills?: string[] | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -233,7 +247,9 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
 
   // Find user
   const result = await query(
-    `SELECT id, email, encrypted_password, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at
+    `SELECT id, email, encrypted_password, first_name, last_name, company_name, organization_id, role, email_verified,
+            phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
+            created_at, updated_at
      FROM users WHERE email = $1`,
     [email.toLowerCase()]
   );
@@ -293,7 +309,9 @@ export async function verifyToken(token: string): Promise<User | null> {
 
     // Get user
     const userResult = await query(
-      `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at
+      `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified,
+              phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
+              created_at, updated_at
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -383,7 +401,9 @@ export async function resetPassword(token: string, newPassword: string): Promise
 // Get user by ID
 export async function getUserById(userId: string): Promise<User | null> {
   const result = await query(
-    `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified, created_at, updated_at
+    `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified,
+            phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
+            created_at, updated_at
      FROM users WHERE id = $1`,
     [userId]
   );
