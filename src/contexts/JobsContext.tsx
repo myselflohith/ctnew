@@ -35,6 +35,9 @@ interface JobsContextType {
   availableJobs: Job[];
   savedJobs: Job[];
   applications: Application[];
+  applicationsTodayCount: number;
+  scheduledInterviewsCount: number;
+  scheduledInterviewsTodayCount: number;
   loading: boolean;
   removeFromAvailable: (jobId: string) => void;
   removeFromSaved: (jobId: string) => Promise<void>;
@@ -92,6 +95,9 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
   const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
   const [savedJobs, setSavedJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [applicationsTodayCount, setApplicationsTodayCount] = useState(0);
+  const [scheduledInterviewsCount, setScheduledInterviewsCount] = useState(0);
+  const [scheduledInterviewsTodayCount, setScheduledInterviewsTodayCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -108,7 +114,7 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
       setLoading(true);
       
       // Fetch all data in parallel
-      const [availableResponse, savedResponse, applicationsResponse] = await Promise.all([
+      const [availableResponse, savedResponse, applicationsResponse, interviewsResponse] = await Promise.all([
         apiClient.getAvailableJobs().catch((err) => {
           console.error("Error fetching available jobs:", err);
           return { success: false, data: [], error: err.message };
@@ -121,10 +127,40 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
           console.error("Error fetching applications:", err);
           return { success: false, data: [], error: err.message };
         }),
+        apiClient.request("/interviews/talent/scheduled").catch((err) => {
+          console.error("Error fetching interviews:", err);
+          return { success: false, data: [], error: err.message };
+        }),
       ]);
 
-      if (availableResponse.success && availableResponse.data) {
-        setAvailableJobs(availableResponse.data.map(convertApiJobToJob));
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      if (interviewsResponse?.success && Array.isArray(interviewsResponse.data)) {
+        const interviewsAll = interviewsResponse.data as any[];
+
+        // "Scheduled interviews" on the dashboard = interviews that are still pending/actionable
+        const interviewsPending = interviewsAll.filter((i) => {
+          const status = String(i.invite_status || i.status || "").toLowerCase().trim();
+          return status === "pending";
+        });
+
+        setScheduledInterviewsCount(interviewsPending.length);
+
+        const todayInterviews = interviewsPending.filter((i) => {
+          const createdRaw = i.invite_created_at || i.created_at || i.scheduled_at;
+          if (!createdRaw) return false;
+          const dt = new Date(createdRaw);
+          return !Number.isNaN(dt.getTime()) && dt >= startOfToday;
+        });
+        setScheduledInterviewsTodayCount(todayInterviews.length);
+      } else {
+        setScheduledInterviewsCount(0);
+        setScheduledInterviewsTodayCount(0);
+      }
+
+      if (availableResponse.success && Array.isArray(availableResponse.data)) {
+        setAvailableJobs((availableResponse.data as any[]).map(convertApiJobToJob));
       } else {
         // If no data or failed, set empty array
         setAvailableJobs([]);
@@ -133,9 +169,9 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      if (savedResponse.success && savedResponse.data) {
+      if (savedResponse.success && Array.isArray(savedResponse.data)) {
         setSavedJobs(
-          savedResponse.data
+          (savedResponse.data as any[])
             .map((item: any) => item.job)
             .filter(Boolean)
             .map(convertApiJobToJob)
@@ -144,10 +180,20 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
         setSavedJobs([]);
       }
 
-      if (applicationsResponse.success && applicationsResponse.data) {
-        setApplications(applicationsResponse.data.map(convertApiApplicationToApplication));
+      if (applicationsResponse.success && Array.isArray(applicationsResponse.data)) {
+        const appsRaw = applicationsResponse.data as any[];
+        setApplications(appsRaw.map(convertApiApplicationToApplication));
+
+        const todayApps = appsRaw.filter((a) => {
+          const createdRaw = a.applied_at || a.created_at;
+          if (!createdRaw) return false;
+          const dt = new Date(createdRaw);
+          return !Number.isNaN(dt.getTime()) && dt >= startOfToday;
+        });
+        setApplicationsTodayCount(todayApps.length);
       } else {
         setApplications([]);
+        setApplicationsTodayCount(0);
       }
     } catch (error: any) {
       console.error("Error fetching jobs data:", error);
@@ -287,6 +333,9 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
         availableJobs,
         savedJobs,
         applications,
+        applicationsTodayCount,
+        scheduledInterviewsCount,
+        scheduledInterviewsTodayCount,
         loading,
         removeFromAvailable,
         removeFromSaved,

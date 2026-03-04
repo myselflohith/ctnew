@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { query } from '../database/connection.js';
 import {
   getUserResumes,
   getResume,
@@ -12,6 +13,8 @@ import {
   deleteResume,
   getResumeFilePath,
   ensureUploadDir,
+  getResumeSkillsById,
+  extractProfileFromResumeFilePath,
 } from '../services/resume.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -85,6 +88,40 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
       req.file.filename,
       req.file.size
     );
+
+    // Non-destructive profile enrichment from resume:
+    // - only fills missing city_state / linkedin_profile_url
+    try {
+      const extracted = await extractProfileFromResumeFilePath(resume.file_path);
+
+      if (extracted?.city_state || extracted?.linkedin_profile_url) {
+        const current = await query(
+          'SELECT city_state, linkedin_profile_url FROM users WHERE id = $1',
+          [req.user.id]
+        );
+
+        const existing = current.rows?.[0] || {};
+        const newCityState =
+          !existing.city_state && extracted.city_state ? extracted.city_state : null;
+        const newLinkedIn =
+          !existing.linkedin_profile_url && extracted.linkedin_profile_url
+            ? extracted.linkedin_profile_url
+            : null;
+
+        if (newCityState || newLinkedIn) {
+          await query(
+            `UPDATE users
+             SET city_state = COALESCE($2, city_state),
+                 linkedin_profile_url = COALESCE($3, linkedin_profile_url),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [req.user.id, newCityState, newLinkedIn]
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Resume profile extraction failed (ignored):', e);
+    }
 
     res.status(201).json({
       success: true,
@@ -172,6 +209,29 @@ router.get('/:id/download', authenticateToken, async (req: Request, res: Respons
   } catch (error) {
     console.error('Error downloading resume:', error);
     res.status(500).json({ error: 'Failed to download resume' });
+  }
+});
+
+// Extract skills from a resume (default resume if id not provided)
+router.post('/extract-skills', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const resumeId: string | undefined = req.body?.resumeId;
+    const skills = await getResumeSkillsById(req.user.id, resumeId);
+
+    if (!skills) {
+      res.status(400).json({ error: 'No resume found to extract skills from' });
+      return;
+    }
+
+    res.json({ success: true, data: { skills } });
+  } catch (error) {
+    console.error('Error extracting skills:', error);
+    res.status(500).json({ error: 'Failed to extract skills' });
   }
 });
 

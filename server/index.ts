@@ -11,6 +11,8 @@ import resumeRoutes from './routes/resume.routes.js';
 import jobRoutes from './routes/job.routes.js';
 import organizationRoutes from './routes/organization.routes.js';
 import interviewRoutes from './routes/interview.routes.js';
+import profileRoutes from './routes/profile.routes.js';
+import uploadRoutes from './routes/upload.routes.js';
 import pool, { closePool } from './database/connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -72,6 +74,8 @@ app.use('/api/resumes', resumeRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/interviews', interviewRoutes(upload));
+app.use('/api/profile', profileRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Serve uploaded files (in production, use a CDN or object storage)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

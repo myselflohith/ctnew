@@ -3,19 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  LayoutDashboard,
   Search,
-  FileText,
-  Heart,
-  Settings,
   Calendar,
-  Building2,
   MapPin,
-  Clock,
   Video,
   Phone,
   Play,
-  CheckCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,18 +16,11 @@ import { useJobs } from "@/contexts/JobsContext";
 import { apiClient } from "@/lib/api";
 import { StartInterviewModal, type CandidateInfo } from "@/components/interview/StartInterviewModal";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
-  { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
-  { icon: FileText, label: "Applications", path: "/talent/applications" },
-  { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
-  { icon: Settings, label: "Settings", path: "/talent/settings" },
-];
 
 const TalentInterviews = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterMode, setFilterMode] = useState<"all" | "pending">("pending");
   const [interviews, setInterviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { applications } = useJobs();
@@ -98,16 +84,21 @@ const TalentInterviews = () => {
     }
   }, []);
 
-  // Filter interviews based on search query
-  const filteredInterviews = interviews.filter((interview) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      interview.jobTitle.toLowerCase().includes(query) ||
-      interview.company.toLowerCase().includes(query) ||
-      interview.location.toLowerCase().includes(query)
-    );
-  });
+  // Filter interviews based on toggle + search query
+  const filteredInterviews = interviews
+    .filter((interview) => {
+      if (filterMode === "all") return true;
+      return String(interview.inviteStatus || "").toLowerCase() === "pending";
+    })
+    .filter((interview) => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        interview.jobTitle.toLowerCase().includes(query) ||
+        interview.company.toLowerCase().includes(query) ||
+        interview.location.toLowerCase().includes(query)
+      );
+    });
 
   const getInterviewIcon = (type: string) => {
     switch (type) {
@@ -137,7 +128,7 @@ const TalentInterviews = () => {
   };
 
   return (
-    <DashboardLayout role="talent" navItems={navItems} userName="John Doe">
+    <DashboardLayout role="talent">
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
           Interviews Scheduled
@@ -147,8 +138,27 @@ const TalentInterviews = () => {
         </p>
       </div>
 
-      {/* Search */}
-      <div className="glass rounded-2xl p-4 mb-8">
+      {/* Filter Toggle + Search */}
+      <div className="glass rounded-2xl p-4 mb-8 space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={filterMode === "pending" ? "hero" : "outline"}
+            size="sm"
+            onClick={() => setFilterMode("pending")}
+          >
+            Scheduled Interviews
+          </Button>
+          <Button
+            type="button"
+            variant={filterMode === "all" ? "hero" : "outline"}
+            size="sm"
+            onClick={() => setFilterMode("all")}
+          >
+            All Interviews
+          </Button>
+        </div>
+
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input

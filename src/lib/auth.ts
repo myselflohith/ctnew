@@ -33,7 +33,7 @@ export async function register(data: {
   lastName?: string;
   companyName?: string;
   organizationId?: string | null;
-  role: string | number;
+  role: string;
   username?: string | null;
   location?: string | null;
   linkedinUrl?: string | null;
@@ -50,10 +50,29 @@ export async function logout(): Promise<void> {
   await apiClient.logout();
 }
 
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentUser(opts?: { force?: boolean }): Promise<User | null> {
+  // Fast-path cache to prevent name flicker during navigation.
+  // Allow callers (Profile page) to force-refresh after updates.
+  if (!opts?.force) {
+    try {
+      const cached = sessionStorage.getItem("ct.currentUser");
+      if (cached) return JSON.parse(cached) as User;
+    } catch {
+      // ignore cache errors
+    }
+  }
+
   try {
     const response = await apiClient.getCurrentUser();
-    return response.user;
+    const user = response.user as User | null;
+
+    try {
+      if (user) sessionStorage.setItem("ct.currentUser", JSON.stringify(user));
+    } catch {
+      // ignore cache errors
+    }
+
+    return user;
   } catch (error) {
     return null;
   }

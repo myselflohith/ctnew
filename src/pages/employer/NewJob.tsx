@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { employerNavItems } from "@/components/layout/navItems";
@@ -444,7 +444,7 @@ const NewJob = () => {
                 disabled={!formData.description}
               >
                 <Sparkles className="w-4 h-4 mr-2" />
-                Extract from Description
+                Extract from Job Description
               </Button>
             </div>
 
@@ -489,9 +489,68 @@ const NewJob = () => {
 
           {/* Requirements */}
           <div className="glass rounded-2xl p-6">
-            <h2 className="font-display text-xl font-semibold text-foreground mb-2">
-              Requirements
-            </h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display text-xl font-semibold text-foreground">
+                Requirements
+              </h2>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Reuse the same simple extractor as skills, but map into must-have requirements.
+                  // This is a placeholder until we wire an AI service for requirement extraction.
+                  const commonRequirementPhrases = [
+                    "years of experience",
+                    "bachelor",
+                    "degree",
+                    "must have",
+                    "required",
+                    "experience with",
+                    "proficiency in",
+                    "strong",
+                    "knowledge of",
+                  ];
+                  const descriptionLower = formData.description.toLowerCase();
+                  const extracted = commonRequirementPhrases
+                    .filter((p) => descriptionLower.includes(p))
+                    .map((p) => `Experience / familiarity with: ${p}`);
+                  if (extracted.length > 0) {
+                    const toAdd = extracted.map((text) => ({
+                      id: `${Date.now()}-${text}`,
+                      text,
+                      type: "mustHave" as const,
+                      weight: 5,
+                    }));
+                    setRequirements((prev) => {
+                      const existingTexts = new Set(prev.map((r) => r.text));
+                      const merged = [...prev];
+                      for (const r of toAdd) {
+                        if (!existingTexts.has(r.text)) merged.push(r);
+                      }
+                      return merged;
+                    });
+                    toast({
+                      title: "Requirements Extracted",
+                      description: `Added ${extracted.length} requirement${
+                        extracted.length !== 1 ? "s" : ""
+                      } from job description.`,
+                    });
+                  } else {
+                    toast({
+                      title: "No Requirements Found",
+                      description:
+                        "Could not extract requirements from description. Please add requirements manually.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                disabled={!formData.description}
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Extract from Job Description
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground mb-6">
               Add must-have and nice-to-have requirements with weights for AI
               matching

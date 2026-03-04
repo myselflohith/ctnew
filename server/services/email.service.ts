@@ -193,7 +193,15 @@ export async function sendPasswordResetEmail(
   name: string,
   resetToken: string
 ): Promise<void> {
+<<<<<<< Updated upstream
   const resetUrl = `${getSiteUrl()}/reset-password?token=${resetToken}`;
+=======
+  const appUrl =
+    (process.env.APP_URL || process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '') ||
+    'https://ctnew.cardinaltalent.ai';
+
+  const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+>>>>>>> Stashed changes
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -214,7 +222,11 @@ export async function sendPasswordResetEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
+<<<<<<< Updated upstream
         <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> Stashed changes
     </p>
   `;
 
@@ -234,7 +246,15 @@ export async function sendVerificationEmail(
   name: string,
   verificationToken: string
 ): Promise<void> {
+<<<<<<< Updated upstream
   const verifyUrl = `${getSiteUrl()}/verify-email?token=${verificationToken}`;
+=======
+  const appUrl =
+    (process.env.APP_URL || process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '') ||
+    'https://ctnew.cardinaltalent.ai';
+
+  const verifyUrl = `${appUrl}/verify-email?token=${verificationToken}`;
+>>>>>>> Stashed changes
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -254,7 +274,11 @@ export async function sendVerificationEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
+<<<<<<< Updated upstream
         <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+=======
+        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> Stashed changes
     </p>
   `;
 
@@ -294,7 +318,11 @@ export async function sendInterviewInviteEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
+<<<<<<< Updated upstream
         <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+=======
+        <a href="${(process.env.APP_URL || '').replace(/\/$/, '')}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
+>>>>>>> Stashed changes
     </p>
   `;
 

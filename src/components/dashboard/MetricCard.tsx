@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { TrendingUp } from "lucide-react";
 
 interface MetricCardProps {
   title: string;
@@ -29,7 +30,7 @@ const MetricCard = ({
   };
 
   const changeColors = {
-    positive: "text-emerald-400",
+    positive: "text-blue-500",
     negative: "text-red-400",
     neutral: "text-muted-foreground",
   };
@@ -44,7 +45,14 @@ const MetricCard = ({
           <p className="text-sm text-muted-foreground mb-1">{title}</p>
           <p className="text-3xl font-display font-bold text-foreground">{value}</p>
           {change && (
-            <p className={`text-sm mt-2 ${changeColors[changeType]}`}>{change}</p>
+            <p
+              className={`text-sm mt-2 ${changeColors[changeType]} flex items-center gap-1`}
+            >
+              {changeType === "positive" && (
+                <TrendingUp className="w-4 h-4" />
+              )}
+              {change}
+            </p>
           )}
         </div>
         <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
