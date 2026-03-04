@@ -1,4 +1,5 @@
 import { query } from '../database/connection.js';
+import { extractRequirementsFromJobDescription } from './job-ai.service.js';
 
 // Map jobs table row to Job shape (jobs uses: name, company_name, job_salary, employment_type, status int, active bool)
 const JOB_SELECT = `
@@ -203,11 +204,18 @@ export async function searchJobsInApprovedOrganizations(searchQuery: string): Pr
 
 // Create a new job (creatorId = logged-in user creating the job)
 export async function createJob(
-  jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'> & { addNotes?: string | null },
+  jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'> & {
+    addNotes?: string | null;
+    autopilot_sourcing?: boolean;
+  },
   creatorId?: string
 ): Promise<Job> {
   const skillsStr = Array.isArray(jobData.skills) ? jobData.skills.join(', ') : (jobData.skills ?? '') || null;
   const addNotesVal = typeof jobData.addNotes === 'string' ? jobData.addNotes : null;
+  // `autopilot_sourcing` is accepted by the API for compatibility, but ctnew currently
+  // does not persist any parsed requirements into the jobs table (keeps schema simple).
+  const _autopilot = Boolean((jobData as any)?.autopilot_sourcing);
+
   const result = await query(
     `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, add_notes, active, status, creator_id)
      VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, $8, true, 0, $9)
@@ -224,6 +232,7 @@ export async function createJob(
       creatorId ? parseInt(creatorId, 10) : null,
     ]
   );
+
   const job = await getJobById(String(result.rows[0].id));
   if (!job) throw new Error('Failed to load created job');
   return job;

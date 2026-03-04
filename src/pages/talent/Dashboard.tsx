@@ -4,20 +4,7 @@ import JobCard from "@/components/dashboard/JobCard";
 import ApplyModal from "@/components/talent/ApplyModal";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Button } from "@/components/ui/button";
-import {
-  LayoutDashboard,
-  Search,
-  FileText,
-  Briefcase,
-  Heart,
-  Settings,
-  CheckCircle,
-  Clock,
-  Star,
-  ArrowRight,
-  Calendar,
-  User,
-} from "lucide-react";
+import { FileText, Clock, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
@@ -33,7 +20,6 @@ const TalentDashboard = () => {
     applicationsTodayCount,
     scheduledInterviewsCount,
     scheduledInterviewsTodayCount,
-    loading,
   } = useJobs();
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
@@ -80,11 +66,7 @@ const TalentDashboard = () => {
       </div>
 
       {/* Metrics */}
-<<<<<<< Updated upstream
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-=======
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
->>>>>>> Stashed changes
         <MetricCard
           title="Applications Sent"
           value={applications.length}
@@ -124,15 +106,12 @@ const TalentDashboard = () => {
               Based on your profile and preferences
             </p>
           </div>
-<<<<<<< Updated upstream
-          <Button variant="ghost" className="group" onClick={() => navigate("/talent/jobs")}>
-=======
+
           <Button
             variant="ghost"
             className="group"
             onClick={() => navigate("/talent/jobs")}
           >
->>>>>>> Stashed changes
             View All Jobs
             <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
           </Button>

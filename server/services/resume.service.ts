@@ -68,14 +68,42 @@ async function extractSkillsViaDatasort(fullPath: string): Promise<string[]> {
   const data: any = await response.json().catch(() => ({}));
   const skills = Array.isArray(data?.skills) ? data.skills : [];
 
-  // normalize to strings
-  return skills.map((s: any) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
+  // Datasort sometimes collapses "C++" into "C".
+  // Preserve explicit "C++" if it appears anywhere in the parsed resume payload.
+  const rawText =
+    typeof data?.text === 'string'
+      ? data.text
+      : typeof data?.resume_text === 'string'
+        ? data.resume_text
+        : typeof data?.raw_text === 'string'
+          ? data.raw_text
+          : '';
+
+  const normalized = skills
+    .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
+    .filter(Boolean);
+
+  const hasCppInText = /\bC\+\+\b/i.test(rawText);
+  const hasCInSkills = normalized.some((s: string) => /^c$/i.test(s));
+  const hasCppAlready = normalized.some((s: string) => /^c\+\+$/i.test(s));
+
+  if (hasCppInText && hasCInSkills && !hasCppAlready) {
+    // Replace plain C with C++ since resume explicitly mentions C++
+    return normalized.map((s: string) => (/^c$/i.test(s) ? 'C++' : s));
+  }
+
+  return normalized;
 }
 
 async function extractTextFromResume(fullPath: string): Promise<string> {
   const ext = path.extname(fullPath).toLowerCase();
 
-  // PDF: try pdftotext if installed (most linux images have poppler-utils)
+  // IMPORTANT:
+  // In this environment, `pdftotext` may NOT be installed (poppler-utils missing).
+  // When it's missing, falling back to binary snippets yields poor OpenAI results.
+  //
+  // Legacy app uses DATASORT /upload_resume for parsing. We'll prefer that for skills,
+  // and only do local text extraction when a tool is available.
   if (ext === '.pdf') {
     try {
       const tmpOut = path.join(os.tmpdir(), `ct-resume-${Date.now()}.txt`);
@@ -83,11 +111,12 @@ async function extractTextFromResume(fullPath: string): Promise<string> {
       const txt = await fs.readFile(tmpOut, 'utf8').catch(() => '');
       return txt || '';
     } catch {
-      // fallback: return empty and let OpenAI use binary snippet
+      // pdftotext not available or failed
+      return '';
     }
   }
 
-  // DOC/DOCX: try textutil/catdoc/antiword not reliable on linux images; skip for now.
+  // DOC/DOCX: no reliable local extractor in this repo right now
   return '';
 }
 
@@ -111,17 +140,18 @@ async function extractSkillsViaOpenAI(fullPath: string): Promise<string[]> {
 Return ONLY valid JSON in this exact shape:
 { "skills": ["Skill 1", "Skill 2", "..."] }
 
-Rules:
-- Include both technical + soft skills if present.
-- Normalize duplicates and keep it concise (max 40).
-- If skills are implied by tools/tech mentioned, include them.
+Rules (STRICT):
+- Extract ONLY skills explicitly present in the resume text (do NOT infer/guess).
+- Keep original wording as in the resume where possible (but trim whitespace).
+- Preserve special characters in skill names EXACTLY (e.g., "C++" must stay "C++", "C#" must stay "C#". Never convert them to "C" or "C sharp".)
+- Deduplicate.
+- Do NOT include generic placeholders like "communication", "teamwork", "english" unless explicitly listed as a skill in a skills section.
+- If the resume content is garbled or unreadable, return an empty list.
 
 Resume filename: ${path.basename(fullPath)}
 
 Resume content:
-${resumeContent}
-
-If the content looks garbled, infer skills from any readable parts and common resume patterns.`;
+${resumeContent}`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -131,10 +161,14 @@ If the content looks garbled, infer skills from any readable parts and common re
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.2,
+      temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: 'You extract skills from resumes and respond with JSON only.' },
+        {
+          role: 'system',
+          content:
+            'Extract skills that are explicitly present in the resume text. Output JSON only. No inference.',
+        },
         { role: 'user', content: prompt },
       ],
     }),
@@ -159,12 +193,13 @@ If the content looks garbled, infer skills from any readable parts and common re
 }
 
 export type ResumeExtractedProfile = {
-  city_state?: string | null;
+  phone?: string | null;
+  location?: string | null;
   linkedin_profile_url?: string | null;
 };
 
-async function normalizeCityState(city?: any, state?: any, city_state?: any): Promise<string | null> {
-  const direct = typeof city_state === 'string' ? city_state.trim() : '';
+async function normalizeLocation(city?: any, state?: any, location?: any): Promise<string | null> {
+  const direct = typeof location === 'string' ? location.trim() : '';
   if (direct) return direct;
 
   const c = typeof city === 'string' ? city.trim() : '';
@@ -211,7 +246,8 @@ export async function extractProfileFromResumeFilePath(filePath: string): Promis
       if (response.ok) {
         const data: any = await response.json().catch(() => ({}));
         return {
-          city_state: await normalizeCityState(data?.city, data?.state, data?.city_state),
+          phone: typeof data?.phone === 'string' ? data.phone.trim() : (typeof data?.contact_num === 'string' ? data.contact_num.trim() : null),
+          location: await normalizeLocation(data?.city, data?.state, data?.location),
           linkedin_profile_url: normalizeLinkedIn(
             data?.linkedin_profile_url ?? data?.linkedin ?? data?.linkedin_url
           ),
@@ -233,12 +269,13 @@ export async function extractProfileFromResumeFilePath(filePath: string): Promis
     resumeContent = buf.toString('latin1', 0, Math.min(buf.length, 200_000));
   }
 
-  const prompt = `Extract the candidate's location and LinkedIn from this resume.
+  const prompt = `Extract the candidate's phone, location, and LinkedIn from this resume.
 Return ONLY valid JSON in this exact shape:
-{ "city_state": "City, ST" | null, "linkedin_profile_url": "https://linkedin.com/in/..." | null }
+{ "phone": "string" | null, "location": "City, ST" | null, "linkedin_profile_url": "https://linkedin.com/in/..." | null }
 
 Rules:
-- city_state must be a single string like "San Francisco, CA" if found; else null.
+- phone must be a single string like "+1 (555) 555-5555" if found; else null.
+- location must be a single string like "San Francisco, CA" if found; else null.
 - linkedin_profile_url must be a full URL if found; else null.
 
 Resume content:
@@ -273,7 +310,8 @@ ${resumeContent}`;
   }
 
   return {
-    city_state: typeof parsed?.city_state === 'string' ? parsed.city_state.trim() : null,
+    phone: typeof parsed?.phone === 'string' ? parsed.phone.trim() : null,
+    location: typeof parsed?.location === 'string' ? parsed.location.trim() : null,
     linkedin_profile_url: normalizeLinkedIn(parsed?.linkedin_profile_url),
   };
 }
@@ -281,18 +319,17 @@ ${resumeContent}`;
 export async function extractSkillsFromResumeFilePath(filePath: string): Promise<string[]> {
   const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
 
-  // Prefer DATASORT when configured (legacy behavior),
-  // otherwise fall back to OpenAI.
+  // Legacy behavior: parse resume via external parser (DATASORT when configured).
+  // If DATASORT isn't configured, fall back to OpenAI (best-effort) so the feature still works locally.
   try {
     return await extractSkillsViaDatasort(fullPath);
   } catch (err: any) {
     const msg = String(err?.message || err);
     const isConfigMissing = msg.includes('DATASORT_API / DATASORT_API_TOKEN not configured');
-    if (!isConfigMissing) {
-      // Datasort configured but failed -> surface the error
-      throw err;
+    if (isConfigMissing) {
+      return await extractSkillsViaOpenAI(fullPath);
     }
-    return await extractSkillsViaOpenAI(fullPath);
+    throw err;
   }
 }
 

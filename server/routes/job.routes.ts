@@ -20,6 +20,7 @@ import {
   getInterviewsForEmployer,
   createInterview,
 } from '../services/job.service.js';
+import { extractSkillsFromJobDescription, extractRequirementsFromJobDescription } from '../services/job-ai.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -377,6 +378,52 @@ router.get('/:id/applications', authenticateToken, async (req: Request, res: Res
   } catch (error: any) {
     console.error('Get job applications error:', error);
     res.status(500).json({ error: error.message || 'Failed to get job applications' });
+  }
+});
+
+router.post('/extract-skills', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'admin' && req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { jobDescription } = req.body;
+    if (!jobDescription || typeof jobDescription !== 'string' || !jobDescription.trim()) {
+      res.status(400).json({ error: 'jobDescription is required' });
+      return;
+    }
+    const skills = await extractSkillsFromJobDescription(jobDescription);
+    res.json({ success: true, data: { skills } });
+  } catch (error: any) {
+    console.error('Extract skills error:', error);
+    res.status(500).json({ error: error.message || 'Failed to extract skills' });
+  }
+});
+
+router.post('/extract-requirements', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'admin' && req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { jobDescription } = req.body;
+    if (!jobDescription || typeof jobDescription !== 'string' || !jobDescription.trim()) {
+      res.status(400).json({ error: 'jobDescription is required' });
+      return;
+    }
+    const extracted = await extractRequirementsFromJobDescription(jobDescription);
+    res.json({ success: true, data: extracted });
+  } catch (error: any) {
+    console.error('Extract requirements error:', error);
+    res.status(500).json({ error: error.message || 'Failed to extract requirements' });
   }
 });
 

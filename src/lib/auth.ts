@@ -10,6 +10,16 @@ export interface User {
   organization_id: string | null;
   role: 'talent' | 'employer' | 'recruiter' | 'admin' | 'investor';
   email_verified: boolean;
+
+  // Talent profile fields (may be null)
+  phone?: string | null;
+  location?: string | null;
+  linkedin_profile_url?: string | null;
+  photo_url?: string | null;
+  remote_interest?: string | null;
+  salary_expectations?: string | null;
+  skills?: string[];
+
   created_at: string;
   updated_at: string;
 }

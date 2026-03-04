@@ -228,9 +228,11 @@ class ApiClient {
     first_name?: string | null;
     last_name?: string | null;
     phone?: string | null;
-    city_state?: string | null;
+    location?: string | null;
     linkedin_profile_url?: string | null;
     photo_url?: string | null;
+    remote_interest?: string | boolean | null;
+    salary_expectations?: string | null;
     skills?: string[] | null;
   }) {
     return this.request('/profile', {
@@ -359,6 +361,23 @@ class ApiClient {
 
   async getJobApplications(jobId: string) {
     return this.request(`/jobs/${jobId}/applications`);
+  }
+
+  async extractJobSkills(jobDescription: string) {
+    return this.request<{ skills: string[] }>('/jobs/extract-skills', {
+      method: 'POST',
+      body: JSON.stringify({ jobDescription }),
+    });
+  }
+
+  async extractJobRequirements(jobDescription: string) {
+    return this.request<{ must_have: { requirement: string; weightage: number }[]; nice_to_have: { requirement: string; weightage: number }[] }>(
+      '/jobs/extract-requirements',
+      {
+        method: 'POST',
+        body: JSON.stringify({ jobDescription }),
+      }
+    );
   }
 
   // Organization endpoints

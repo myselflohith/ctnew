@@ -90,32 +90,35 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
     );
 
     // Non-destructive profile enrichment from resume:
-    // - only fills missing city_state / linkedin_profile_url
+    // - only fills missing phone / location / linkedin_profile_url
     try {
       const extracted = await extractProfileFromResumeFilePath(resume.file_path);
 
-      if (extracted?.city_state || extracted?.linkedin_profile_url) {
+      if (extracted?.phone || extracted?.location || extracted?.linkedin_profile_url) {
         const current = await query(
-          'SELECT city_state, linkedin_profile_url FROM users WHERE id = $1',
+          'SELECT phone, location, linkedin_profile_url FROM users WHERE id = $1',
           [req.user.id]
         );
 
         const existing = current.rows?.[0] || {};
-        const newCityState =
-          !existing.city_state && extracted.city_state ? extracted.city_state : null;
-        const newLinkedIn =
-          !existing.linkedin_profile_url && extracted.linkedin_profile_url
-            ? extracted.linkedin_profile_url
-            : null;
 
-        if (newCityState || newLinkedIn) {
+        // Always write extracted fields when we have them (resume is the source of truth).
+        // If extraction doesn't find a field, keep whatever is already stored.
+        const newPhone = extracted.phone ? extracted.phone : null;
+        const newLocation = extracted.location ? extracted.location : null;
+        const newLinkedIn = extracted.linkedin_profile_url
+          ? extracted.linkedin_profile_url
+          : null;
+
+        if (newPhone || newLocation || newLinkedIn) {
           await query(
             `UPDATE users
-             SET city_state = COALESCE($2, city_state),
-                 linkedin_profile_url = COALESCE($3, linkedin_profile_url),
+             SET phone = COALESCE($2, phone),
+                 location = COALESCE($3, location),
+                 linkedin_profile_url = COALESCE($4, linkedin_profile_url),
                  updated_at = NOW()
              WHERE id = $1`,
-            [req.user.id, newCityState, newLinkedIn]
+            [req.user.id, newPhone, newLocation, newLinkedIn]
           );
         }
       }
@@ -229,9 +232,11 @@ router.post('/extract-skills', authenticateToken, async (req: Request, res: Resp
     }
 
     res.json({ success: true, data: { skills } });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error extracting skills:', error);
-    res.status(500).json({ error: 'Failed to extract skills' });
+    const msg = String(error?.message || 'Failed to extract skills');
+    const status = msg.includes('DATASORT_API / DATASORT_API_TOKEN') ? 400 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 
