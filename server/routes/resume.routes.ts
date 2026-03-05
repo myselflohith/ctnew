@@ -102,8 +102,8 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
 
         const existing = current.rows?.[0] || {};
 
-        // Always write extracted fields when we have them (resume is the source of truth).
-        // If extraction doesn't find a field, keep whatever is already stored.
+        // Overwrite existing fields when extraction returns a value.
+        // If extraction returns null/empty for a field, keep whatever is already stored.
         const newPhone = extracted.phone_number ? extracted.phone_number : null;
         const newLocation = extracted.location ? extracted.location : null;
         const newLinkedIn = extracted.linkedin_profile_url ? extracted.linkedin_profile_url : null;
@@ -111,9 +111,9 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
         if (newPhone || newLocation || newLinkedIn) {
           await query(
             `UPDATE users
-             SET phone_number = COALESCE($2, phone_number),
-                 location = COALESCE($3, location),
-                 linkedin_profile_url = COALESCE($4, linkedin_profile_url),
+             SET phone_number = CASE WHEN $2::text IS NULL THEN phone_number ELSE $2 END,
+                 location = CASE WHEN $3::text IS NULL THEN location ELSE $3 END,
+                 linkedin_profile_url = CASE WHEN $4::text IS NULL THEN linkedin_profile_url ELSE $4 END,
                  updated_at = NOW()
              WHERE id = $1`,
             [req.user.id, newPhone, newLocation, newLinkedIn]

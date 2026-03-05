@@ -7,7 +7,7 @@ export type UpdateTalentProfileInput = {
   phone_number?: string | null;
   city_state?: string | null;
   linkedin_profile_url?: string | null;
-  photo_url?: string | null;
+  picture_url?: string | null;
   skills?: string[] | null;
 };
 
@@ -34,7 +34,7 @@ export async function updateTalentProfile(userId: string, input: UpdateTalentPro
   if (input.city_state !== undefined) set("city_state", normalizeString(input.city_state));
   if (input.linkedin_profile_url !== undefined)
     set("linkedin_profile_url", normalizeString(input.linkedin_profile_url));
-  if (input.photo_url !== undefined) set("photo_url", normalizeString(input.photo_url));
+  if (input.picture_url !== undefined) set("picture_url", normalizeString(input.picture_url));
   if (input.skills !== undefined)
     set(
       "skills",

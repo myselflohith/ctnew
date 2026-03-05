@@ -68,8 +68,8 @@ const TalentSettings = () => {
   const [location, setLocation] = useState(""); // location on backend
   const [linkedInUrl, setLinkedInUrl] = useState(""); // linkedin_profile_url on backend
 
-  const [photoUrl, setPhotoUrl] = useState<string>("");
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [pictureUrl, setPictureUrl] = useState<string>("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [remoteInterest, setRemoteInterest] = useState<"any" | "remote">("any");
   const [salaryExpectations, setSalaryExpectations] = useState("");
@@ -86,7 +86,7 @@ const TalentSettings = () => {
     setPhoneNumber((currentUser as any)?.phone_number ?? "");
     setLocation((currentUser as any)?.location ?? "");
     setLinkedInUrl((currentUser as any)?.linkedin_profile_url ?? "");
-    setPhotoUrl((currentUser as any)?.photo_url ?? "");
+    setPictureUrl((currentUser as any)?.picture_url ?? "");
     setRemoteInterest(
       (currentUser as any)?.remote_interest === "remote" ||
         (currentUser as any)?.remote_interest === true ||
@@ -151,7 +151,7 @@ const TalentSettings = () => {
     window.open(url, "_blank");
   };
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -164,7 +164,7 @@ const TalentSettings = () => {
     try {
       const res = await apiClient.uploadTalentPhoto(file);
 
-      setPhotoUrl(res.url);
+      setPictureUrl(res.url);
       setCurrentUser(res.user as User);
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
 
@@ -173,7 +173,7 @@ const TalentSettings = () => {
       console.error(err);
       toast.error("Failed to upload photo");
     } finally {
-      if (photoInputRef.current) photoInputRef.current.value = "";
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
     }
   };
 
@@ -195,7 +195,7 @@ const TalentSettings = () => {
         toast.error("No skills found", {
           id: t,
           description:
-            "Could not extract skills from resume. If this is unexpected, ensure DATASORT_API and DATASORT_API_TOKEN are configured (legacy resume parser).",
+            "Could not extract skills from resume. The resume parser service may be unreachable or misconfigured. If you are running locally, configure a reachable DATASORT_API/DATASORT_API_TOKEN or set OPENAI_API_KEY for fallback extraction.",
         });
         return;
       }
@@ -208,13 +208,21 @@ const TalentSettings = () => {
       setCurrentUser(saved.user as User);
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
 
-      // OPTIONAL enrichment: fetch latest user and fill only if present,
-      // otherwise keep existing form values unchanged.
-      const fresh = await getCurrentUser({ force: true });
-      if ((fresh as any)?.phone_number) setPhoneNumber((fresh as any).phone_number ?? "");
-      if ((fresh as any)?.location) setLocation((fresh as any).location ?? "");
-      if ((fresh as any)?.linkedin_profile_url)
-        setLinkedInUrl((fresh as any).linkedin_profile_url ?? "");
+      // After extraction, overwrite phone/location/linkedin ONLY if server returned a value.
+      // If server returned null/empty, keep user's current input.
+      const phoneFromServer = (saved.user as any)?.phone_number;
+      const locationFromServer = (saved.user as any)?.location;
+      const linkedInFromServer = (saved.user as any)?.linkedin_profile_url;
+
+      if (typeof phoneFromServer === "string" && phoneFromServer.trim() !== "") {
+        setPhoneNumber(phoneFromServer);
+      }
+      if (typeof locationFromServer === "string" && locationFromServer.trim() !== "") {
+        setLocation(locationFromServer);
+      }
+      if (typeof linkedInFromServer === "string" && linkedInFromServer.trim() !== "") {
+        setLinkedInUrl(linkedInFromServer);
+      }
 
       toast.success("Skills extracted", {
         id: t,
@@ -240,7 +248,7 @@ const TalentSettings = () => {
         phone_number: phoneNumber,
         location: location || null,
         linkedin_profile_url: linkedInUrl || null,
-        photo_url: photoUrl || null,
+        picture_url: pictureUrl || null,
         remote_interest: remoteInterest,
         salary_expectations: salaryExpectations || null,
         skills,
@@ -284,12 +292,12 @@ const TalentSettings = () => {
             Profile Information
           </h2>
 
-          {/* Photo */}
+          {/* Avatar */}
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 rounded-full bg-secondary/40 overflow-hidden flex items-center justify-center">
-              {photoUrl ? (
+              {pictureUrl ? (
                 <img
-                  src={photoUrl}
+                  src={pictureUrl}
                   alt="Profile"
                   className="w-full h-full object-cover"
                 />
@@ -302,15 +310,15 @@ const TalentSettings = () => {
 
             <div className="flex items-center gap-2">
               <input
-                ref={photoInputRef}
+                ref={avatarInputRef}
                 type="file"
                 accept="image/*"
-                onChange={handlePhotoChange}
+                onChange={handleAvatarChange}
                 className="hidden"
               />
               <Button
                 variant="outline"
-                onClick={() => photoInputRef.current?.click()}
+                onClick={() => avatarInputRef.current?.click()}
               >
                 <Camera className="w-4 h-4 mr-2" />
                 Upload Photo

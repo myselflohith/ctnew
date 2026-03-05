@@ -89,16 +89,21 @@ router.post(
 
       const url = `/uploads/profile-photos/${req.file.filename}`;
 
+      // NOTE:
+      // `users.picture_url` is a JSON column in this DB (confirmed via information_schema),
+      // so we must store a valid JSON value. We store the URL as a JSON string.
+      const pictureUrlJson = JSON.stringify(url);
+
       const updated = await query(
         `UPDATE users
-         SET photo_url = $2,
+         SET picture_url = $2::json,
              updated_at = NOW()
          WHERE id = $1
          RETURNING id, email, first_name, last_name, company_name, organization_id, role,
                    email_verified, phone_number, location, linkedin_profile_url, remote_interest, salary_expectations,
-                   photo_url, skills,
+                   picture_url, skills,
                    created_at, updated_at`,
-        [req.user.id, url]
+        [req.user.id, pictureUrlJson]
       );
 
       const row = updated.rows[0];
