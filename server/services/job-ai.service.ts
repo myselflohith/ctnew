@@ -16,7 +16,10 @@ function safeJsonParse<T>(s: string): T {
   return JSON.parse(cleaned) as T;
 }
 
-async function callOpenAIJsonObject(prompt: string, opts?: { model?: string; temperature?: number; system?: string }) {
+async function callOpenAIJsonObject(
+  prompt: string,
+  opts?: { model?: string; temperature?: number; system?: string },
+) {
   const apiKey = (process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY not configured');
@@ -49,37 +52,37 @@ async function callOpenAIJsonObject(prompt: string, opts?: { model?: string; tem
   return safeJsonParse<any>(content);
 }
 
-export async function extractSkillsFromJobDescription(jobDescription: string): Promise<string[]> {
-  const prompt = `You are an AI specialized in extracting skills from job descriptions.
+export async function extractSkillsFromJobDescription(
+  jobDescription: string,
+): Promise<string[]> {
+  const prompt = `You are an AI specialized in extracting key technical skills from job descriptions.
+Given the following job description, please extract a comprehensive list of essential technical skills.
+- Focus on programming languages (e.g., Node.js, Python, Java, Ruby), frameworks, libraries, databases (e.g., SQL, NoSQL, PostgreSQL), cloud platforms, tools (e.g., Git, Docker, Kubernetes), and specific technologies.
+- Provide the skills as a comma-separated list.
+- Do NOT include any introductory or concluding remarks, just the comma-separated skills.
+- Each skill should be concise and relevant.
+- If no technical skills are found, return an empty string.
 
-TASK:
-- Extract key skills and technologies that are explicitly required or mentioned.
-- Return ONLY JSON (no markdown, no commentary).
-
-JOB DESCRIPTION:
+Job Description:
 ${jobDescription}
 
-OUTPUT JSON SHAPE:
-{
-  "skills": ["skill 1", "skill 2", "skill 3"]
-}
+Output JSON SHAPE:
+{ "skills": ["skill 1", "skill 2"] }
 
-Rules:
-- Skills should be short phrases (1-4 words).
-- Deduplicate.
-- Do not include generic soft skills unless explicitly required.
-- Return ONLY the JSON object.`;
+Return ONLY the JSON object.`;
 
   const parsed = await callOpenAIJsonObject(prompt, {
     model: process.env.OPENAI_MODEL_SKILLS || process.env.OPENAI_MODEL || 'gpt-4o-mini',
     temperature: 0,
-    system: 'You extract skills from job descriptions and output only strict JSON.',
+    system: 'Return only strict JSON.',
   });
 
-  const skills = Array.isArray(parsed?.skills) ? parsed.skills : [];
-  const cleaned = skills
-    .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
-    .filter(Boolean);
+  const skillsRaw: unknown = parsed?.skills;
+  const skills = Array.isArray(skillsRaw) ? (skillsRaw as unknown[]) : [];
+
+  const cleaned: string[] = skills
+    .map((s) => (typeof s === 'string' ? s.trim() : ''))
+    .filter((s): s is string => Boolean(s));
 
   return Array.from(new Set(cleaned));
 }
@@ -90,7 +93,6 @@ export async function extractRequirementsFromJobDescription(jobDescription: stri
   must_have: ExtractedRequirement[];
   nice_to_have: ExtractedRequirement[];
 }> {
-  // Ported from ch-job-marketplace JobsController#requirement_prompt (Ruby)
   const prompt = `You are an expert in analyzing job descriptions for candidate screening.
 Read the job description and extract the 3–4 most critical must-have requirements that a candidate’s resume must satisfy.
 
@@ -136,7 +138,7 @@ Return ONLY the JSON object. No surrounding quotes, no code fences, no Markdown.
   const parsed = await callOpenAIJsonObject(prompt, {
     model: process.env.OPENAI_MODEL_REQUIREMENTS || process.env.OPENAI_MODEL || 'gpt-4o-mini',
     temperature: 0,
-    system: 'You are an expert recruiter. Return ONE strict JSON object exactly per instructions. No markdown. No extra text.',
+    system: 'Return only strict JSON.',
   });
 
   const normalize = (arr: any, weight: number): ExtractedRequirement[] => {

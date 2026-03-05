@@ -49,7 +49,7 @@ const NewJob = () => {
   const [requirementType, setRequirementType] = useState<"mustHave" | "niceToHave">(
     "mustHave",
   );
-  const [requirementWeight, setRequirementWeight] = useState(5);
+  const [requirementWeight, setRequirementWeight] = useState<string>("5");
   const [orgRequirements, setOrgRequirements] = useState<Requirement[]>([]);
   const [requirementsLoaded, setRequirementsLoaded] = useState(false);
 
@@ -101,19 +101,48 @@ const NewJob = () => {
   };
 
   const addRequirement = () => {
-    if (requirementInput) {
-      setRequirements([
-        ...requirements,
-        {
-          id: Date.now().toString(),
-          text: requirementInput,
-          type: requirementType,
-          weight: requirementWeight,
-        },
-      ]);
-      setRequirementInput("");
-      setRequirementWeight(5);
+    if (!requirementInput?.trim()) {
+      toast({
+        title: "Requirement is required",
+        description: "Please enter a requirement before adding.",
+      });
+      return;
     }
+
+    const weightNum = Number(requirementWeight);
+
+    if (!Number.isFinite(weightNum) || weightNum < 1 || weightNum > 10) {
+      toast({
+        title: "Invalid weight",
+        description: "Weight must be between 1 and 10 (inclusive).",
+      });
+      return;
+    }
+
+    const newReq: Requirement = {
+      id: Date.now().toString(),
+      text: requirementInput,
+      type: requirementType,
+      weight: weightNum,
+    };
+
+    // Keep "Must Have" requirements together and "Nice to Have" requirements together.
+    // When adding a new requirement, insert it after the last requirement of the same type.
+    setRequirements((prev) => {
+      const next = [...prev, newReq];
+
+      // Ensure Must Have requirements are always listed first.
+      next.sort((a, b) => {
+        const ra = a.type === "mustHave" ? 0 : 1;
+        const rb = b.type === "mustHave" ? 0 : 1;
+        return ra - rb;
+      });
+
+      return next;
+    });
+
+    setRequirementInput("");
+    setRequirementWeight("5");
   };
 
   const removeRequirement = (id: string) => {
@@ -123,34 +152,32 @@ const NewJob = () => {
   const extractSkillsFromDescription = async () => {
     if (!formData.description?.trim()) return;
 
+    const t = sonnerToast.loading("Extracting skills from job description...");
+
     try {
       const resp = await apiClient.extractJobSkills(formData.description);
       const extractedSkills: string[] = resp?.data?.skills || [];
 
       if (extractedSkills.length > 0) {
         setSkills([...new Set([...skills, ...extractedSkills])]);
-        toast({
-          title: "Skills Extracted",
+        sonnerToast.success("Skills extracted", {
+          id: t,
           description: `Added ${extractedSkills.length} skill${
             extractedSkills.length !== 1 ? "s" : ""
           } from job description.`,
         });
       } else {
-        toast({
-          title: "No Skills Found",
-          description:
-            "Could not extract skills from description. Please add skills manually.",
-          variant: "destructive",
+        sonnerToast.error("No skills found", {
+          id: t,
+          description: "Could not extract skills from description. Please add skills manually.",
         });
       }
     } catch (error: any) {
       console.error("Error extracting skills:", error);
-      toast({
-        title: "Extraction Failed",
+      sonnerToast.error("Extraction failed", {
+        id: t,
         description:
-          error?.message ||
-          "Failed to extract skills from description. Please try again.",
-        variant: "destructive",
+          error?.message || "Failed to extract skills from description. Please try again.",
       });
     }
   };
@@ -161,9 +188,8 @@ const NewJob = () => {
     // Validate required fields
     if (!formData.title || !formData.description || !formData.jobType) {
       toast({
-        title: "Missing Required Fields",
+        title: "Missing required fields",
         description: "Please fill in all required fields.",
-        variant: "destructive",
       });
       return;
     }
@@ -173,9 +199,8 @@ const NewJob = () => {
       !formData.location
     ) {
       toast({
-        title: "Location Required",
+        title: "Location required",
         description: "Location is required for onsite and hybrid jobs.",
-        variant: "destructive",
       });
       return;
     }
@@ -184,9 +209,16 @@ const NewJob = () => {
       const token = apiClient.getToken();
       if (!token) {
         toast({
-          title: "Authentication Required",
+          title: "Authentication required",
           description: "Please sign in to post jobs.",
-          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!requirements.some((r) => r.type === "mustHave")) {
+        toast({
+          title: "Requirements missing",
+          description: "At least 1 must have requirement is needed.",
         });
         return;
       }
@@ -479,7 +511,7 @@ const NewJob = () => {
           <div className="glass rounded-2xl p-6">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-display text-xl font-semibold text-foreground">
-                Requirements
+                Requirements <span className="text-destructive">*</span>
               </h2>
               <Button
                 type="button"
@@ -488,6 +520,8 @@ const NewJob = () => {
                 onClick={() => {
                   const run = async () => {
                     if (!formData.description?.trim()) return;
+
+                    const t = sonnerToast.loading("Extracting requirements from job description...");
 
                     try {
                       const resp = await apiClient.extractJobRequirements(formData.description);
@@ -516,28 +550,33 @@ const NewJob = () => {
                           for (const r of toAdd) {
                             if (!existingTexts.has(r.text)) merged.push(r);
                           }
+
+                          // Ensure Must Have requirements are always listed first.
+                          merged.sort((a, b) => {
+                            const ra = a.type === "mustHave" ? 0 : 1;
+                            const rb = b.type === "mustHave" ? 0 : 1;
+                            return ra - rb;
+                          });
+
                           return merged;
                         });
-                        toast({
-                          title: "Requirements Extracted",
+
+                        sonnerToast.success("Requirements extracted", {
+                          id: t,
                           description: `Added ${toAdd.length} requirement${toAdd.length !== 1 ? "s" : ""} from job description.`,
                         });
                       } else {
-                        toast({
-                          title: "No Requirements Found",
-                          description:
-                            "Could not extract requirements from description. Please add requirements manually.",
-                          variant: "destructive",
+                        sonnerToast.error("No requirements found", {
+                          id: t,
+                          description: "Could not extract requirements from description. Please add requirements manually.",
                         });
                       }
                     } catch (error: any) {
                       console.error("Error extracting requirements:", error);
-                      toast({
-                        title: "Extraction Failed",
+                      sonnerToast.error("Extraction failed", {
+                        id: t,
                         description:
-                          error?.message ||
-                          "Failed to extract requirements from description. Please try again.",
-                        variant: "destructive",
+                          error?.message || "Failed to extract requirements from description. Please try again.",
                       });
                     }
                   };
@@ -578,23 +617,31 @@ const NewJob = () => {
                 </SelectContent>
               </Select>
               <div className="flex gap-2">
-                <Select
-                  value={requirementWeight.toString()}
-                  onValueChange={(value) =>
-                    setRequirementWeight(parseInt(value, 10))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Weight" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((w) => (
-                      <SelectItem key={w} value={w.toString()}>
-                        Weight: {w}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={requirementWeight}
+                  onChange={(e) => {
+                    // Numeric-only (prevents NaN + ensures user can type)
+                    const next = e.target.value.replace(/[^0-9]/g, "");
+                    setRequirementWeight(next);
+                  }}
+                  onBlur={() => {
+                    const weightNum = Number(requirementWeight);
+                    if (!Number.isFinite(weightNum)) {
+                      setRequirementWeight("5");
+                      return;
+                    }
+                    if (weightNum < 1 || weightNum > 10) {
+                      toast({
+                        title: "Invalid weight",
+                        description: "Weight must be between 1 and 10 (inclusive).",
+                      });
+                      // Keep what the user typed; don't auto-clamp.
+                    }
+                  }}
+                  className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
                 <Button type="button" variant="secondary" onClick={addRequirement}>
                   <Plus className="w-4 h-4" />
                 </Button>
