@@ -122,8 +122,8 @@ const RecruiterSettings = () => {
                   <Input id="email" type="email" value={user?.email ?? ""} readOnly className="bg-muted/50" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" type="tel" placeholder="Optional" />
+                  <Label htmlFor="phone_number">Phone Number</Label>
+                  <Input id="phone_number" type="tel" placeholder="Optional" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="linkedin" className="flex items-center gap-2">

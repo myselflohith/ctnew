@@ -11,7 +11,7 @@ const router = Router();
  */
 
 const USER_SELECT = `id, email, first_name, last_name, company_name, organization_id, role, email_verified,
-                     phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills, created_at, updated_at`;
+                     phone_number, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills, created_at, updated_at`;
 
 const toUserResponse = (row: any) => ({
   id: row.id?.toString?.() ?? String(row.id),
@@ -24,7 +24,7 @@ const toUserResponse = (row: any) => ({
   // For profile responses, frontend only needs fields; leave role as-is.
   role: row.role,
   email_verified: !!row.email_verified,
-  phone: row.phone ?? null,
+  phone_number: row.phone_number ?? null,
   location: row.location ?? null,
   linkedin_profile_url: row.linkedin_profile_url ?? null,
   photo_url: row.photo_url ?? null,
@@ -58,7 +58,7 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
     const {
       first_name,
       last_name,
-      phone,
+      phone_number,
       location,
       linkedin_profile_url,
       photo_url,
@@ -87,7 +87,7 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
 
            -- Only update these fields if they were provided in the request body.
            -- This prevents "skills-only" updates from blanking other columns.
-           phone = COALESCE($4, phone),
+           phone_number = COALESCE($4, phone_number),
            location = COALESCE($5, location),
            linkedin_profile_url = COALESCE($6, linkedin_profile_url),
            photo_url = COALESCE($7, photo_url),
@@ -102,7 +102,7 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
         req.user.id,
         first_name ?? null,
         last_name ?? null,
-        phone === undefined ? null : phone,
+        phone_number === undefined ? null : phone_number,
         location === undefined ? null : location,
         linkedin_profile_url === undefined ? null : linkedin_profile_url,
         photo_url === undefined ? null : photo_url,

@@ -4,7 +4,7 @@ import type { User } from "./auth.service.js";
 export type UpdateTalentProfileInput = {
   first_name?: string | null;
   last_name?: string | null;
-  phone?: string | null;
+  phone_number?: string | null;
   city_state?: string | null;
   linkedin_profile_url?: string | null;
   photo_url?: string | null;
@@ -30,7 +30,7 @@ export async function updateTalentProfile(userId: string, input: UpdateTalentPro
 
   if (input.first_name !== undefined) set("first_name", normalizeString(input.first_name));
   if (input.last_name !== undefined) set("last_name", normalizeString(input.last_name));
-  if (input.phone !== undefined) set("phone", normalizeString(input.phone));
+  if (input.phone_number !== undefined) set("phone_number", normalizeString(input.phone_number));
   if (input.city_state !== undefined) set("city_state", normalizeString(input.city_state));
   if (input.linkedin_profile_url !== undefined)
     set("linkedin_profile_url", normalizeString(input.linkedin_profile_url));

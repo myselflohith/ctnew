@@ -90,13 +90,13 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
     );
 
     // Non-destructive profile enrichment from resume:
-    // - only fills missing phone / location / linkedin_profile_url
+    // - only fills missing phone_number / location / linkedin_profile_url
     try {
       const extracted = await extractProfileFromResumeFilePath(resume.file_path);
 
-      if (extracted?.phone || extracted?.location || extracted?.linkedin_profile_url) {
+      if (extracted?.phone_number || extracted?.location || extracted?.linkedin_profile_url) {
         const current = await query(
-          'SELECT phone, location, linkedin_profile_url FROM users WHERE id = $1',
+          'SELECT phone_number, location, linkedin_profile_url FROM users WHERE id = $1',
           [req.user.id]
         );
 
@@ -104,16 +104,14 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
 
         // Always write extracted fields when we have them (resume is the source of truth).
         // If extraction doesn't find a field, keep whatever is already stored.
-        const newPhone = extracted.phone ? extracted.phone : null;
+        const newPhone = extracted.phone_number ? extracted.phone_number : null;
         const newLocation = extracted.location ? extracted.location : null;
-        const newLinkedIn = extracted.linkedin_profile_url
-          ? extracted.linkedin_profile_url
-          : null;
+        const newLinkedIn = extracted.linkedin_profile_url ? extracted.linkedin_profile_url : null;
 
         if (newPhone || newLocation || newLinkedIn) {
           await query(
             `UPDATE users
-             SET phone = COALESCE($2, phone),
+             SET phone_number = COALESCE($2, phone_number),
                  location = COALESCE($3, location),
                  linkedin_profile_url = COALESCE($4, linkedin_profile_url),
                  updated_at = NOW()

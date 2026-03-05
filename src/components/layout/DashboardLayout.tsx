@@ -95,11 +95,8 @@ const DashboardLayout = ({
 
   // Avoid showing "User" flicker before async getCurrentUser() resolves.
   // If no name is available yet, render an empty string (avatar falls back to "?").
-  const displayName =
-    userNameProp ||
-    [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
-    user?.email ||
-    "";
+  const computedName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
+  const displayName = userNameProp || computedName || "";
   const displayCompany = user?.company_name ?? companyNameProp ?? undefined;
 
   const handleLogout = async () => {

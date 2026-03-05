@@ -12,7 +12,7 @@ export interface User {
   email_verified: boolean;
 
   // Talent profile fields (may be null)
-  phone?: string | null;
+  phone_number?: string | null;
   location?: string | null;
   linkedin_profile_url?: string | null;
   photo_url?: string | null;

@@ -19,7 +19,7 @@ interface StartInterviewModalProps {
 interface CandidateInfo {
   name: string;
   email: string;
-  phone: string;
+  phone_number: string;
 }
 
 type Step = "info" | "permissions" | "guidelines";
@@ -36,7 +36,7 @@ export function StartInterviewModal({
   const [candidateInfo, setCandidateInfo] = useState<CandidateInfo>({
     name: "",
     email: "",
-    phone: "",
+    phone_number: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasPermission, setHasPermission] = useState(false);
