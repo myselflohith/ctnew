@@ -230,7 +230,7 @@ class ApiClient {
     phone_number?: string | null;
     location?: string | null;
     linkedin_profile_url?: string | null;
-    photo_url?: string | null;
+    picture_url?: string | null;
     remote_interest?: string | boolean | null;
     salary_expectations?: string | null;
     skills?: string[] | null;

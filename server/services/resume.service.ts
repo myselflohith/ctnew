@@ -52,13 +52,24 @@ async function extractSkillsViaDatasort(fullPath: string): Promise<string[]> {
   const bytes = new Uint8Array(buf);
   form.append('pdf', new Blob([bytes]), fileName);
 
-  const response = await fetch(`${datasortApi}/upload_resume`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${token}`,
-    },
-    body: form as any,
-  });
+  // Add a timeout so a stuck external parser doesn't hang requests indefinitely.
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.DATASORT_TIMEOUT_MS || 20000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${datasortApi}/upload_resume`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: form as any,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -249,8 +260,8 @@ export async function extractProfileFromResumeFilePath(filePath: string): Promis
           phone_number:
             typeof data?.phone_number === 'string'
               ? data.phone_number.trim()
-              : typeof data?.phone === 'string'
-                ? data.phone.trim()
+              : typeof data?.phone_number === 'string'
+                ? data.phone_number.trim()
                 : typeof data?.contact_num === 'string'
                   ? data.contact_num.trim()
                   : null,
@@ -326,16 +337,29 @@ ${resumeContent}`;
 export async function extractSkillsFromResumeFilePath(filePath: string): Promise<string[]> {
   const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
 
-  // Legacy behavior: parse resume via external parser (DATASORT when configured).
-  // If DATASORT isn't configured, fall back to OpenAI (best-effort) so the feature still works locally.
+  // Prefer DATASORT when configured.
+  // If DATASORT is not configured OR is unreachable/times out, fall back to OpenAI (best-effort)
+  // so local/dev environments can still use "Extract Skills".
   try {
     return await extractSkillsViaDatasort(fullPath);
   } catch (err: any) {
     const msg = String(err?.message || err);
+    const causeMsg = String(err?.cause?.message || err?.cause || '');
+    const causeCode = String(err?.cause?.code || '');
     const isConfigMissing = msg.includes('DATASORT_API / DATASORT_API_TOKEN not configured');
-    if (isConfigMissing) {
+
+    const combined = `${msg} ${causeMsg} ${causeCode}`.toLowerCase();
+    const isTimeout =
+      combined.includes('und_err_connect_timeout') ||
+      combined.includes('connect timeout') ||
+      combined.includes('timed out') ||
+      combined.includes('timeout') ||
+      combined.includes('aborted');
+
+    if (isConfigMissing || isTimeout) {
       return await extractSkillsViaOpenAI(fullPath);
     }
+
     throw err;
   }
 }

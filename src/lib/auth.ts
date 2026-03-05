@@ -15,7 +15,7 @@ export interface User {
   phone_number?: string | null;
   location?: string | null;
   linkedin_profile_url?: string | null;
-  photo_url?: string | null;
+  picture_url?: string | null;
   remote_interest?: string | null;
   salary_expectations?: string | null;
   skills?: string[];
