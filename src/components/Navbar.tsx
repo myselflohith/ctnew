@@ -35,13 +35,13 @@ const Navbar = () => {
               to="/jobs"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Browse Jobs
+              Job Seekers
             </Link>
             <Link
               to="/employers"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              For Employers
+              Startups
             </Link>
             <Link
               to="/about"
@@ -98,14 +98,14 @@ const Navbar = () => {
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                Browse Jobs
+                Job Seekers
               </Link>
               <Link
                 to="/employers"
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                For Employers
+                Startups
               </Link>
               <Link
                 to="/about"

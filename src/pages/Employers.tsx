@@ -73,7 +73,11 @@ const Employers = () => {
                 Start Hiring
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
-              <Button variant="outline" size="lg">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => window.open("https://calendly.com/paulchriscampbell", "_blank")}
+              >
                 Schedule Demo
               </Button>
             </div>

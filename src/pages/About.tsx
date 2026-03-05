@@ -9,8 +9,6 @@ import {
   Lightbulb,
   Users,
   ArrowRight,
-  Linkedin,
-  Twitter,
 } from "lucide-react";
 import cardinalLogo from "@/assets/cardinal-logo.png";
 
@@ -34,29 +32,6 @@ const values = [
     icon: Users,
     title: "Community",
     description: "We're building a community of employers and talent who share our vision.",
-  },
-];
-
-const team = [
-  {
-    name: "Sarah Chen",
-    role: "CEO & Co-founder",
-    bio: "Former VP of Engineering at a Fortune 500 company with 15+ years in tech.",
-  },
-  {
-    name: "Michael Rodriguez",
-    role: "CTO & Co-founder",
-    bio: "AI researcher with a PhD from Stanford, previously at Google AI.",
-  },
-  {
-    name: "Emily Thompson",
-    role: "Head of Product",
-    bio: "Product leader with experience at LinkedIn and Indeed.",
-  },
-  {
-    name: "David Kim",
-    role: "Head of Growth",
-    bio: "Growth expert who scaled multiple startups from seed to Series C.",
   },
 ];
 
@@ -159,57 +134,6 @@ const About = () => {
                   {value.title}
                 </h3>
                 <p className="text-sm text-muted-foreground">{value.description}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Team Section */}
-      <section className="py-20 px-4 bg-secondary/30">
-        <div className="container mx-auto max-w-6xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-16"
-          >
-            <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Meet the Team
-            </h2>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              We're a team of engineers, designers, and recruiters passionate about 
-              transforming how people find jobs.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {team.map((member, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="glass rounded-2xl p-6 text-center"
-              >
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cardinal to-amber flex items-center justify-center mx-auto mb-4 text-white font-bold text-2xl">
-                  {member.name.split(' ').map(n => n[0]).join('')}
-                </div>
-                <h3 className="font-display text-lg font-semibold text-foreground mb-1">
-                  {member.name}
-                </h3>
-                <p className="text-sm text-primary mb-3">{member.role}</p>
-                <p className="text-sm text-muted-foreground mb-4">{member.bio}</p>
-                <div className="flex justify-center gap-3">
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Linkedin className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Twitter className="w-4 h-4" />
-                  </Button>
-                </div>
               </motion.div>
             ))}
           </div>

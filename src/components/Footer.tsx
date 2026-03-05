@@ -1,127 +1,93 @@
 import { Link } from "react-router-dom";
-import { Briefcase, Twitter, Linkedin, Github } from "lucide-react";
 
 const Footer = () => {
   return (
     <footer className="border-t border-border bg-card/50">
-      <div className="container mx-auto px-4 md:px-6 py-12 md:py-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
-          {/* Brand */}
-          <div className="col-span-2 md:col-span-1">
-            <Link to="/" className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cardinal to-amber flex items-center justify-center">
-                <Briefcase className="w-4 h-4 text-white" />
+      <div className="container mx-auto px-4 md:px-6 py-10 md:py-14">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-10">
+          {/* Left: logo + copyright */}
+          <div className="flex flex-col items-center md:items-start gap-4">
+            <Link to="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 flex items-center justify-center overflow-hidden">
+                <img
+                  src="/favicon.png"
+                  alt="CardinalTalent"
+                  className="w-7 h-7 object-contain"
+                />
               </div>
               <span className="font-display text-lg font-bold text-gradient">
                 CardinalTalent
               </span>
             </Link>
-            <p className="text-sm text-muted-foreground mb-4">
-              AI-powered recruitment platform connecting top talent with leading companies.
+            <p className="text-sm text-muted-foreground">
+              © 2026 CardinalTalent. All rights reserved.
             </p>
-            <div className="flex gap-4">
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Linkedin className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Github className="w-5 h-5" />
-              </a>
-            </div>
           </div>
 
-          {/* For Talent */}
-          <div>
-            <h4 className="font-semibold text-foreground mb-4">For Talent</h4>
-            <ul className="space-y-3">
-              <li>
-                <Link to="/jobs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Browse Jobs
+          {/* Right: two-column links */}
+          <nav className="w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-2 text-sm text-muted-foreground">
+              <div className="space-y-2">
+                <Link to="/" className="block hover:text-foreground transition-colors">
+                  Home
                 </Link>
-              </li>
-              <li>
-                <Link to="/auth?mode=signup&role=talent" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Create Profile
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  AI Power Networker
+                </a>
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  AI Interviewer
+                </a>
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  Invite &amp; Earn
+                </a>
+                <Link
+                  to="/jobs"
+                  className="block hover:text-foreground transition-colors"
+                >
+                  Search
                 </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Salary Guide
-                </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Career Resources
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* For Employers */}
-          <div>
-            <h4 className="font-semibold text-foreground mb-4">For Employers</h4>
-            <ul className="space-y-3">
-              <li>
-                <Link to="/auth?mode=signup&role=employer" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Post a Job
-                </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Find Talent
-                </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Pricing
-                </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Enterprise
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Company */}
-          <div>
-            <h4 className="font-semibold text-foreground mb-4">Company</h4>
-            <ul className="space-y-3">
-              <li>
-                <Link to="/about" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  About Us
-                </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Blog
-                </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  Leaderboard
+                </a>
+              </div>
+              <div className="space-y-2">
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  Groups
+                </a>
+                <a
+                  href="https://cardinaltalent.ai/welcome/contact-us"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block hover:text-foreground transition-colors"
+                >
+                  Contact Us
+                </a>
+                <a href="#" className="block hover:text-foreground transition-colors">
                   Privacy Policy
+                </a>
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  Terms &amp; Conditions
+                </a>
+                <a href="#" className="block hover:text-foreground transition-colors">
+                  FAQs
+                </a>
+                <a
+                  href="https://www.cardinaltalent.ai/ccpa"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block hover:text-foreground transition-colors"
+                >
+                  CCPA | Opt Out
+                </a>
+                <Link
+                  to="/auth?mode=signup"
+                  className="block hover:text-foreground transition-colors"
+                >
+                  Sign Up
                 </Link>
-              </li>
-              <li>
-                <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Terms of Service
-                </Link>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Bottom */}
-        <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} CardinalTalent. All rights reserved.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Powered by AI. Built for humans.
-          </p>
+              </div>
+            </div>
+          </nav>
         </div>
       </div>
     </footer>
