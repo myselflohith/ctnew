@@ -101,19 +101,35 @@ const NewJob = () => {
   };
 
   const addRequirement = () => {
-    if (requirementInput) {
-      setRequirements([
-        ...requirements,
-        {
-          id: Date.now().toString(),
-          text: requirementInput,
-          type: requirementType,
-          weight: requirementWeight,
-        },
-      ]);
-      setRequirementInput("");
-      setRequirementWeight(5);
-    }
+    if (!requirementInput) return;
+
+    const newReq: Requirement = {
+      id: Date.now().toString(),
+      text: requirementInput,
+      type: requirementType,
+      weight: requirementWeight,
+    };
+
+    // Keep "Must Have" requirements together and "Nice to Have" requirements together.
+    // When adding a new requirement, insert it after the last requirement of the same type.
+    setRequirements((prev) => {
+      const lastIndexOfType = (() => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].type === newReq.type) return i;
+        }
+        return -1;
+      })();
+
+      // If none of this type exist yet, append to the end.
+      if (lastIndexOfType === -1) return [...prev, newReq];
+
+      const next = [...prev];
+      next.splice(lastIndexOfType + 1, 0, newReq);
+      return next;
+    });
+
+    setRequirementInput("");
+    setRequirementWeight(5);
   };
 
   const removeRequirement = (id: string) => {
