@@ -14,7 +14,9 @@ function getFrontendBaseUrl(): string {
     process.env.SITE_URL ||
     process.env.CLIENT_URL ||
     'https://ctnew.cardinaltalent.ai'
-  ).trim().replace(/\/$/, '');
+  )
+    .trim()
+    .replace(/\/$/, '');
 }
 
 // Support both AWS_* and SES_* env vars (e.g. from production .env)
@@ -46,9 +48,11 @@ async function sendEmailViaSES(
       'AWS SES credentials not configured. Set AWS_ACCESS_KEY and AWS_SECRET_KEY (or SES_ACCESS_KEY and SES_SECRET_KEY) and AWS_REGION (or SES_REGION) in .env.'
     );
   }
+
   const from = options?.fromDisplayName
     ? `"${options.fromDisplayName.replace(/"/g, '\\"')}" <${fromAddress}>`
     : fromAddress;
+
   const headers = [
     `From: ${from}`,
     `To: ${to}`,
@@ -59,7 +63,9 @@ async function sendEmailViaSES(
     '',
     html,
   ];
+
   const mime = headers.join('\r\n');
+
   const command = new SendRawEmailCommand({
     RawMessage: {
       Data: Buffer.from(mime, 'utf-8'),
@@ -67,6 +73,7 @@ async function sendEmailViaSES(
     Source: fromAddress,
     Destinations: [to],
   });
+
   await sesClient.send(command);
 }
 
@@ -203,20 +210,8 @@ export async function sendPasswordResetEmail(
   name: string,
   resetToken: string
 ): Promise<void> {
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-  const resetUrl = `${getSiteUrl()}/reset-password?token=${resetToken}`;
-=======
-  const appUrl =
-    (process.env.APP_URL || process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '') ||
-    'https://ctnew.cardinaltalent.ai';
-
-  const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
->>>>>>> Stashed changes
-=======
   const appUrl = getFrontendBaseUrl();
   const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
->>>>>>> 163a6076 (Worked on Talent and Employer Side)
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -237,15 +232,7 @@ export async function sendPasswordResetEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-        <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
-=======
         <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
->>>>>>> Stashed changes
-=======
-        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
->>>>>>> 163a6076 (Worked on Talent and Employer Side)
     </p>
   `;
 
@@ -270,20 +257,8 @@ export async function sendVerificationEmail(
   name: string,
   verificationToken: string
 ): Promise<void> {
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-  const verifyUrl = `${getSiteUrl()}/verify-email?token=${verificationToken}`;
-=======
-  const appUrl =
-    (process.env.APP_URL || process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '') ||
-    'https://ctnew.cardinaltalent.ai';
-
-  const verifyUrl = `${appUrl}/verify-email?token=${verificationToken}`;
->>>>>>> Stashed changes
-=======
   const appUrl = getFrontendBaseUrl();
   const verifyUrl = `${appUrl}/verify-email?token=${verificationToken}`;
->>>>>>> 163a6076 (Worked on Talent and Employer Side)
 
   const headerContent = `
     <h1>CardinalTalent</h1>
@@ -303,15 +278,7 @@ export async function sendVerificationEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-        <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
-=======
         <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
->>>>>>> Stashed changes
-=======
-        <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
->>>>>>> 163a6076 (Worked on Talent and Employer Side)
     </p>
   `;
 
@@ -358,15 +325,7 @@ export async function sendInterviewInviteEmail(
   const footerContent = `
     <p>&copy; ${new Date().getFullYear()} CardinalTalent. All rights reserved.</p>
     <p>
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-        <a href="${getSiteUrl()}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
-=======
-        <a href="${(process.env.APP_URL || '').replace(/\/$/, '')}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
->>>>>>> Stashed changes
-=======
         <a href="${appUrl}/privacy-policy" style="color: hsl(349 78% 44%); text-decoration: none;">Privacy Policy</a>
->>>>>>> 163a6076 (Worked on Talent and Employer Side)
     </p>
   `;
 
