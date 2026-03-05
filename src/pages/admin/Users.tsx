@@ -251,7 +251,6 @@ const AdminUsers = () => {
                           <DropdownMenuItem>View Profile</DropdownMenuItem>
                           <DropdownMenuItem>Edit User</DropdownMenuItem>
                           <DropdownMenuItem>Reset Password</DropdownMenuItem>
-                          <DropdownMenuItem>Impersonate</DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive">
                             Suspend
                           </DropdownMenuItem>

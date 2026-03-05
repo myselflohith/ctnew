@@ -111,27 +111,6 @@ const AdminSettings = () => {
           </div>
         </div>
 
-        {/* API Settings */}
-        <div className="glass rounded-2xl p-6">
-          <h2 className="font-display text-xl font-semibold text-foreground mb-6">
-            API Configuration
-          </h2>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="openaiKey">OpenAI API Key</Label>
-              <Input id="openaiKey" type="password" defaultValue="sk-••••••••••••••••" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="awsRegion">AWS Region</Label>
-              <Input id="awsRegion" defaultValue="us-west-2" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="s3Bucket">S3 Bucket</Label>
-              <Input id="s3Bucket" defaultValue="cardinaltalent-resumes" />
-            </div>
-          </div>
-        </div>
-
         <Button variant="hero" size="lg">
           Save All Settings
         </Button>
