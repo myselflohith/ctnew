@@ -64,7 +64,7 @@ const TalentSettings = () => {
   const [email, setEmail] = useState("");
 
   // Optional fields (blank unless resume parsed / user explicitly fills)
-  const [phone, setPhone] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [location, setLocation] = useState(""); // location on backend
   const [linkedInUrl, setLinkedInUrl] = useState(""); // linkedin_profile_url on backend
 
@@ -83,7 +83,7 @@ const TalentSettings = () => {
     setEmail(currentUser?.email ?? "");
 
     // Optional profile fields (may be null/undefined)
-    setPhone((currentUser as any)?.phone ?? "");
+    setPhoneNumber((currentUser as any)?.phone_number ?? "");
     setLocation((currentUser as any)?.location ?? "");
     setLinkedInUrl((currentUser as any)?.linkedin_profile_url ?? "");
     setPhotoUrl((currentUser as any)?.photo_url ?? "");
@@ -186,16 +186,17 @@ const TalentSettings = () => {
       }
 
       setExtractingSkills(true);
-      toast.message("Extracting skills...");
+      const t = toast.loading("Extracting skills from resume...");
 
       const res = await apiClient.extractResumeSkills(defaultResume.id);
       const extractedSkills = res?.data?.skills || [];
 
-
       if (!extractedSkills.length) {
-        toast.error(
-          "No skills found. If this is unexpected, ensure DATASORT_API and DATASORT_API_TOKEN are configured (legacy resume parser).",
-        );
+        toast.error("No skills found", {
+          id: t,
+          description:
+            "Could not extract skills from resume. If this is unexpected, ensure DATASORT_API and DATASORT_API_TOKEN are configured (legacy resume parser).",
+        });
         return;
       }
 
@@ -210,15 +211,22 @@ const TalentSettings = () => {
       // OPTIONAL enrichment: fetch latest user and fill only if present,
       // otherwise keep existing form values unchanged.
       const fresh = await getCurrentUser({ force: true });
-      if ((fresh as any)?.phone) setPhone((fresh as any).phone ?? "");
+      if ((fresh as any)?.phone_number) setPhoneNumber((fresh as any).phone_number ?? "");
       if ((fresh as any)?.location) setLocation((fresh as any).location ?? "");
       if ((fresh as any)?.linkedin_profile_url)
         setLinkedInUrl((fresh as any).linkedin_profile_url ?? "");
 
-      toast.success("Skills extracted from resume");
+      toast.success("Skills extracted", {
+        id: t,
+        description: `Added ${extractedSkills.length} skill${
+          extractedSkills.length !== 1 ? "s" : ""
+        } from your resume.`,
+      });
     } catch (err) {
       console.error(err);
-      toast.error("Failed to extract skills");
+      toast.error("Extraction failed", {
+        description: "Failed to extract skills from resume. Please try again.",
+      });
     } finally {
       setExtractingSkills(false);
     }
@@ -229,7 +237,7 @@ const TalentSettings = () => {
       const res = await apiClient.updateTalentProfile({
         first_name: firstName,
         last_name: lastName,
-        phone,
+        phone_number: phoneNumber,
         location: location || null,
         linkedin_profile_url: linkedInUrl || null,
         photo_url: photoUrl || null,
@@ -336,13 +344,13 @@ const TalentSettings = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone_number">Phone</Label>
               <Input
-                id="phone"
+                id="phone_number"
                 type="tel"
-                value={phone}
+                value={phoneNumber}
                 placeholder="(optional)"
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhoneNumber(e.target.value)}
               />
             </div>
 
@@ -561,7 +569,7 @@ const TalentSettings = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/30">
               <div>
-                <p className="font-medium text-foreground">Enable Auto Apply</p>
+                <p className="font-medium text-foreground">Enabe Auto Apply</p>
                 <p className="text-sm text-muted-foreground">
                   We'll apply to jobs with 85%+ match score
                 </p>

@@ -95,13 +95,23 @@ router.post(
              updated_at = NOW()
          WHERE id = $1
          RETURNING id, email, first_name, last_name, company_name, organization_id, role,
-                   email_verified, phone, location, linkedin_profile_url, remote_interest, salary_expectations,
+                   email_verified, phone_number, location, linkedin_profile_url, remote_interest, salary_expectations,
                    photo_url, skills,
                    created_at, updated_at`,
         [req.user.id, url]
       );
 
-      return res.json({ success: true, url, user: updated.rows[0] });
+      const row = updated.rows[0];
+      return res.json({
+        success: true,
+        url,
+        user: row
+          ? {
+              ...row,
+              phone_number: row.phone_number ?? null,
+            }
+          : null,
+      });
     } catch (e) {
       console.error('Profile photo upload failed:', e);
       return res.status(500).json({ success: false, error: 'Failed to upload photo' });

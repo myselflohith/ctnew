@@ -10,7 +10,7 @@ interface Candidate {
   id?: string;
   name: string;
   email: string;
-  phone?: string;
+  phone_number?: string;
 }
 
 interface CandidateInviteProps {
@@ -25,7 +25,7 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
   const [newCandidate, setNewCandidate] = useState<Candidate>({
     name: "",
     email: "",
-    phone: "",
+    phone_number: "",
   });
   const [loading, setLoading] = useState(false);
   const [invitingSingle, setInvitingSingle] = useState<string | null>(null);
@@ -42,7 +42,7 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
     };
 
     setCandidates([...candidates, candidate]);
-    setNewCandidate({ name: "", email: "", phone: "" });
+    setNewCandidate({ name: "", email: "", phone_number: "" });
     toast.success("Candidate added");
   };
 
@@ -53,7 +53,12 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
   const inviteCandidate = async (candidate: Candidate) => {
     try {
       setInvitingSingle(candidate.id || null);
-      const response = await interviewsAPI.inviteCandidate(interviewId, candidate.name, candidate.email, candidate.phone);
+      const response = await interviewsAPI.inviteCandidate(
+        interviewId,
+        candidate.name,
+        candidate.email,
+        candidate.phone_number
+      );
 
       if (response.success) {
         toast.success(`Invitation sent to ${candidate.email}`);
@@ -84,7 +89,7 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
             interviewId,
             candidate.name,
             candidate.email,
-            candidate.phone
+            candidate.phone_number
           );
           if (response.success) {
             successCount++;
@@ -157,14 +162,14 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Phone (Optional)
+                Phone Number (Optional)
               </label>
               <Input
                 type="tel"
                 placeholder="Enter phone number"
-                value={newCandidate.phone}
+                value={newCandidate.phone_number}
                 onChange={(e) =>
-                  setNewCandidate({ ...newCandidate, phone: e.target.value })
+                  setNewCandidate({ ...newCandidate, phone_number: e.target.value })
                 }
                 className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
               />
@@ -200,10 +205,10 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
                         <Mail className="w-3 h-3" />
                         {candidate.email}
                       </span>
-                      {candidate.phone && (
+                      {candidate.phone_number && (
                         <span className="flex items-center gap-1">
                           <Phone className="w-3 h-3" />
-                          {candidate.phone}
+                          {candidate.phone_number}
                         </span>
                       )}
                     </div>

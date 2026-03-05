@@ -53,7 +53,7 @@ function formatUserResponse(userRow: any): User {
     organization_id: userRow.organization_id ?? null,
     role: getRoleString(userRow.role) as any,
     email_verified: userRow.email_verified,
-    phone: userRow.phone ?? null,
+    phone_number: userRow.phone_number ?? null,
     location: userRow.location ?? null,
     linkedin_profile_url: userRow.linkedin_profile_url ?? null,
     photo_url: userRow.photo_url ?? null,
@@ -74,7 +74,7 @@ export interface User {
   organization_id: string | null;
   role: 'talent' | 'employer' | 'recruiter' | 'admin' | 'investor';
   email_verified: boolean;
-  phone?: string | null;
+  phone_number?: string | null;
   location?: string | null;
   linkedin_profile_url?: string | null;
   photo_url?: string | null;
@@ -248,7 +248,7 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
   // Find user
   const result = await query(
     `SELECT id, email, encrypted_password, first_name, last_name, company_name, organization_id, role, email_verified,
-            phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
+            phone_number, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
             created_at, updated_at
      FROM users WHERE email = $1`,
     [email.toLowerCase()]
@@ -310,7 +310,7 @@ export async function verifyToken(token: string): Promise<User | null> {
     // Get user
     const userResult = await query(
       `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified,
-              phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
+              phone_number, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
               created_at, updated_at
        FROM users WHERE id = $1`,
       [decoded.userId]
@@ -402,7 +402,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 export async function getUserById(userId: string): Promise<User | null> {
   const result = await query(
     `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified,
-            phone, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
+            phone_number, location, linkedin_profile_url, photo_url, remote_interest, salary_expectations, skills,
             created_at, updated_at
      FROM users WHERE id = $1`,
     [userId]

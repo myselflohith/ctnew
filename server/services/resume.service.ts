@@ -193,7 +193,7 @@ ${resumeContent}`;
 }
 
 export type ResumeExtractedProfile = {
-  phone?: string | null;
+  phone_number?: string | null;
   location?: string | null;
   linkedin_profile_url?: string | null;
 };
@@ -246,7 +246,14 @@ export async function extractProfileFromResumeFilePath(filePath: string): Promis
       if (response.ok) {
         const data: any = await response.json().catch(() => ({}));
         return {
-          phone: typeof data?.phone === 'string' ? data.phone.trim() : (typeof data?.contact_num === 'string' ? data.contact_num.trim() : null),
+          phone_number:
+            typeof data?.phone_number === 'string'
+              ? data.phone_number.trim()
+              : typeof data?.phone === 'string'
+                ? data.phone.trim()
+                : typeof data?.contact_num === 'string'
+                  ? data.contact_num.trim()
+                  : null,
           location: await normalizeLocation(data?.city, data?.state, data?.location),
           linkedin_profile_url: normalizeLinkedIn(
             data?.linkedin_profile_url ?? data?.linkedin ?? data?.linkedin_url
@@ -269,12 +276,12 @@ export async function extractProfileFromResumeFilePath(filePath: string): Promis
     resumeContent = buf.toString('latin1', 0, Math.min(buf.length, 200_000));
   }
 
-  const prompt = `Extract the candidate's phone, location, and LinkedIn from this resume.
+  const prompt = `Extract the candidate's phone_number, location, and LinkedIn from this resume.
 Return ONLY valid JSON in this exact shape:
-{ "phone": "string" | null, "location": "City, ST" | null, "linkedin_profile_url": "https://linkedin.com/in/..." | null }
+{ "phone_number": "string" | null, "location": "City, ST" | null, "linkedin_profile_url": "https://linkedin.com/in/..." | null }
 
 Rules:
-- phone must be a single string like "+1 (555) 555-5555" if found; else null.
+- phone_number must be a single string like "+1 (555) 555-5555" if found; else null.
 - location must be a single string like "San Francisco, CA" if found; else null.
 - linkedin_profile_url must be a full URL if found; else null.
 
@@ -310,7 +317,7 @@ ${resumeContent}`;
   }
 
   return {
-    phone: typeof parsed?.phone === 'string' ? parsed.phone.trim() : null,
+    phone_number: typeof parsed?.phone_number === 'string' ? parsed.phone_number.trim() : null,
     location: typeof parsed?.location === 'string' ? parsed.location.trim() : null,
     linkedin_profile_url: normalizeLinkedIn(parsed?.linkedin_profile_url),
   };

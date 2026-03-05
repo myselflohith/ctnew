@@ -227,7 +227,7 @@ class ApiClient {
   async updateTalentProfile(data: {
     first_name?: string | null;
     last_name?: string | null;
-    phone?: string | null;
+    phone_number?: string | null;
     location?: string | null;
     linkedin_profile_url?: string | null;
     photo_url?: string | null;
