@@ -113,12 +113,32 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
     try {
       setLoading(true);
       
-      // Fetch all data in parallel
-      const [availableResponse, savedResponse, applicationsResponse, interviewsResponse] = await Promise.all([
-        apiClient.getAvailableJobs().catch((err) => {
-          console.error("Error fetching available jobs:", err);
-          return { success: false, data: [], error: err.message };
-        }),
+      // Talent: try available-with-match first (RESUME_MATCH_API); on 403 or error fall back to available
+      let availableResponse: { success: boolean; data?: any[]; error?: string };
+      try {
+        console.log("[JobsContext] calling GET /jobs/available-with-match");
+        availableResponse = await apiClient.getAvailableJobsWithMatch();
+      } catch (err: any) {
+        console.warn(
+          "[JobsContext] getAvailableJobsWithMatch failed, falling back to /jobs/available:",
+          err?.message || err
+        );
+        const isForbidden = err?.message?.includes('403') || err?.message?.includes('Forbidden');
+        if (isForbidden) {
+          console.log("[JobsContext] 403 from available-with-match; calling GET /jobs/available instead");
+          availableResponse = await apiClient.getAvailableJobs();
+        } else {
+          console.log("[JobsContext] error from available-with-match; trying GET /jobs/available with catch");
+          availableResponse = await apiClient.getAvailableJobs().catch((e) => ({
+            success: false,
+            data: [] as any[],
+            error: (e as Error)?.message,
+          }));
+        }
+      }
+
+      // Fetch the rest in parallel (saved, applications, interviews)
+      const [savedResponse, applicationsResponse, interviewsResponse] = await Promise.all([
         apiClient.getSavedJobs().catch((err) => {
           console.error("Error fetching saved jobs:", err);
           return { success: false, data: [], error: err.message };
@@ -160,7 +180,20 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (availableResponse.success && Array.isArray(availableResponse.data)) {
-        setAvailableJobs((availableResponse.data as any[]).map(convertApiJobToJob));
+        console.log(
+          "[JobsContext] availableResponse.data (raw jobs)",
+          (availableResponse.data as any[]).map((j: any) => ({
+            id: j.id,
+            title: j.title ?? j.name,
+            match_score: j.match_score,
+          }))
+        );
+        const mapped = (availableResponse.data as any[]).map(convertApiJobToJob);
+        console.log(
+          "[JobsContext] availableJobs after convertApiJobToJob",
+          mapped.map((j) => ({ id: j.id, title: j.title, matchScore: j.matchScore }))
+        );
+        setAvailableJobs(mapped);
       } else {
         // If no data or failed, set empty array
         setAvailableJobs([]);

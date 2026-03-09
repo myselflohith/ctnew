@@ -36,6 +36,7 @@ import InterviewAccessGate from "./pages/talent/InterviewAccessGate";
 import EmployerDashboard from "./pages/employer/Dashboard";
 import EmployerJobs from "./pages/employer/Jobs";
 import EmployerCandidates from "./pages/employer/Candidates";
+import EmployerResumeDatabase from "./pages/employer/ResumeDatabase";
 import EmployerInterviews from "./pages/employer/Interviews";
 import InterviewDetails from "./pages/employer/InterviewDetails";
 import CandidateReportPage from "./pages/employer/CandidateReportPage";
@@ -110,6 +111,7 @@ const App = () => (
             <Route path="/employer/jobs" element={<EmployerRequireCompany><EmployerJobs /></EmployerRequireCompany>} />
             <Route path="/employer/jobs/new" element={<EmployerRequireCompany><NewJob /></EmployerRequireCompany>} />
             <Route path="/employer/candidates" element={<EmployerRequireCompany><EmployerCandidates /></EmployerRequireCompany>} />
+            <Route path="/employer/resume-database" element={<EmployerRequireCompany><EmployerResumeDatabase /></EmployerRequireCompany>} />
             <Route path="/employer/interviews" element={<EmployerRequireCompany><EmployerInterviews /></EmployerRequireCompany>} />
             <Route path="/employer/interviews/setup" element={<EmployerRequireCompany><SetupInterview /></EmployerRequireCompany>} />
             <Route path="/employer/interviews/:id" element={<EmployerRequireCompany><InterviewDetails /></EmployerRequireCompany>} />

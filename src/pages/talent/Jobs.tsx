@@ -80,19 +80,21 @@ const TalentJobs = () => {
     setJobDescriptionOpen(true);
   };
 
-  // Filter jobs based on search query
-  const filteredJobs = availableJobs.filter((job) => {
-    const matchesSearch = !searchQuery || 
-      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (job.description && job.description.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesLocation = !locationQuery ||
-      job.location.toLowerCase().includes(locationQuery.toLowerCase());
-    
-    return matchesSearch && matchesLocation;
-  });
+  // Filter jobs based on search query; sort by match score descending (backend order preserved when no filter)
+  const filteredJobs = availableJobs
+    .filter((job) => {
+      const matchesSearch = !searchQuery || 
+        job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        job.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (job.description && job.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      const matchesLocation = !locationQuery ||
+        job.location.toLowerCase().includes(locationQuery.toLowerCase());
+      
+      return matchesSearch && matchesLocation;
+    })
+    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 
   const allSelected = filteredJobs.length > 0 && selectedJobs.length === filteredJobs.length && 
     filteredJobs.every(job => selectedJobs.includes(job.id));

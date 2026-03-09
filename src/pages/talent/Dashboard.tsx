@@ -27,6 +27,10 @@ const TalentDashboard = () => {
   const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
 
   const topJobs = availableJobs.slice(0, 3);
+  const recommendedJobs = availableJobs.filter((j) => (j.matchScore ?? 0) >= 80).slice(0, 3);
+
+  console.log('[TalentDashboard] availableJobs', availableJobs);
+  console.log('[TalentDashboard] recommendedJobs', recommendedJobs);
 
   const handleApplyClick = (job: typeof availableJobs[0]) => {
     setSelectedJobForApply(job);
@@ -118,15 +122,21 @@ const TalentDashboard = () => {
         </div>
 
         <div className="space-y-4">
-          {topJobs.map((job) => (
-            <JobCard
-              key={job.id}
-              {...job}
-              onApply={() => handleApplyClick(job)}
-              onSave={() => handleSave(job)}
-              onView={() => handleViewJob(job)}
-            />
-          ))}
+          {recommendedJobs.length > 0 ? (
+            recommendedJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                {...job}
+                onApply={() => handleApplyClick(job)}
+                onSave={() => handleSave(job)}
+                onView={() => handleViewJob(job)}
+              />
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No jobs with 80%+ match yet. Upload a resume or check Find Jobs.
+            </p>
+          )}
         </div>
       </div>
 

@@ -7,16 +7,7 @@ import { ArrowLeft, Download, AlertCircle, CheckCircle, TrendingUp, Calendar, Us
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { employerNavItems } from '@/components/layout/navItems';
 import { apiClient } from '@/lib/api';
-import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Settings,
-} from 'lucide-react';
-
-const navItems = employerNavItems;
 
 interface ReportDetail {
   id: number;
@@ -299,7 +290,7 @@ const EmployerCandidateReportPage = () => {
 
   if (loading) {
     return (
-      <DashboardLayout navItems={navItems} role="employer">
+      <DashboardLayout role="employer">
         <div className="flex items-center justify-center min-h-screen">
           <Card className="p-8 text-center">
             <p className="text-muted-foreground">Loading interview report...</p>
@@ -311,7 +302,7 @@ const EmployerCandidateReportPage = () => {
 
   if (error) {
     return (
-      <DashboardLayout navItems={navItems} role="employer">
+      <DashboardLayout role="employer">
         <div className="max-w-4xl mx-auto p-6">
           <Button
             variant="ghost"
@@ -390,7 +381,7 @@ const EmployerCandidateReportPage = () => {
   }
 
   return (
-    <DashboardLayout navItems={navItems} role="employer">
+    <DashboardLayout role="employer">
       <div className="max-w-4xl mx-auto">
         <Dialog open={videoModalOpen} onOpenChange={setVideoModalOpen}>
           <DialogContent className="max-w-xl">

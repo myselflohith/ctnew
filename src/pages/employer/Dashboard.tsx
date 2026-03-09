@@ -3,11 +3,6 @@ import MetricCard from "@/components/dashboard/MetricCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  Building2,
-  Settings,
   Plus,
   TrendingUp,
   Clock,
@@ -15,7 +10,7 @@ import {
   Eye,
   ArrowRight,
   MoreVertical,
-  Calendar,
+  Users,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -27,15 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow, format } from "date-fns";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Applications", path: "/employer/candidates" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
+import { employerNavItems } from "@/components/layout/navItems";
 
 interface Job {
   id: string;
@@ -222,7 +209,7 @@ const EmployerDashboard = () => {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
+      navItems={employerNavItems}
       userName="Jane Smith"
       companyName="TechCorp AI"
     >

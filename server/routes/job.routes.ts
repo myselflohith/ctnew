@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import {
   getAvailableJobs,
+  getAvailableJobsWithMatch,
   getAllJobs,
   getJobById,
   getJobsByCompanyName,
@@ -16,6 +17,7 @@ import {
   applyToJob,
   getUserApplications,
   getApplicationsForEmployer,
+  updateApplicationStatus,
   getUserInterviews,
   getInterviewsForEmployer,
   createInterview,
@@ -37,6 +39,25 @@ router.get('/available', authenticateToken, async (req: Request, res: Response) 
     res.json({ success: true, data: jobs });
   } catch (error: any) {
     console.error('Get available jobs error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get available jobs' });
+  }
+});
+
+// Get available jobs with match scores (talent only; uses RESUME_MATCH_API)
+router.get('/available-with-match', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'talent') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const jobs = await getAvailableJobsWithMatch(String(req.user.id));
+    res.json({ success: true, data: jobs });
+  } catch (error: any) {
+    console.error('Get available jobs with match error:', error);
     res.status(500).json({ error: error.message || 'Failed to get available jobs' });
   }
 });
@@ -254,9 +275,11 @@ router.get('/applications/list', authenticateToken, async (req: Request, res: Re
       return;
     }
 
-    // If employer, get applications for their company's jobs
-    if (req.user.role === 'employer' && req.user.company_name) {
-      const applications = await getApplicationsForEmployer(req.user.company_name);
+    // If employer, get applications for their company's jobs (match by company_name or creator_id so all their jobs' applications show)
+    if (req.user.role === 'employer') {
+      const companyName = req.user.company_name && String(req.user.company_name).trim() ? String(req.user.company_name).trim() : null;
+      const creatorId = req.user.id != null ? Number(req.user.id) : null;
+      const applications = await getApplicationsForEmployer(companyName, creatorId);
       res.json({ success: true, data: applications });
       return;
     }
@@ -357,6 +380,36 @@ router.put('/:id/status', authenticateToken, async (req: Request, res: Response)
   } catch (error: any) {
     console.error('Update job status error:', error);
     res.status(500).json({ error: error.message || 'Failed to update job status' });
+  }
+});
+
+// Update application status (employer: Reject / Cancel Rejection)
+router.patch('/applications/:id/status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'employer' && req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { status } = req.body;
+    const allowed = ['Application Sent', 'Under Review', 'Interview Scheduled', 'Rejected', 'Accepted'];
+    if (!status || !allowed.includes(status)) {
+      res.status(400).json({ error: 'Invalid status. Use one of: ' + allowed.join(', ') });
+      return;
+    }
+    const employerId = Number(req.user.id);
+    const updated = await updateApplicationStatus(req.params.id, status, employerId);
+    if (!updated) {
+      res.status(404).json({ error: 'Application not found or access denied' });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error('Update application status error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update status' });
   }
 });
 

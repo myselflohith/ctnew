@@ -2,17 +2,13 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  LayoutDashboard,
   Briefcase,
   Users,
-  Building2,
-  Settings,
   Plus,
   Eye,
   MoreVertical,
   MapPin,
   Clock,
-  Calendar,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,15 +24,7 @@ import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import EditJobModal from "@/components/employer/EditJobModal";
 import CloseJobModal from "@/components/employer/CloseJobModal";
 import { toast } from "sonner";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
+import { employerNavItems } from "@/components/layout/navItems";
 
 interface Job {
   id: string;
@@ -236,7 +224,7 @@ const EmployerJobs = () => {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
+      navItems={employerNavItems}
       userName="Jane Smith"
       companyName="TechCorp AI"
     >

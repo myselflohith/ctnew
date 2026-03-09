@@ -126,6 +126,21 @@ const TalentSettings = () => {
 
     await uploadResume(file);
 
+    // Call RESUME_PARSER_API + RESUME_SCORE_API (same as ch-job-marketplace) and log to console
+    try {
+      const parseResult = await apiClient.parseResumeWithParser(file);
+      const data = parseResult.data as { parse?: unknown; rank?: unknown; rankError?: string } | undefined;
+      console.log("[Resume Parser API] Parsed output:", data?.parse ?? parseResult.data);
+      if (data?.rank != null) {
+        console.log("[Resume Score/Rank API] Rank output:", data.rank);
+      }
+      if (data?.rankError) {
+        console.warn("[Resume Score/Rank API] Error (rank not available):", data.rankError);
+      }
+    } catch (err) {
+      console.warn("[Resume Parser/Rank API] Request failed (resume still saved):", err);
+    }
+
     // After upload, refresh resumes list and user profile (city_state/linkedin may be enriched server-side)
     await queryClient.invalidateQueries({ queryKey: ["resumes"] });
     await refreshCurrentUser();

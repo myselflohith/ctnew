@@ -465,3 +465,415 @@ export async function deleteResume(resumeId: string, userId: string): Promise<bo
 export function getResumeFilePath(fileName: string): string {
   return path.join(UPLOAD_DIR, fileName);
 }
+
+/**
+ * Call RESUME_PARSER_API /upload_resume (same endpoint as ch-job-marketplace).
+ * Returns the raw parsed JSON from the parser for e.g. console logging in the talent profile.
+ * Accepts either a file path (reads from disk) or a buffer + fileName (e.g. from multer.memoryStorage).
+ */
+export async function parseResumeWithParserApi(
+  filePathOrBuffer: string | Buffer,
+  fileName?: string
+): Promise<Record<string, unknown>> {
+  const apiUrl = (process.env.RESUME_PARSER_API || '').trim().replace(/\/$/, '');
+  if (!apiUrl) {
+    throw new Error('RESUME_PARSER_API is not configured');
+  }
+
+  let buf: Buffer;
+  let name: string;
+  if (Buffer.isBuffer(filePathOrBuffer)) {
+    buf = filePathOrBuffer;
+    name = fileName || 'resume.pdf';
+  } else {
+    const fullPath = path.isAbsolute(filePathOrBuffer)
+      ? filePathOrBuffer
+      : path.join(UPLOAD_DIR, path.basename(filePathOrBuffer));
+    buf = await fs.readFile(fullPath);
+    name = path.basename(filePathOrBuffer);
+  }
+
+  const form = new FormData();
+  const bytes = new Uint8Array(buf);
+  form.append('pdf', new Blob([bytes]), name);
+
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.RESUME_PARSER_TIMEOUT_MS || 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}/upload_resume`, {
+      method: 'POST',
+      body: form as any,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Resume parser API failed: ${response.status} ${text}`);
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { raw: text };
+  }
+}
+
+/**
+ * Call RESUME_SCORE_API /rank (same as ch-job-marketplace get_rank_score_data).
+ * Rails sends only: [{ id: string, url: string, resume_text: string }].
+ * Do not send the full parsed resume object — the rank API expects this shape only.
+ */
+export async function callResumeScoreApi(parsedResumeData: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const apiUrl = (process.env.RESUME_SCORE_API || '').trim();
+  if (!apiUrl) {
+    throw new Error('RESUME_SCORE_API is not configured');
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.RESUME_SCORE_TIMEOUT_MS || 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Match Rails payload: array of { id, url, resume_text } only (see users/registrations_controller, job_matching_process_controller)
+  const summary = typeof parsedResumeData.summary === 'string' ? parsedResumeData.summary : '';
+  const skills = Array.isArray(parsedResumeData.skills)
+    ? (parsedResumeData.skills as string[]).join(', ')
+    : '';
+  const resumeText = [summary, skills].filter(Boolean).join('\n').trim() || '';
+
+  const body = [
+    {
+      id: '1',
+      url: '',
+      resume_text: resumeText,
+    },
+  ];
+
+  let response: Response;
+  try {
+    response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  if (!response.ok) {
+    if (response.status >= 500) {
+      console.error('[callResumeScoreApi] Rank API 5xx response:', response.status, text.slice(0, 500));
+    }
+    throw new Error(`Resume score API failed: ${response.status} ${text}`);
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { raw: text };
+  }
+}
+
+/**
+ * Get or create a people row for the user (Rails: person is the candidate profile; we link via users.person_id).
+ * Returns the person id so we can store rank scores on people.
+ */
+export async function getOrCreatePersonForUser(userId: number): Promise<number> {
+  const existing = await query(
+    'SELECT person_id FROM users WHERE id = $1',
+    [userId]
+  );
+  const personId = existing.rows?.[0]?.person_id;
+  if (personId != null) {
+    return Number(personId);
+  }
+  const insert = await query(
+    `INSERT INTO people (user_id, email_address, created_at, updated_at)
+     SELECT id, email, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM users WHERE id = $1
+     RETURNING id`,
+    [userId]
+  );
+  const newId = insert.rows?.[0]?.id;
+  if (newId == null) throw new Error('Failed to create person for user');
+  await query('UPDATE users SET person_id = $1 WHERE id = $2', [newId, userId]);
+  return Number(newId);
+}
+
+/** Rank API response result item (one element of results array). */
+interface RankResultItem {
+  id?: string;
+  score?: number;
+  score_edu?: number;
+  score_company?: number;
+  highest_ranking_school?: string | null;
+  highest_ranking_company?: string | null;
+  latest_company?: string | null;
+  latest_school?: string | null;
+}
+
+/**
+ * Update people row with rank/score fields from RESUME_SCORE_API response (same as Rails users/registrations_controller).
+ */
+export async function updatePersonRankFromApi(
+  personId: number,
+  rankApiResult: Record<string, unknown>
+): Promise<void> {
+  const results = rankApiResult.results as RankResultItem[] | undefined;
+  const res = Array.isArray(results) && results.length > 0 ? results[0] : null;
+  if (!res) return;
+
+  const rankScore = res.score != null ? Number(res.score) : null;
+  const scoreEdu = res.score_edu != null ? Number(res.score_edu) : null;
+  const scoreCompany = res.score_company != null ? Number(res.score_company) : null;
+  const highestSchool = res.highest_ranking_school != null && String(res.highest_ranking_school).trim() !== ''
+    ? String(res.highest_ranking_school).trim()
+    : null;
+  const highestCompany = res.highest_ranking_company != null && String(res.highest_ranking_company).trim() !== ''
+    ? String(res.highest_ranking_company).trim()
+    : null;
+  const companyRanked = highestCompany ? 'Yes' : 'No';
+  const schoolRanked = highestSchool ? 'Yes' : 'No';
+  const latestCompany = res.latest_company != null && String(res.latest_company).trim() !== ''
+    ? String(res.latest_company).trim()
+    : null;
+  const latestSchool = res.latest_school != null && String(res.latest_school).trim() !== ''
+    ? String(res.latest_school).trim()
+    : null;
+
+  await query(
+    `UPDATE people SET
+       rank_score = $2,
+       score_edu = $3,
+       score_company = $4,
+       highest_school = $5,
+       highest_company = $6,
+       company_ranked = $7,
+       school_ranked = $8,
+       latest_company = $9,
+       latest_school = $10,
+       updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1`,
+    [
+      personId,
+      rankScore,
+      scoreEdu,
+      scoreCompany,
+      highestSchool,
+      highestCompany,
+      companyRanked,
+      schoolRanked,
+      latestCompany,
+      latestSchool,
+    ]
+  );
+}
+
+/**
+ * Persist parsed resume data into people (same as Rails: resume_text, parse_resume_json, education, experiences, etc.).
+ * Call after parse-resume so employer candidate profile and match/rank flows have data.
+ */
+export async function updatePersonParsedResume(
+  personId: number,
+  parseResult: Record<string, unknown>
+): Promise<void> {
+  const summary = typeof parseResult.summary === 'string' ? parseResult.summary : '';
+  const skillsArr = Array.isArray(parseResult.skills) ? (parseResult.skills as string[]) : [];
+  const skillsStr = skillsArr.join(', ').trim();
+  const resumeText = [summary, skillsStr].filter(Boolean).join('\n').trim() || null;
+
+  const education = Array.isArray(parseResult.education) ? (parseResult.education as any[]) : [];
+  const educationDegrees = education
+    .map((e) => (e && typeof e.degree === 'string' ? e.degree.trim() : ''))
+    .filter(Boolean)
+    .join('\n') || null;
+  const educationUniversities = education
+    .map((e) => (e && typeof e.university === 'string' ? e.university.trim() : ''))
+    .filter(Boolean)
+    .join('\n') || null;
+
+  const experiencesRaw = Array.isArray(parseResult.experiences) ? parseResult.experiences as any[] : [];
+  const experienceLines = experiencesRaw.map((exp) => {
+    if (typeof exp === 'string') return exp.trim();
+    if (exp && typeof exp === 'object' && (exp.title || exp.company || exp.position)) {
+      const parts = [exp.title || exp.position, exp.company].filter(Boolean);
+      return parts.join(' at ');
+    }
+    return '';
+  }).filter(Boolean);
+  const experiencesStr = experienceLines.join('\n') || null;
+  const companyWorked = experiencesRaw
+    .map((exp) => (exp && typeof exp === 'object' && exp.company ? String(exp.company).trim() : ''))
+    .filter(Boolean)
+    .join('\n') || null;
+
+  const certificatesArr = Array.isArray(parseResult.certificates) ? (parseResult.certificates as string[]) : [];
+  const certificatesStr = certificatesArr.map((c) => String(c).trim()).filter(Boolean).join('\n') || null;
+
+  const parseResumeJson = JSON.stringify(parseResult);
+
+  const name = typeof parseResult.name === 'string' ? parseResult.name.trim() || null : null;
+  const firstName = typeof parseResult.first_name === 'string' ? parseResult.first_name.trim() || null : null;
+  const lastName = typeof parseResult.last_name === 'string' ? parseResult.last_name.trim() || null : null;
+  const phoneNumber = typeof parseResult.phone_number === 'string' ? parseResult.phone_number.trim() || null : null;
+
+  await query(
+    `UPDATE people SET
+       resume_text = $2,
+       parse_resume_json = $3,
+       education_degrees = $4,
+       education_universitys = $5,
+       experiences = $6,
+       company_worked = $7,
+       certificates = $8,
+       skills = $9,
+       name = $10,
+       first_name = $11,
+       last_name = $12,
+       phone_number = $13,
+       description = $14,
+       updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1`,
+    [
+      personId,
+      resumeText,
+      parseResumeJson,
+      educationDegrees,
+      educationUniversities,
+      experiencesStr,
+      companyWorked,
+      certificatesStr,
+      skillsStr || null,
+      name,
+      firstName,
+      lastName,
+      phoneNumber,
+      summary || null,
+    ]
+  );
+}
+
+/**
+ * Get resume text for a user for use in RESUME_MATCH_API (resume_service_urls[].resume_text).
+ * Prefers people.resume_text if user has a linked person; else parses default resume once to get summary + skills.
+ */
+export async function getResumeTextForUser(userId: string): Promise<string> {
+  const userRow = await query(
+    'SELECT person_id FROM users WHERE id = $1',
+    [userId]
+  );
+  const personId = userRow.rows?.[0]?.person_id;
+  if (personId != null) {
+    const personRow = await query(
+      'SELECT resume_text FROM people WHERE id = $1',
+      [Number(personId)]
+    );
+    const text = personRow.rows?.[0]?.resume_text;
+    if (text != null && String(text).trim() !== '') return String(text).trim();
+  }
+
+  const resumesResult = await query(
+    'SELECT id, file_path FROM resumes WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1',
+    [userId]
+  );
+  const resume = resumesResult.rows?.[0];
+  if (!resume?.file_path) return '';
+
+  const fullPath = path.join(UPLOAD_DIR, path.basename(resume.file_path));
+  let buf: Buffer;
+  try {
+    buf = await fs.readFile(fullPath);
+  } catch {
+    return '';
+  }
+  const parserUrl = (process.env.RESUME_PARSER_API || '').trim().replace(/\/$/, '');
+  if (!parserUrl) return '';
+
+  const form = new FormData();
+  form.append('pdf', new Blob([new Uint8Array(buf)]), path.basename(resume.file_path));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  let response: Response;
+  try {
+    response = await fetch(`${parserUrl}/upload_resume`, {
+      method: 'POST',
+      body: form as any,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) return '';
+  const data: any = await response.json().catch(() => ({}));
+  const summary = typeof data?.summary === 'string' ? data.summary : '';
+  const skills = Array.isArray(data?.skills) ? (data.skills as string[]).join(', ') : '';
+  return [summary, skills].filter(Boolean).join('\n').trim() || '';
+}
+
+export interface ResumeServiceUrlItem {
+  id: string;
+  url: string;
+  resume_text: string;
+}
+
+export interface MatchResultItem {
+  id: string;
+  score: number;
+  summary?: string;
+}
+
+/**
+ * Call RESUME_MATCH_API (same as Rails get_match_score_data). One job + one candidate.
+ * Returns results array; results[0].score is the match % for the candidate.
+ */
+export async function callResumeMatchApi(
+  jobDescription: string,
+  notes: string | null,
+  resumeServiceUrls: ResumeServiceUrlItem[]
+): Promise<{ results: MatchResultItem[] }> {
+  const apiUrl = (process.env.RESUME_MATCH_API || '').trim();
+  if (!apiUrl) {
+    throw new Error('RESUME_MATCH_API is not configured');
+  }
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.RESUME_MATCH_TIMEOUT_MS || 30000); // 30s default; match API can be slow
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const body = {
+    job_description: jobDescription || '',
+    notes: notes != null ? String(notes) : '',
+    resume_service_urls: resumeServiceUrls,
+  };
+  console.log('[RESUME_MATCH_API] Request', { url: apiUrl, body });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    console.log('[RESUME_MATCH_API] Response (error)', { status: response.status, body: text });
+    throw new Error(`Resume match API failed: ${response.status} ${text}`);
+  }
+  const data = (() => {
+    try {
+      return JSON.parse(text) as { results?: MatchResultItem[] };
+    } catch {
+      return {};
+    }
+  })();
+  console.log('[RESUME_MATCH_API] Response', { status: response.status, data });
+  const results = Array.isArray(data?.results) ? data.results : [];
+  return { results };
+}

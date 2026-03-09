@@ -1,5 +1,6 @@
 import { query } from '../database/connection.js';
 import { extractRequirementsFromJobDescription } from './job-ai.service.js';
+import { getResumeTextForUser, callResumeMatchApi } from './resume.service.js';
 
 // Map jobs table row to Job shape (jobs uses: name, company_name, job_salary, employment_type, status int, active bool)
 const JOB_SELECT = `
@@ -102,6 +103,86 @@ export async function getAvailableJobs(userId: string): Promise<Job[]> {
     [userId]
   );
   return result.rows;
+}
+
+const JOB_SELECT_FOR_MATCH = `
+  j.id,
+  j.name AS title,
+  j.company_name AS company,
+  j.location,
+  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.job_salary AS salary,
+  j.created_at AS posted_at,
+  NULL::integer AS match_score,
+  CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
+  j.description,
+  j.add_notes,
+  CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
+  j.created_at,
+  j.updated_at
+`;
+
+const AVAILABLE_JOBS_WITH_MATCH_LIMIT = 100;
+
+/**
+ * Available jobs with match scores from RESUME_MATCH_API (for talent dashboard).
+ * Caps at AVAILABLE_JOBS_WITH_MATCH_LIMIT jobs; sorts by match_score DESC then created_at DESC.
+ */
+export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> {
+  const result = await query(
+    `SELECT ${JOB_SELECT_FOR_MATCH}
+     FROM jobs j
+     WHERE j.id NOT IN (SELECT job_id FROM ct_jobs_saved WHERE user_id = $1)
+     AND j.id NOT IN (SELECT job_id FROM ct_job_applications WHERE user_id = $1)
+     AND j.discarded_at IS NULL
+     ORDER BY j.created_at DESC
+     LIMIT $2`,
+    [userId, AVAILABLE_JOBS_WITH_MATCH_LIMIT]
+  );
+  const rows = (result.rows || []) as (Job & { add_notes?: string | null })[];
+  const jobs = rows;
+
+  let resumeText = '';
+  try {
+    resumeText = await getResumeTextForUser(userId);
+  } catch (e) {
+    console.warn('[getAvailableJobsWithMatch] getResumeTextForUser failed:', (e as Error)?.message);
+  }
+
+  const resumeServiceUrls = [
+    { id: String(userId), url: '', resume_text: resumeText },
+  ];
+
+  for (const job of jobs) {
+    try {
+      const { results } = await callResumeMatchApi(
+        job.description ?? '',
+        job.add_notes ?? null,
+        resumeServiceUrls
+      );
+      const first = results?.[0];
+      if (first != null && typeof first.score === 'number') {
+        job.match_score = first.score;
+      } else {
+        job.match_score = null;
+      }
+    } catch (e) {
+      console.warn(`[getAvailableJobsWithMatch] match API failed for job ${job.id}:`, (e as Error)?.message);
+      job.match_score = null;
+    }
+    delete (job as Record<string, unknown>).add_notes;
+  }
+
+  jobs.sort((a, b) => {
+    const scoreA = a.match_score ?? 0;
+    const scoreB = b.match_score ?? 0;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return dateB - dateA;
+  });
+
+  return jobs;
 }
 
 // Get all jobs (for admin/employer)
@@ -443,8 +524,9 @@ export async function applyToJob(
   return result.rows[0];
 }
 
-// Get applications for jobs created by an employer (by company name)
-export async function getApplicationsForEmployer(companyName: string): Promise<JobApplication[]> {
+// Get applications for jobs created by an employer (by company name and/or creator_id so list is never empty for their jobs)
+export async function getApplicationsForEmployer(companyName: string | null, creatorId: number | null): Promise<(JobApplication & { candidate_name?: string; candidate_email?: string; rank_score?: number | null })[]> {
+  if (!companyName && !creatorId) return [];
   const result = await query(
     `SELECT 
        a.id as application_id,
@@ -456,36 +538,78 @@ export async function getApplicationsForEmployer(companyName: string): Promise<J
        a.updated_at as application_updated_at,
        ${JOB_SELECT_AS_JOB},
        j.created_at as job_created_at,
-       j.updated_at as job_updated_at
+       j.updated_at as job_updated_at,
+       u.first_name,
+       u.last_name,
+       u.email,
+       p.rank_score as candidate_rank_score
      FROM ct_job_applications a
      JOIN jobs j ON a.job_id = j.id
-     WHERE j.company_name = $1
+     LEFT JOIN users u ON a.user_id = u.id
+     LEFT JOIN people p ON u.person_id = p.id
+     WHERE (($1::text IS NOT NULL AND TRIM(j.company_name) = TRIM($1)) OR ($2::int IS NOT NULL AND j.creator_id = $2))
+       AND j.discarded_at IS NULL
      ORDER BY a.applied_at DESC`,
-    [companyName]
+    [companyName || null, creatorId ?? null]
   );
-  return result.rows.map(row => ({
-    id: row.application_id,
-    user_id: row.user_id,
-    job_id: row.job_id,
-    resume_id: row.resume_id,
-    status: row.status,
-    applied_at: row.applied_at,
-    updated_at: row.application_updated_at,
-    job: {
-      id: row.job_id,
-      title: row.title,
-      company: row.company,
-      location: row.location,
-      type: row.type,
-      salary: row.salary,
-      posted_at: row.posted_at,
-      match_score: row.match_score,
-      skills: row.skills,
-      description: row.description,
-      created_at: row.job_created_at,
-      updated_at: row.job_updated_at,
-    },
-  }));
+  return result.rows.map(row => {
+    const candidateName = row.first_name != null || row.last_name != null
+      ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim()
+      : row.email || 'Unknown';
+    return {
+      id: row.application_id,
+      user_id: row.user_id,
+      job_id: row.job_id,
+      resume_id: row.resume_id,
+      status: row.status,
+      applied_at: row.applied_at,
+      updated_at: row.application_updated_at,
+      candidate_name: candidateName || undefined,
+      candidate_email: row.email ?? undefined,
+      rank_score: row.candidate_rank_score != null ? Number(row.candidate_rank_score) : null,
+      job: {
+        id: row.job_id,
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        type: row.type,
+        salary: row.salary,
+        posted_at: row.posted_at,
+        match_score: row.match_score,
+        skills: row.skills,
+        description: row.description,
+        created_at: row.job_created_at,
+        updated_at: row.job_updated_at,
+      },
+    };
+  });
+}
+
+// Update application status (employer only; application must belong to a job owned by employer)
+export async function updateApplicationStatus(
+  applicationId: string,
+  status: 'Application Sent' | 'Under Review' | 'Interview Scheduled' | 'Rejected' | 'Accepted',
+  employerUserId: number
+): Promise<JobApplication | null> {
+  const appId = parseInt(applicationId, 10);
+  if (Number.isNaN(appId)) return null;
+  const check = await query(
+    `SELECT a.id FROM ct_job_applications a
+     JOIN jobs j ON a.job_id = j.id
+     WHERE a.id = $1 AND (TRIM(COALESCE(j.company_name, '')) = (SELECT TRIM(COALESCE(company_name, '')) FROM users WHERE id = $2) OR j.creator_id = $2)`,
+    [appId, employerUserId]
+  );
+  if (!check.rows.length) return null;
+  await query(
+    'UPDATE ct_job_applications SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+    [status, appId]
+  );
+  const updated = await query(
+    'SELECT id, user_id, job_id, resume_id, status, applied_at, updated_at FROM ct_job_applications WHERE id = $1',
+    [appId]
+  );
+  const row = updated.rows[0];
+  return row ? { id: row.id, user_id: row.user_id, job_id: row.job_id, resume_id: row.resume_id, status: row.status, applied_at: row.applied_at, updated_at: row.updated_at } : null;
 }
 
 // Get applications for a user

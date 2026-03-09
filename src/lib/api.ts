@@ -223,6 +223,55 @@ class ApiClient {
     });
   }
 
+  /** Employer: get top-ranked talent candidates for Resume Database (rankScore >= minRank, default 80). */
+  async getEmployerResumeDatabase(params?: { minRank?: number; limit?: number }) {
+    const search = new URLSearchParams();
+    if (params?.minRank !== undefined) search.set('minRank', String(params.minRank));
+    if (params?.limit !== undefined) search.set('limit', String(params.limit));
+    const qs = search.toString();
+    return this.request('/resumes/employer/resume-database' + (qs ? `?${qs}` : ''));
+  }
+
+  /** Employer: search talent candidates in Resume Database using RESUME_MATCH_API (matchScore & rankScore >= 80 by default). */
+  async searchEmployerResumeDatabase(params: { q: string; minRank?: number; minMatch?: number; limit?: number }) {
+    const search = new URLSearchParams();
+    search.set('q', params.q ?? '');
+    if (params.minRank !== undefined) search.set('minRank', String(params.minRank));
+    if (params.minMatch !== undefined) search.set('minMatch', String(params.minMatch));
+    if (params.limit !== undefined) search.set('limit', String(params.limit));
+    const qs = search.toString();
+    return this.request('/resumes/employer/resume-database/search' + (qs ? `?${qs}` : ''));
+  }
+
+  /** Call RESUME_PARSER_API /upload_resume and return raw parsed output (for console logging). */
+  async parseResumeWithParser(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/resumes/parse-resume`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Parse failed');
+    }
+    return data as { success: boolean; data: { parse?: unknown; rank?: unknown } };
+  }
+
+  /** Employer/Admin: get full candidate profile for a user (people + rank scores + resume summary). */
+  async getEmployerCandidateProfile(userId: string) {
+    return this.request(`/resumes/employer/candidate-profile/${userId}`);
+  }
+
   // Profile endpoints
   async updateTalentProfile(data: {
     first_name?: string | null;
@@ -266,6 +315,11 @@ class ApiClient {
   // Job endpoints
   async getAvailableJobs() {
     return this.request('/jobs/available');
+  }
+
+  /** Available jobs with match scores (talent only). Falls back to getAvailableJobs on 403. */
+  async getAvailableJobsWithMatch() {
+    return this.request('/jobs/available-with-match');
   }
 
   async getAllJobs() {
@@ -318,6 +372,14 @@ class ApiClient {
 
   async getApplications() {
     return this.request('/jobs/applications/list');
+  }
+
+  /** Employer/Admin: update application status (e.g. Reject / Cancel rejection). */
+  async updateApplicationStatus(applicationId: string, status: string) {
+    return this.request(`/jobs/applications/${applicationId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
   }
 
   async getInterviews(filters?: { status?: string; search?: string }) {

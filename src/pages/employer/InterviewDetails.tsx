@@ -18,9 +18,6 @@ import { interviewsAPI } from "@/lib/api/interviews";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { employerNavItems } from "@/components/layout/navItems";
-
-const navItems = employerNavItems;
 
 interface InvitedCandidate {
   id: string;
@@ -246,7 +243,6 @@ export default function InterviewDetails() {
     return (
       <DashboardLayout
         role="employer"
-        navItems={navItems}
         userName="Jane Smith"
         companyName="TechCorp AI"
       >
@@ -261,7 +257,6 @@ export default function InterviewDetails() {
     return (
       <DashboardLayout
         role="employer"
-        navItems={navItems}
         userName="Jane Smith"
         companyName="TechCorp AI"
       >
@@ -285,7 +280,6 @@ export default function InterviewDetails() {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
       userName="Jane Smith"
       companyName="TechCorp AI"
     >
