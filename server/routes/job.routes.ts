@@ -46,6 +46,11 @@ router.get('/available', authenticateToken, async (req: Request, res: Response) 
 // Get available jobs with match scores (talent only; uses RESUME_MATCH_API)
 router.get('/available-with-match', authenticateToken, async (req: Request, res: Response) => {
   try {
+    console.log('[GET /jobs/available-with-match] incoming', {
+      hasUser: !!req.user,
+      userId: req.user?.id,
+      role: req.user?.role,
+    });
     if (!req.user) {
       res.status(401).json({ error: 'Not authenticated' });
       return;
@@ -55,6 +60,14 @@ router.get('/available-with-match', authenticateToken, async (req: Request, res:
       return;
     }
     const jobs = await getAvailableJobsWithMatch(String(req.user.id));
+    console.log('[GET /jobs/available-with-match] jobs returned', {
+      count: jobs.length,
+      jobs: jobs.map((j) => ({
+        id: j.id,
+        title: j.title,
+        match_score: (j as any).match_score,
+      })),
+    });
     res.json({ success: true, data: jobs });
   } catch (error: any) {
     console.error('Get available jobs with match error:', error);

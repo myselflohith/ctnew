@@ -33,12 +33,15 @@ interface Application {
 
 interface JobsContextType {
   availableJobs: Job[];
+  /** Jobs with match scores (from RESUME_MATCH_API). Only set after fetchJobsWithMatch(). */
+  jobsWithMatch: Job[] | null;
+  loading: boolean;
+  loadingMatch: boolean;
   savedJobs: Job[];
   applications: Application[];
   applicationsTodayCount: number;
   scheduledInterviewsCount: number;
   scheduledInterviewsTodayCount: number;
-  loading: boolean;
   removeFromAvailable: (jobId: string) => void;
   removeFromSaved: (jobId: string) => Promise<void>;
   saveJob: (job: Job) => Promise<void>;
@@ -46,6 +49,8 @@ interface JobsContextType {
   isJobSaved: (jobId: string) => boolean;
   isJobApplied: (jobId: string) => boolean;
   refetch: () => Promise<void>;
+  /** Fetches jobs with match scores (calls match API). Use for dashboard recommended or Find Jobs 90%+ filter. */
+  fetchJobsWithMatch: () => Promise<void>;
 }
 
 const JobsContext = createContext<JobsContextType | undefined>(undefined);
@@ -93,12 +98,14 @@ const convertApiApplicationToApplication = (apiApp: any): Application => {
 
 export const JobsProvider = ({ children }: { children: ReactNode }) => {
   const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
+  const [jobsWithMatch, setJobsWithMatch] = useState<Job[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMatch, setLoadingMatch] = useState(false);
   const [savedJobs, setSavedJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationsTodayCount, setApplicationsTodayCount] = useState(0);
   const [scheduledInterviewsCount, setScheduledInterviewsCount] = useState(0);
   const [scheduledInterviewsTodayCount, setScheduledInterviewsTodayCount] = useState(0);
-  const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     const token = apiClient.getToken();
@@ -112,29 +119,21 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       setLoading(true);
-      
-      // Talent: try available-with-match first (RESUME_MATCH_API); on 403 or error fall back to available
+      // Use /jobs/available only (no match API). Match API is called only via fetchJobsWithMatch() when needed (dashboard recommended or Find Jobs 90%+ filter).
       let availableResponse: { success: boolean; data?: any[]; error?: string };
       try {
-        console.log("[JobsContext] calling GET /jobs/available-with-match");
-        availableResponse = await apiClient.getAvailableJobsWithMatch();
-      } catch (err: any) {
-        console.warn(
-          "[JobsContext] getAvailableJobsWithMatch failed, falling back to /jobs/available:",
-          err?.message || err
-        );
-        const isForbidden = err?.message?.includes('403') || err?.message?.includes('Forbidden');
-        if (isForbidden) {
-          console.log("[JobsContext] 403 from available-with-match; calling GET /jobs/available instead");
-          availableResponse = await apiClient.getAvailableJobs();
-        } else {
-          console.log("[JobsContext] error from available-with-match; trying GET /jobs/available with catch");
-          availableResponse = await apiClient.getAvailableJobs().catch((e) => ({
-            success: false,
-            data: [] as any[],
-            error: (e as Error)?.message,
-          }));
-        }
+        const resp = await apiClient.getAvailableJobs();
+        availableResponse = {
+          success: resp.success,
+          data: (resp.data as any[]) || [],
+          error: resp.error,
+        };
+      } catch (e: any) {
+        availableResponse = {
+          success: false,
+          data: [],
+          error: (e as Error)?.message,
+        };
       }
 
       // Fetch the rest in parallel (saved, applications, interviews)
@@ -180,19 +179,7 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (availableResponse.success && Array.isArray(availableResponse.data)) {
-        console.log(
-          "[JobsContext] availableResponse.data (raw jobs)",
-          (availableResponse.data as any[]).map((j: any) => ({
-            id: j.id,
-            title: j.title ?? j.name,
-            match_score: j.match_score,
-          }))
-        );
         const mapped = (availableResponse.data as any[]).map(convertApiJobToJob);
-        console.log(
-          "[JobsContext] availableJobs after convertApiJobToJob",
-          mapped.map((j) => ({ id: j.id, title: j.title, matchScore: j.matchScore }))
-        );
         setAvailableJobs(mapped);
       } else {
         // If no data or failed, set empty array
@@ -247,6 +234,27 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
 
   const removeFromAvailable = (jobId: string) => {
     setAvailableJobs((prev) => prev.filter((job) => job.id !== jobId));
+    setJobsWithMatch((prev) => (prev ? prev.filter((job) => job.id !== jobId) : null));
+  };
+
+  const fetchJobsWithMatch = async () => {
+    const token = apiClient.getToken();
+    if (!token) return;
+    setLoadingMatch(true);
+    try {
+      const resp = await apiClient.getAvailableJobsWithMatch();
+      if (resp.success && Array.isArray(resp.data)) {
+        const mapped = (resp.data as any[]).map(convertApiJobToJob);
+        setJobsWithMatch(mapped);
+      } else {
+        setJobsWithMatch([]);
+      }
+    } catch (err: any) {
+      console.warn("[JobsContext] fetchJobsWithMatch failed:", err?.message || err);
+      setJobsWithMatch([]);
+    } finally {
+      setLoadingMatch(false);
+    }
   };
 
   const removeFromSaved = async (jobId: string) => {
@@ -364,12 +372,14 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
     <JobsContext.Provider
       value={{
         availableJobs,
+        jobsWithMatch,
+        loading,
+        loadingMatch,
         savedJobs,
         applications,
         applicationsTodayCount,
         scheduledInterviewsCount,
         scheduledInterviewsTodayCount,
-        loading,
         removeFromAvailable,
         removeFromSaved,
         saveJob,
@@ -377,6 +387,7 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
         isJobSaved,
         isJobApplied,
         refetch: fetchData,
+        fetchJobsWithMatch,
       }}
     >
       {children}

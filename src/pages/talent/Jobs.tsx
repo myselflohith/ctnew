@@ -26,12 +26,58 @@ import { toast } from "sonner";
 const TalentJobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
+  const [filterType, setFilterType] = useState<"remote" | "hybrid" | "onsite" | null>(null);
+  const [filterMinSalary, setFilterMinSalary] = useState<number | null>(null);
+  const [filterMinMatch, setFilterMinMatch] = useState<number | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
-  const { availableJobs, removeFromAvailable, saveJob, applyToJob, refetch, loading } = useJobs();
+  const {
+    availableJobs,
+    jobsWithMatch,
+    loadingMatch,
+    fetchJobsWithMatch,
+    removeFromAvailable,
+    saveJob,
+    applyToJob,
+    refetch,
+    loading,
+  } = useJobs();
+
+  useEffect(() => {
+    if (filterMinMatch != null && jobsWithMatch === null) {
+      fetchJobsWithMatch();
+    }
+  }, [filterMinMatch, jobsWithMatch, fetchJobsWithMatch]);
+
+  const toggleFilterType = (type: "remote" | "hybrid" | "onsite") => {
+    setFilterType((prev) => (prev === type ? null : type));
+  };
+  const toggleFilterMinSalary = () => {
+    setFilterMinSalary((prev) => (prev !== null ? null : 150000));
+  };
+  const toggleFilterMinMatch = () => {
+    setFilterMinMatch((prev) => (prev !== null ? null : 90));
+  };
+  const hasActiveFilters = filterType !== null || filterMinSalary !== null || filterMinMatch !== null;
+  const clearAllFilters = () => {
+    setFilterType(null);
+    setFilterMinSalary(null);
+    setFilterMinMatch(null);
+  };
+
+  const parseSalaryMax = (salary: string | undefined): number | null => {
+    if (!salary || typeof salary !== "string") return null;
+    const cleaned = salary.replace(/,/g, "");
+    const allNumbers: number[] = [];
+    const kMatch = cleaned.match(/(\d+)\s*k/gi);
+    if (kMatch) kMatch.forEach((m) => allNumbers.push(parseInt(m.replace(/\s*k/i, ""), 10) * 1000));
+    const numMatch = cleaned.match(/\d+/g);
+    if (numMatch) numMatch.forEach((m) => allNumbers.push(parseInt(m, 10)));
+    return allNumbers.length ? Math.max(...allNumbers) : null;
+  };
 
   const handleApplyClick = (job: typeof availableJobs[0]) => {
     setSelectedJobForApply(job);
@@ -80,19 +126,27 @@ const TalentJobs = () => {
     setJobDescriptionOpen(true);
   };
 
-  // Filter jobs based on search query; sort by match score descending (backend order preserved when no filter)
-  const filteredJobs = availableJobs
+  const baseJobs = filterMinMatch != null ? (jobsWithMatch ?? []) : availableJobs;
+
+  const filteredJobs = baseJobs
     .filter((job) => {
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (job.skills && job.skills.some((skill) => String(skill).toLowerCase().includes(searchQuery.toLowerCase()))) ||
         (job.description && job.description.toLowerCase().includes(searchQuery.toLowerCase()));
-      
+
       const matchesLocation = !locationQuery ||
-        job.location.toLowerCase().includes(locationQuery.toLowerCase());
-      
-      return matchesSearch && matchesLocation;
+        (job.location && job.location.toLowerCase().includes(locationQuery.toLowerCase()));
+
+      const matchesType = !filterType || (job.type && job.type.toLowerCase() === filterType.toLowerCase());
+
+      const jobSalary = parseSalaryMax(job.salary);
+      const matchesSalary = filterMinSalary == null || (jobSalary != null && jobSalary >= filterMinSalary);
+
+      const matchesMatch = filterMinMatch == null || (typeof job.matchScore === "number" && job.matchScore >= filterMinMatch);
+
+      return matchesSearch && matchesLocation && matchesType && matchesSalary && matchesMatch;
     })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 
@@ -153,16 +207,49 @@ const TalentJobs = () => {
           >
             Search
           </Button>
-          <Button variant="outline" size="lg">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => hasActiveFilters && clearAllFilters()}
+          >
             <Filter className="w-4 h-4 mr-2" />
-            Filters
+            {hasActiveFilters ? "Clear filters" : "Filters"}
           </Button>
         </div>
-        <div className="flex flex-wrap gap-2 mt-4">
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">Remote</Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">Hybrid</Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">$150K+</Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-secondary">90%+ Match</Badge>
+        <div className="flex flex-wrap gap-2 mt-4 items-center">
+          <Badge
+            variant={filterType === "remote" ? "default" : "outline"}
+            className="cursor-pointer hover:bg-secondary"
+            onClick={() => toggleFilterType("remote")}
+          >
+            Remote
+          </Badge>
+          <Badge
+            variant={filterType === "hybrid" ? "default" : "outline"}
+            className="cursor-pointer hover:bg-secondary"
+            onClick={() => toggleFilterType("hybrid")}
+          >
+            Hybrid
+          </Badge>
+          <Badge
+            variant={filterMinSalary !== null ? "default" : "outline"}
+            className="cursor-pointer hover:bg-secondary"
+            onClick={toggleFilterMinSalary}
+          >
+            $150K+
+          </Badge>
+          <Badge
+            variant={filterMinMatch !== null ? "default" : "outline"}
+            className="cursor-pointer hover:bg-secondary"
+            onClick={toggleFilterMinMatch}
+          >
+            90%+ Match
+          </Badge>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-muted-foreground">
+              Clear all
+            </Button>
+          )}
         </div>
       </div>
 
@@ -173,7 +260,7 @@ const TalentJobs = () => {
             <div className="flex items-center gap-2 pl-6">
               <Checkbox
                 id="select-all"
-                checked={allSelected && filteredJobs.length === availableJobs.length}
+                checked={allSelected}
                 onCheckedChange={handleSelectAll}
               />
               <label htmlFor="select-all" className="text-sm text-muted-foreground cursor-pointer">
@@ -182,7 +269,7 @@ const TalentJobs = () => {
             </div>
           )}
           <p className="text-muted-foreground">
-            Showing {filteredJobs.length} {searchQuery || locationQuery ? 'filtered ' : ''}job{filteredJobs.length !== 1 ? 's' : ''} {filteredJobs.length > 0 ? 'sorted by match score' : ''}
+            Showing {filteredJobs.length} {(searchQuery || locationQuery || hasActiveFilters) ? "filtered " : ""}job{filteredJobs.length !== 1 ? "s" : ""} {filteredJobs.length > 0 ? "sorted by match score" : ""}
           </p>
         </div>
         {someSelected && (
@@ -193,9 +280,11 @@ const TalentJobs = () => {
         )}
       </div>
 
-      {loading ? (
+      {loading || (filterMinMatch != null && jobsWithMatch === null && loadingMatch) ? (
         <div className="glass rounded-2xl p-12 text-center">
-          <p className="text-muted-foreground">Loading jobs...</p>
+          <p className="text-muted-foreground">
+            {filterMinMatch != null && loadingMatch ? "Loading match scores…" : "Loading jobs…"}
+          </p>
         </div>
       ) : filteredJobs.length > 0 ? (
         <div className="space-y-4">
@@ -216,20 +305,21 @@ const TalentJobs = () => {
         <div className="glass rounded-2xl p-12 text-center">
           <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-            {searchQuery || locationQuery ? 'No jobs found' : 'No jobs available'}
+            {(searchQuery || locationQuery || hasActiveFilters) ? "No jobs found" : "No jobs available"}
           </h3>
           <p className="text-muted-foreground">
-            {searchQuery || locationQuery 
-              ? 'Try adjusting your search criteria or clearing filters.'
-              : 'Check back later for new opportunities.'}
+            {(searchQuery || locationQuery || hasActiveFilters)
+              ? "Try adjusting your search criteria or clearing filters."
+              : "Check back later for new opportunities."}
           </p>
-          {(searchQuery || locationQuery) && (
-            <Button 
-              variant="outline" 
+          {(searchQuery || locationQuery || hasActiveFilters) && (
+            <Button
+              variant="outline"
               className="mt-4"
               onClick={() => {
                 setSearchQuery("");
                 setLocationQuery("");
+                clearAllFilters();
               }}
             >
               Clear Filters

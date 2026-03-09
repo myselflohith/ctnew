@@ -5,7 +5,7 @@ import ApplyModal from "@/components/talent/ApplyModal";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Button } from "@/components/ui/button";
 import { FileText, Clock, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 import { toast } from "sonner";
@@ -14,6 +14,9 @@ const TalentDashboard = () => {
   const navigate = useNavigate();
   const {
     availableJobs,
+    jobsWithMatch,
+    loadingMatch,
+    fetchJobsWithMatch,
     saveJob,
     applyToJob,
     applications,
@@ -26,11 +29,12 @@ const TalentDashboard = () => {
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
 
-  const topJobs = availableJobs.slice(0, 3);
-  const recommendedJobs = availableJobs.filter((j) => (j.matchScore ?? 0) >= 80).slice(0, 3);
+  useEffect(() => {
+    fetchJobsWithMatch();
+  }, [fetchJobsWithMatch]);
 
-  console.log('[TalentDashboard] availableJobs', availableJobs);
-  console.log('[TalentDashboard] recommendedJobs', recommendedJobs);
+  const topJobs = availableJobs.slice(0, 3);
+  const recommendedJobs = (jobsWithMatch ?? []).filter((j) => (j.matchScore ?? 0) >= 80).slice(0, 3);
 
   const handleApplyClick = (job: typeof availableJobs[0]) => {
     setSelectedJobForApply(job);
@@ -122,7 +126,9 @@ const TalentDashboard = () => {
         </div>
 
         <div className="space-y-4">
-          {recommendedJobs.length > 0 ? (
+          {loadingMatch && recommendedJobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Loading recommended jobs…</p>
+          ) : recommendedJobs.length > 0 ? (
             recommendedJobs.map((job) => (
               <JobCard
                 key={job.id}

@@ -850,6 +850,14 @@ export async function callResumeMatchApi(
     resume_service_urls: resumeServiceUrls,
   };
   console.log('[RESUME_MATCH_API] Request', { url: apiUrl, body });
+  // Also log a ready-to-run curl for debugging in Postman/terminal (resume_text included; beware of size).
+  try {
+    const jsonForCurl = JSON.stringify(body).replace(/'/g, "\\'");
+    const curl = `curl -X POST '${apiUrl}' -H 'Content-Type: application/json' -d '${jsonForCurl}'`;
+    console.log('[RESUME_MATCH_API] CURL', curl);
+  } catch {
+    // ignore JSON/stringify issues
+  }
   let response: Response;
   try {
     response = await fetch(apiUrl, {
