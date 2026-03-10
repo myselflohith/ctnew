@@ -23,6 +23,7 @@ import {
   getResumeTextForUser,
   callResumeMatchApi,
 } from '../services/resume.service.js';
+import { talentJobMatchingQueue } from '../queues/talent-job-matching.queue.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,6 +122,12 @@ router.post(
           console.warn('[parse-resume] Resume score/rank API failed:', rankError);
         }
       }
+
+      // Enqueue background job to compute job–resume match scores (Ruby-style worker)
+      talentJobMatchingQueue.add('computeMatchScores', { userId: Number(req.user.id) }).catch((e) => {
+        console.warn('[parse-resume] Failed to enqueue talent-job-matching:', (e as Error)?.message);
+      });
+
       res.json({
         success: true,
         data: {

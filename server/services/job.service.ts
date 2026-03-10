@@ -1,6 +1,5 @@
 import { query } from '../database/connection.js';
 import { extractRequirementsFromJobDescription } from './job-ai.service.js';
-import { getResumeTextForUser, callResumeMatchApi } from './resume.service.js';
 
 // Map jobs table row to Job shape (jobs uses: name, company_name, job_salary, employment_type, status int, active bool)
 const JOB_SELECT = `
@@ -105,84 +104,62 @@ export async function getAvailableJobs(userId: string): Promise<Job[]> {
   return result.rows;
 }
 
-const JOB_SELECT_FOR_MATCH = `
-  j.id,
-  j.name AS title,
-  j.company_name AS company,
-  j.location,
-  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
-  j.job_salary AS salary,
-  j.created_at AS posted_at,
-  NULL::integer AS match_score,
-  CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
-  j.description,
-  j.add_notes,
-  CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
-  j.created_at,
-  j.updated_at
-`;
-
 const AVAILABLE_JOBS_WITH_MATCH_LIMIT = 100;
 
-/**
- * Available jobs with match scores from RESUME_MATCH_API (for talent dashboard).
- * Caps at AVAILABLE_JOBS_WITH_MATCH_LIMIT jobs; sorts by match_score DESC then created_at DESC.
- */
-export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> {
+/** Used by talent-job-matching worker: returns available job id, description, add_notes for match API. */
+export async function getAvailableJobsForMatching(userId: string): Promise<
+  { id: number; description: string | null; add_notes: string | null }[]
+> {
   const result = await query(
-    `SELECT ${JOB_SELECT_FOR_MATCH}
+    `SELECT j.id, j.description, j.add_notes
      FROM jobs j
      WHERE j.id NOT IN (SELECT job_id FROM ct_jobs_saved WHERE user_id = $1)
      AND j.id NOT IN (SELECT job_id FROM ct_job_applications WHERE user_id = $1)
      AND j.discarded_at IS NULL
      ORDER BY j.created_at DESC
+     LIMIT 200`,
+    [userId]
+  );
+  return (result.rows || []).map((r: any) => ({
+    id: Number(r.id),
+    description: r.description != null ? String(r.description) : null,
+    add_notes: r.add_notes != null ? String(r.add_notes) : null,
+  }));
+}
+
+/**
+ * Available jobs with match scores from employer_auto_matched_candidates (worker precomputed; same table as Ruby).
+ * Uses person_id from users; sorts by match_score DESC NULLS LAST, then created_at DESC.
+ */
+export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> {
+  const result = await query(
+    `SELECT
+       j.id,
+       j.name AS title,
+       j.company_name AS company,
+       j.location,
+       COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+       j.job_salary AS salary,
+       j.created_at AS posted_at,
+       m.match_score,
+       CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
+       j.description,
+       CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
+       j.created_at,
+       j.updated_at
+     FROM jobs j
+     LEFT JOIN employer_auto_matched_candidates m ON m.job_id = j.id
+       AND m.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
+       AND m.source_type = 'talent'
+     WHERE j.id NOT IN (SELECT job_id FROM ct_jobs_saved WHERE user_id = $1)
+     AND j.id NOT IN (SELECT job_id FROM ct_job_applications WHERE user_id = $1)
+     AND j.discarded_at IS NULL
+     ORDER BY m.match_score DESC NULLS LAST, j.created_at DESC
      LIMIT $2`,
     [userId, AVAILABLE_JOBS_WITH_MATCH_LIMIT]
   );
   const rows = (result.rows || []) as (Job & { add_notes?: string | null })[];
-  const jobs = rows;
-
-  let resumeText = '';
-  try {
-    resumeText = await getResumeTextForUser(userId);
-  } catch (e) {
-    console.warn('[getAvailableJobsWithMatch] getResumeTextForUser failed:', (e as Error)?.message);
-  }
-
-  const resumeServiceUrls = [
-    { id: String(userId), url: '', resume_text: resumeText },
-  ];
-
-  for (const job of jobs) {
-    try {
-      const { results } = await callResumeMatchApi(
-        job.description ?? '',
-        job.add_notes ?? null,
-        resumeServiceUrls
-      );
-      const first = results?.[0];
-      if (first != null && typeof first.score === 'number') {
-        job.match_score = first.score;
-      } else {
-        job.match_score = null;
-      }
-    } catch (e) {
-      console.warn(`[getAvailableJobsWithMatch] match API failed for job ${job.id}:`, (e as Error)?.message);
-      job.match_score = null;
-    }
-    delete (job as Record<string, unknown>).add_notes;
-  }
-
-  jobs.sort((a, b) => {
-    const scoreA = a.match_score ?? 0;
-    const scoreB = b.match_score ?? 0;
-    if (scoreB !== scoreA) return scoreB - scoreA;
-    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return dateB - dateA;
-  });
-
-  return jobs;
+  return rows;
 }
 
 // Get all jobs (for admin/employer)

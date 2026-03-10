@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -237,7 +237,7 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
     setJobsWithMatch((prev) => (prev ? prev.filter((job) => job.id !== jobId) : null));
   };
 
-  const fetchJobsWithMatch = async () => {
+  const fetchJobsWithMatch = useCallback(async () => {
     const token = apiClient.getToken();
     if (!token) return;
     setLoadingMatch(true);
@@ -255,7 +255,7 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoadingMatch(false);
     }
-  };
+  }, []);
 
   const removeFromSaved = async (jobId: string) => {
     try {

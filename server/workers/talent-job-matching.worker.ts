@@ -1,0 +1,118 @@
+import { Worker } from 'bullmq';
+import { query } from '../database/connection.js';
+import { getAvailableJobsForMatching } from '../services/job.service.js';
+import { getResumeTextForUser, callResumeMatchApi } from '../services/resume.service.js';
+import type { TalentJobMatchingJobData } from '../queues/talent-job-matching.queue.js';
+
+function getRedisConnectionOptions(): {
+  url?: string;
+  host?: string;
+  port?: number;
+  password?: string;
+  maxRetriesPerRequest: null;
+} {
+  const url = process.env.REDIS_URL;
+  if (url && url.trim().length > 0) {
+    return { url: url.trim(), maxRetriesPerRequest: null };
+  }
+  return {
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+    maxRetriesPerRequest: null,
+  };
+}
+
+export function startTalentJobMatchingWorker() {
+  const connection = getRedisConnectionOptions();
+
+  const worker = new Worker<TalentJobMatchingJobData>(
+    'talent-job-matching',
+    async job => {
+      const { userId } = job.data;
+      const userIdStr = String(userId);
+
+      // Use person_id (same as Ruby); fall back to user_id when person_id is null
+      const personIdResult = await query<{ person_id: number | null }>(
+        'SELECT person_id FROM users WHERE id = $1',
+        [userId]
+      );
+      const personId: number = personIdResult.rows[0]?.person_id ?? Number(userId);
+
+      let resumeText = '';
+      try {
+        resumeText = await getResumeTextForUser(userIdStr);
+      } catch (e) {
+        console.warn('[talent-job-matching] getResumeTextForUser failed:', (e as Error)?.message);
+      }
+
+      const resumeServiceUrls = [
+        { id: userIdStr, url: '', resume_text: resumeText },
+      ];
+
+      const jobs = await getAvailableJobsForMatching(userIdStr);
+      if (jobs.length === 0) return { computed: 0 };
+
+      // Replace all scores for this person (source_type = 'talent') so stale jobs are not kept
+      await query(
+        'DELETE FROM employer_auto_matched_candidates WHERE person_id = $1 AND source_type = $2',
+        [personId, 'talent']
+      );
+
+      let computed = 0;
+      for (const job of jobs) {
+        try {
+          const { results } = await callResumeMatchApi(
+            job.description ?? '',
+            job.add_notes ?? null,
+            resumeServiceUrls
+          );
+          const first = results?.[0];
+          const score = first != null && typeof first.score === 'number' ? first.score : null;
+          const scoreSummary = first?.summary != null ? String(first.summary) : null;
+          const detailResponse = first != null ? JSON.stringify(first) : null;
+          await query(
+            `INSERT INTO employer_auto_matched_candidates (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET
+               match_score = EXCLUDED.match_score,
+               score_summary = EXCLUDED.score_summary,
+               detail_response = EXCLUDED.detail_response,
+               updated_at = CURRENT_TIMESTAMP`,
+            [personId, job.id, score, scoreSummary, detailResponse]
+          );
+          computed += 1;
+        } catch (e) {
+          console.warn(`[talent-job-matching] match API failed for job ${job.id}:`, (e as Error)?.message);
+          await query(
+            `INSERT INTO employer_auto_matched_candidates (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
+             VALUES ($1, $2, NULL, NULL, NULL, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET match_score = NULL, score_summary = NULL, detail_response = NULL, updated_at = CURRENT_TIMESTAMP`,
+            [personId, job.id]
+          );
+        }
+      }
+
+      return { computed };
+    },
+    {
+      connection,
+      concurrency: 1,
+    }
+  );
+
+  worker.on('completed', job => {
+    console.log(`✅ talent-job-matching job completed: ${job.id}`, job.returnvalue);
+  });
+
+  worker.on('failed', (job, err) => {
+    console.error(`❌ talent-job-matching job failed: ${job?.id}`, err);
+  });
+
+  console.log('📋 Talent job matching worker started (queue: talent-job-matching)');
+  return worker;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startTalentJobMatchingWorker();
+}

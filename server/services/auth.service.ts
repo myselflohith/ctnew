@@ -242,6 +242,29 @@ export async function registerUser(data: RegisterData): Promise<{ user: User; to
     expiresIn: '7d',
   });
 
+  // If talent: create person row (same as Ruby) and link user.person_id
+  if (userRole === 'talent') {
+    const existingPerson = await query(
+      'SELECT id FROM people WHERE email_address = $1',
+      [email.toLowerCase()]
+    );
+    if (existingPerson.rows.length === 0) {
+      const personResult = await query(
+        `INSERT INTO people (first_name, last_name, email_address, user_id, role, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         RETURNING id`,
+        [user.first_name ?? firstName ?? null, user.last_name ?? lastName ?? null, email.toLowerCase(), userId, roleId]
+      );
+      const personId = personResult.rows[0]?.id;
+      if (personId != null) {
+        await query(
+          'UPDATE users SET person_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [personId, userId]
+        );
+      }
+    }
+  }
+
   // Create session
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
@@ -397,6 +420,30 @@ export async function loginOrRegisterWithGoogle(data: GoogleAuthData): Promise<{
     );
 
     userRow = insertResult.rows[0];
+
+    // If talent: create person row (same as Ruby) and link user.person_id
+    if (roleId === ROLE_ENUM['talent']) {
+      const existingPerson = await query(
+        'SELECT id FROM people WHERE email_address = $1',
+        [email]
+      );
+      if (existingPerson.rows.length === 0) {
+        const newUserId = typeof userRow.id === 'string' ? parseInt(userRow.id, 10) : Number(userRow.id);
+        const personResult = await query(
+          `INSERT INTO people (first_name, last_name, email_address, user_id, role, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           RETURNING id`,
+          [userRow.first_name ?? firstName, userRow.last_name ?? lastName, email, newUserId, roleId]
+        );
+        const personId = personResult.rows[0]?.id;
+        if (personId != null) {
+          await query(
+            'UPDATE users SET person_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [personId, newUserId]
+          );
+        }
+      }
+    }
   }
 
   const formattedUser = formatUserResponse(userRow);
