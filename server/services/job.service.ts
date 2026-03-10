@@ -15,7 +15,9 @@ const JOB_SELECT = `
   j.description,
   CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
   j.created_at,
-  j.updated_at
+  j.updated_at,
+  COALESCE(j.autopilot_sourcing, false) AS autopilot_sourcing,
+  j.target_count
 `;
 // Same as JOB_SELECT but with j.id AS job_id for use in application/saved joins
 const JOB_SELECT_AS_JOB = `
@@ -48,6 +50,10 @@ export interface Job {
   paused_at?: Date;
   created_at: Date;
   updated_at: Date;
+
+  // Autosourcing (autopilot)
+  autopilot_sourcing?: boolean;
+  target_count?: number | null;
 }
 
 export interface SavedJob {
@@ -265,18 +271,22 @@ export async function createJob(
   jobData: Omit<Job, 'id' | 'created_at' | 'updated_at' | 'posted_at'> & {
     addNotes?: string | null;
     autopilot_sourcing?: boolean;
+    target_count?: number | null;
   },
   creatorId?: string
 ): Promise<Job> {
   const skillsStr = Array.isArray(jobData.skills) ? jobData.skills.join(', ') : (jobData.skills ?? '') || null;
   const addNotesVal = typeof jobData.addNotes === 'string' ? jobData.addNotes : null;
-  // `autopilot_sourcing` is accepted by the API for compatibility, but ctnew currently
-  // does not persist any parsed requirements into the jobs table (keeps schema simple).
-  const _autopilot = Boolean((jobData as any)?.autopilot_sourcing);
+
+  const autopilot = Boolean((jobData as any)?.autopilot_sourcing);
+  const targetCount =
+    (jobData as any)?.target_count === undefined || (jobData as any)?.target_count === null || (jobData as any)?.target_count === ''
+      ? null
+      : Number((jobData as any)?.target_count);
 
   const result = await query(
-    `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, add_notes, active, status, creator_id)
-     VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, $8, true, 0, $9)
+    `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, add_notes, active, status, creator_id, autopilot_sourcing, target_count)
+     VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, $8, true, 0, $9, $10, $11)
      RETURNING id`,
     [
       jobData.title,
@@ -288,6 +298,8 @@ export async function createJob(
       jobData.description || null,
       addNotesVal,
       creatorId ? parseInt(creatorId, 10) : null,
+      autopilot,
+      Number.isFinite(targetCount as any) ? targetCount : null,
     ]
   );
 

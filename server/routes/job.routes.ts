@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { Queue } from 'bullmq';
 import {
   getAvailableJobs,
   getAvailableJobsWithMatch,
@@ -24,6 +25,12 @@ import {
 } from '../services/job.service.js';
 import { extractSkillsFromJobDescription, extractRequirementsFromJobDescription } from '../services/job-ai.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { jobAutopilotSourcingQueue } from '../queues/job-autopilot-sourcing.queue.js';
+import { query } from '../database/connection.js';
+import {
+  listEmployerAutoMatchedCandidatesForJob,
+  listEmployerAutoMatchedCandidatesForJobWithProfiles,
+} from '../services/employer-auto-matched-candidates.service.js';
 
 const router = Router();
 
@@ -133,6 +140,127 @@ router.get('/search', authenticateToken, async (req: Request, res: Response) => 
   }
 });
 
+/**
+ * Diagnostics endpoint to debug why autosourcing returns 0 candidates.
+ * Admin-only to avoid exposing infrastructure details in production.
+ *
+ * GET /api/jobs/:id/autopilot-diagnostics
+ */
+router.get('/:id/autopilot-diagnostics', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const jobId = Number(req.params.id);
+    if (!jobId) {
+      res.status(400).json({ error: 'Invalid job id' });
+      return;
+    }
+
+    // DB counts (what UI reads)
+    const dbCount = await query(
+      `SELECT COUNT(*)::int AS c
+       FROM employer_auto_matched_candidates
+       WHERE job_id = $1 AND source_type = 'job_post' AND discarded_at IS NULL`,
+      [jobId]
+    );
+
+    // Redis / queue sanity
+    const queue = jobAutopilotSourcingQueue as unknown as Queue;
+    let queueCounts: any = null;
+    let queueErrors: any = null;
+
+    try {
+      queueCounts = await queue.getJobCounts('wait', 'active', 'completed', 'failed', 'delayed', 'paused');
+    } catch (e: any) {
+      queueErrors = { jobCounts: e?.message || String(e) };
+    }
+
+    let recentJobs: any[] = [];
+    try {
+      const jobs = await queue.getJobs(['wait', 'active', 'delayed', 'failed', 'completed'], 0, 20, true);
+      recentJobs = jobs
+        .filter((j: any) => Number(j.data?.jobId) === jobId)
+        .map((j: any) => ({
+          id: j.id,
+          name: j.name,
+          data: j.data,
+          timestamp: j.timestamp,
+          processedOn: (j as any).processedOn,
+          finishedOn: (j as any).finishedOn,
+          failedReason: (j as any).failedReason,
+        }));
+    } catch (e: any) {
+      queueErrors = { ...(queueErrors || {}), jobs: e?.message || String(e) };
+    }
+
+    res.json({
+      success: true,
+      data: {
+        jobId,
+        employerAutoMatchedCandidatesCount: Number(dbCount.rows[0]?.c ?? 0),
+        queueCounts,
+        recentJobs,
+        queueErrors,
+        env: {
+          REDIS_URL: process.env.REDIS_URL ? 'set' : 'missing',
+          REDIS_HOST: process.env.REDIS_HOST || null,
+          REDIS_PORT: process.env.REDIS_PORT || null,
+          PEOPLE_ES_URL: process.env.PEOPLE_ES_URL ? 'set' : 'missing',
+          RESUME_MATCH_URL: process.env.RESUME_MATCH_URL ? 'set' : 'missing',
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Autopilot diagnostics error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get diagnostics' });
+  }
+});
+
+// Get autopilot recommended candidates for a job (employer/admin only)
+router.get('/:id/autopilot-candidates', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Employer/admin only (these candidates can include contact + sourcing actions)
+    if (req.user.role !== 'admin' && req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const job = await getJobById(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (!job.autopilot_sourcing) {
+      res.status(400).json({ error: 'Autosourcing is not enabled for this job' });
+      return;
+    }
+
+    const sourceType = typeof req.query.sourceType === 'string' ? req.query.sourceType : 'job_post';
+    const candidates = await listEmployerAutoMatchedCandidatesForJobWithProfiles({
+      jobId: req.params.id,
+      sourceType,
+    });
+
+    res.json({ success: true, data: candidates });
+  } catch (error: any) {
+    console.error('Get autopilot candidates error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get autopilot candidates' });
+  }
+});
+
 // Get job by ID
 router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -167,7 +295,19 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       return;
     }
 
-    const { title, company, location, type, salary, match_score, skills, description, addNotes } = req.body;
+    const {
+      title,
+      company,
+      location,
+      type,
+      salary,
+      match_score,
+      skills,
+      description,
+      addNotes,
+      autopilot_sourcing,
+      target_count,
+    } = req.body;
 
     if (!title || !company || !location || !type) {
       res.status(400).json({ error: 'Title, company, location, and type are required' });
@@ -185,9 +325,22 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         skills,
         description,
         addNotes,
+        autopilot_sourcing: Boolean(autopilot_sourcing),
+        target_count:
+          target_count === undefined || target_count === null || target_count === ''
+            ? null
+            : Number(target_count),
       },
       req.user?.id
     );
+
+    // Enqueue autosourcing worker (parity with ch-job-marketplace)
+    if (job.autopilot_sourcing) {
+      await jobAutopilotSourcingQueue.add('jobAutopilotSourcing', {
+        jobId: Number(job.id),
+        targetCount: job.target_count ?? undefined,
+      });
+    }
 
     res.status(201).json({ success: true, data: job });
   } catch (error: any) {

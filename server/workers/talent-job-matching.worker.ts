@@ -1,8 +1,21 @@
 import { Worker } from 'bullmq';
-import { query } from '../database/connection.js';
+import { Pool } from 'pg';
 import { getAvailableJobsForMatching } from '../services/job.service.js';
 import { getResumeTextForUser, callResumeMatchApi } from '../services/resume.service.js';
 import type { TalentJobMatchingJobData } from '../queues/talent-job-matching.queue.js';
+
+// ---- Database connection and query wrapper ----
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export async function query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[] }> {
+  const res = await pool.query(sql, params);
+  return { rows: res.rows };
+}
+
+// ---- Redis connection options ----
 
 function getRedisConnectionOptions(): {
   url?: string;
@@ -23,6 +36,8 @@ function getRedisConnectionOptions(): {
   };
 }
 
+// ---- Talent Job Matching Worker ----
+
 export function startTalentJobMatchingWorker() {
   const connection = getRedisConnectionOptions();
 
@@ -32,13 +47,15 @@ export function startTalentJobMatchingWorker() {
       const { userId } = job.data;
       const userIdStr = String(userId);
 
-      // Use person_id (same as Ruby); fall back to user_id when person_id is null
-      const personIdResult = await query<{ person_id: number | null }>(
+      // Get person_id (nullable), fallback to userId
+      const personIdResult = await query(
         'SELECT person_id FROM users WHERE id = $1',
         [userId]
       );
-      const personId: number = personIdResult.rows[0]?.person_id ?? Number(userId);
+      const personId: number = (personIdResult.rows[0]?.person_id as number) ?? Number(userId);
 
+
+      // Fetch resume text
       let resumeText = '';
       try {
         resumeText = await getResumeTextForUser(userIdStr);
@@ -46,20 +63,20 @@ export function startTalentJobMatchingWorker() {
         console.warn('[talent-job-matching] getResumeTextForUser failed:', (e as Error)?.message);
       }
 
-      const resumeServiceUrls = [
-        { id: userIdStr, url: '', resume_text: resumeText },
-      ];
+      const resumeServiceUrls = [{ id: userIdStr, url: '', resume_text: resumeText }];
 
+      // Fetch available jobs
       const jobs = await getAvailableJobsForMatching(userIdStr);
       if (jobs.length === 0) return { computed: 0 };
 
-      // Replace all scores for this person (source_type = 'talent') so stale jobs are not kept
+      // Delete previous matches for this person
       await query(
         'DELETE FROM employer_auto_matched_candidates WHERE person_id = $1 AND source_type = $2',
         [personId, 'talent']
       );
 
       let computed = 0;
+
       for (const job of jobs) {
         try {
           const { results } = await callResumeMatchApi(
@@ -67,12 +84,15 @@ export function startTalentJobMatchingWorker() {
             job.add_notes ?? null,
             resumeServiceUrls
           );
+
           const first = results?.[0];
           const score = first != null && typeof first.score === 'number' ? first.score : null;
           const scoreSummary = first?.summary != null ? String(first.summary) : null;
           const detailResponse = first != null ? JSON.stringify(first) : null;
+
           await query(
-            `INSERT INTO employer_auto_matched_candidates (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
+            `INSERT INTO employer_auto_matched_candidates 
+               (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
              ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET
                match_score = EXCLUDED.match_score,
@@ -81,13 +101,19 @@ export function startTalentJobMatchingWorker() {
                updated_at = CURRENT_TIMESTAMP`,
             [personId, job.id, score, scoreSummary, detailResponse]
           );
+
           computed += 1;
         } catch (e) {
           console.warn(`[talent-job-matching] match API failed for job ${job.id}:`, (e as Error)?.message);
           await query(
-            `INSERT INTO employer_auto_matched_candidates (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
+            `INSERT INTO employer_auto_matched_candidates
+               (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
              VALUES ($1, $2, NULL, NULL, NULL, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET match_score = NULL, score_summary = NULL, detail_response = NULL, updated_at = CURRENT_TIMESTAMP`,
+             ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET
+               match_score = NULL,
+               score_summary = NULL,
+               detail_response = NULL,
+               updated_at = CURRENT_TIMESTAMP`,
             [personId, job.id]
           );
         }
@@ -113,6 +139,7 @@ export function startTalentJobMatchingWorker() {
   return worker;
 }
 
+// Run worker if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   startTalentJobMatchingWorker();
 }

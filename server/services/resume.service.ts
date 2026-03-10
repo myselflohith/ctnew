@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { uploadResumeFileToS3 } from './s3-resume-upload.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -414,11 +415,31 @@ export async function createResume(
   );
   const isFirst = parseInt(existingResumes.rows[0].count) === 0;
 
+  // If we were given a local file name/path (like "uuid.pdf"), upload it to S3 and store the public URL.
+  // This makes resumes reachable by external services like RESUME_MATCH_API.
+  let storedPath = filePath;
+  try {
+    const looksLikeUrl = /^https?:\/\//i.test(filePath);
+    if (!looksLikeUrl) {
+      const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
+      const uploaded = await uploadResumeFileToS3({
+        localFullPath: fullPath,
+        originalFileName: fileName,
+        contentType: undefined,
+      });
+      storedPath = uploaded.url;
+    }
+  } catch (e: any) {
+    // Keep backward compatibility: if S3 isn't configured or upload fails, fall back to local file_path.
+    // Autopilot matching may not work in that case.
+    console.warn('⚠️ S3 resume upload failed; storing local file_path instead:', e?.message || e);
+  }
+
   const result = await query(
     `INSERT INTO resumes (user_id, name, file_path, file_size, is_default)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [userId, fileName, filePath, fileSize, isFirst]
+    [userId, fileName, storedPath, fileSize, isFirst]
   );
 
   return result.rows[0];

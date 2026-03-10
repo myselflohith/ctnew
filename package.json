@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run server:dev\" \"npm run worker:dev\" \"npm run client:dev\"",
     "client:dev": "vite",
     "server:dev": "tsx watch server/index.ts",
-    "worker:dev": "concurrently \"tsx watch server/workers/interview-video.worker.ts\" \"tsx watch server/workers/talent-job-matching.worker.ts\"",
+    "worker:dev": "concurrently \"tsx watch server/workers/job-autopilot-sourcing.worker.ts\" \"tsx watch server/workers/interview-video.worker.ts\" \"tsx watch server/workers/talent-job-matching.worker.ts\"",
     "worker:talent-match": "tsx watch server/workers/talent-job-matching.worker.ts",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
@@ -21,7 +21,10 @@
     "m": "npm run migrate"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.967.0",
     "@aws-sdk/client-ses": "^3.967.0",
+    "@aws-sdk/s3-request-presigner": "^3.967.0",
+    "@elastic/elasticsearch": "^9.3.4",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",

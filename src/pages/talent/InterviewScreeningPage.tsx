@@ -388,11 +388,15 @@ const InterviewScreeningPage = () => {
   }, [currentQuestion, interviewStarted, voicesLoaded, questions.length]);
 
   // Timer
+  // Requirement:
+  // - Timer should count for the whole interview (AI speaking + user answering)
+  // - Timer should start only when AI starts asking the first question
   useEffect(() => {
-    if (step !== 'interview' || !recording || isComplete) return;
-    const timer = setInterval(() => setTime(t => t - 1), 1000);
+    if (step !== "interview" || isComplete) return;
+    if (!interviewStarted) return; // start countdown when first question starts
+    const timer = setInterval(() => setTime((t) => t - 1), 1000);
     return () => clearInterval(timer);
-  }, [recording, isComplete, step]);
+  }, [isComplete, step, interviewStarted]);
 
   // Component mount tracking
   useEffect(() => {
@@ -937,10 +941,26 @@ const InterviewScreeningPage = () => {
         // Submit report (this is separate from per-question video upload)
         await submitInterview();
       }
-      setTranscript('');
-      setIsComplete(true);
-      setCurrentQuestion((q) => q + 1);
-      setTranscript('');
+
+      stopMediaTracks();
+
+      // Redirect to dedicated Thank You screen (new page), with required copy.
+      const resolvedInviteId =
+        interviewData?.inviteId || interviewData?.invite_id || interviewData?.ai_interview_invite_id;
+
+      navigate("/talent/interviews/thank-you", {
+        replace: true,
+        state: {
+          inviteId: resolvedInviteId || undefined,
+          interviewTitle:
+            interviewData?.interviewTitle ||
+            interviewData?.interview_title ||
+            interviewData?.jobName ||
+            interviewData?.job_name ||
+            "Interview",
+          interviewData,
+        },
+      });
     } else {
       setTranscript('');
       setCurrentQuestion((q) => q + 1);
@@ -1274,7 +1294,9 @@ const InterviewScreeningPage = () => {
             >
               <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">My Response</p>
               <p className="text-foreground leading-relaxed">
-                {transcript || (
+                {recording ? (
+                  transcript || <span className="text-muted-foreground italic">Listening...</span>
+                ) : (
                   <span className="text-muted-foreground italic">Waiting for your response...</span>
                 )}
               </p>
@@ -1317,24 +1339,7 @@ const InterviewScreeningPage = () => {
                 </Button>
               )}
             </>
-          ) : (
-            <div className="text-center space-y-4">
-              <CheckCircle2 className="h-16 w-16 text-amber mx-auto" />
-              <h2 className="text-2xl font-bold text-foreground">Interview Complete!</h2>
-              <p className="text-muted-foreground">
-                Thanks for giving the interview. Your responses have been submitted successfully.
-              </p>
-              <Button
-                onClick={() => {
-                  stopMediaTracks();
-                  navigate('/talent/interviews');
-                }}
-                className="bg-cardinal hover:bg-cardinal/90 text-white transition-colors"
-              >
-                Done
-              </Button>
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
