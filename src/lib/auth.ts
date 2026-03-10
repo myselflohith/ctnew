@@ -36,6 +36,11 @@ export async function login(email: string, password: string): Promise<User> {
   return response.user;
 }
 
+export async function loginWithGoogle(idToken: string, role?: string): Promise<User> {
+  const response = await apiClient.loginWithGoogle(idToken, role);
+  return response.user;
+}
+
 export async function register(data: {
   email: string;
   password: string;

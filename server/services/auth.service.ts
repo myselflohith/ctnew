@@ -1,11 +1,14 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { OAuth2Client } from 'google-auth-library';
 import { query } from '../database/connection.js';
 import { sendPasswordResetEmail } from './email.service.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const SALT_ROUNDS = 10;
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 // Role enum mapping - investor=2, admin=3, talent=4, employer=5, recruiter=6, etc.
 const ROLE_ENUM: { [key: string]: number } = {
@@ -107,6 +110,11 @@ export interface RegisterData {
 export interface LoginData {
   email: string;
   password: string;
+}
+
+export interface GoogleAuthData {
+  idToken: string;
+  role?: string; // optional; used when creating new user (default: talent)
 }
 
 // Register a new user
@@ -265,6 +273,13 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
 
   const user = result.rows[0];
 
+  // Google-only accounts have no password; don't call bcrypt with null
+  if (!user.encrypted_password || user.encrypted_password.trim() === '') {
+    throw new Error(
+      'This account uses Google Sign-In. Please sign in with Google, or use Forgot password to set a password.'
+    );
+  }
+
   // Verify password
   const isValidPassword = await bcrypt.compare(password, user.encrypted_password);
   if (!isValidPassword) {
@@ -292,6 +307,112 @@ export async function loginUser(data: LoginData): Promise<{ user: User; token: s
   await query(
     'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)',
     [user.id, token, expiresAt]
+  );
+
+  return { user: formattedUser, token };
+}
+
+// Verify Google ID token and find or create user, then return user + JWT
+export async function loginOrRegisterWithGoogle(data: GoogleAuthData): Promise<{ user: User; token: string }> {
+  const { idToken, role: roleParam } = data;
+
+  if (!idToken || typeof idToken !== 'string') {
+    throw new Error('Google ID token is required');
+  }
+
+  if (!googleClient || !GOOGLE_CLIENT_ID) {
+    throw new Error('Google Sign-In is not configured. Set GOOGLE_CLIENT_ID.');
+  }
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken,
+    audience: GOOGLE_CLIENT_ID,
+  });
+
+  const payload = ticket.getPayload();
+  if (!payload || !payload.email) {
+    throw new Error('Invalid Google token: missing email');
+  }
+
+  const email = payload.email.toLowerCase();
+  const firstName = payload.given_name ?? null;
+  const lastName = payload.family_name ?? null;
+  const pictureUrl = typeof payload.picture === 'string' ? payload.picture : null;
+  const pictureUrlJson = pictureUrl ? JSON.stringify(pictureUrl) : null; // DB column is JSON type
+  const googleUid = payload.sub;
+
+  // Find existing user by email
+  const existing = await query(
+    `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified,
+            phone_number, location, linkedin_profile_url, picture_url, remote_interest, salary_expectations, skills,
+            provider, uid, created_at, updated_at
+     FROM users WHERE email = $1`,
+    [email]
+  );
+
+  let userRow: any;
+
+  if (existing.rows.length > 0) {
+    userRow = existing.rows[0];
+    // Ensure email_verified for Google sign-in (trust Google)
+    if (!userRow.email_verified) {
+      await query(
+        'UPDATE users SET email_verified = true, provider = $1, uid = $2, picture_url = $3::json, updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+        ['google', googleUid, pictureUrlJson, userRow.id]
+      );
+      userRow.email_verified = true;
+      userRow.provider = 'google';
+      userRow.uid = googleUid;
+      userRow.picture_url = pictureUrl;
+    } else {
+      // Optionally update provider/uid/picture if not set
+      if (!userRow.provider || !userRow.uid) {
+        await query(
+          'UPDATE users SET provider = $1, uid = $2, picture_url = COALESCE(picture_url, $3::json), updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+          ['google', googleUid, pictureUrlJson, userRow.id]
+        );
+        userRow.provider = 'google';
+        userRow.uid = googleUid;
+        if (!userRow.picture_url) userRow.picture_url = pictureUrl;
+      }
+    }
+  } else {
+    // Create new user (default role: talent)
+    let roleId: number;
+    try {
+      roleId = roleParam != null ? getRoleId(roleParam) : ROLE_ENUM['talent'];
+    } catch {
+      roleId = ROLE_ENUM['talent'];
+    }
+
+    const insertResult = await query(
+      `INSERT INTO users (
+        email, encrypted_password, first_name, last_name, company_name, organization_id, role,
+        email_verified, provider, uid, picture_url
+      ) VALUES ($1, NULL, $2, $3, NULL, NULL, $4, true, 'google', $5, $6::json)
+      RETURNING id, email, first_name, last_name, company_name, organization_id, role, email_verified,
+        phone_number, location, linkedin_profile_url, picture_url, remote_interest, salary_expectations, skills,
+        created_at, updated_at`,
+      [email, firstName, lastName, roleId, googleUid, pictureUrlJson]
+    );
+
+    userRow = insertResult.rows[0];
+  }
+
+  const formattedUser = formatUserResponse(userRow);
+
+  const token = jwt.sign(
+    { userId: userRow.id, email: userRow.email, role: formattedUser.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+
+  await query(
+    'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)',
+    [userRow.id, token, expiresAt]
   );
 
   return { user: formattedUser, token };

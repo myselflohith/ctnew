@@ -130,6 +130,19 @@ class ApiClient {
     return response;
   }
 
+  async loginWithGoogle(idToken: string, role?: string) {
+    const response = await this.request('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ idToken, role }),
+    });
+
+    if (response.token) {
+      this.setToken(response.token);
+    }
+
+    return response;
+  }
+
   async logout() {
     try {
       await this.request('/auth/logout', { method: 'POST' });

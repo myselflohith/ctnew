@@ -21,9 +21,10 @@ import {
   ChevronDown,
   TrendingUp,
 } from "lucide-react";
+import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import cardinalLogo from "@/assets/cardinal-logo.png";
 import { useToast } from "@/hooks/use-toast";
-import { resendVerification } from "@/lib/auth";
+import { resendVerification, loginWithGoogle } from "@/lib/auth";
 import { apiClient } from "@/lib/api";
 import {
   Popover,
@@ -84,6 +85,8 @@ const Auth = () => {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [resendVerificationLoading, setResendVerificationLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showGoogleAccountHint, setShowGoogleAccountHint] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -288,6 +291,7 @@ const Auth = () => {
         setShowResendVerification(false);
       } else {
         // Login existing user
+        setShowGoogleAccountHint(false);
         const { login } = await import("@/lib/auth");
         const user = await login(formData.email, formData.password);
 
@@ -319,6 +323,9 @@ const Auth = () => {
       if (mode === "signin" && message.toLowerCase().includes("verify your email")) {
         setShowResendVerification(true);
       }
+      if (mode === "signin" && message.toLowerCase().includes("google sign-in")) {
+        setShowGoogleAccountHint(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -328,6 +335,48 @@ const Auth = () => {
     const newMode = mode === "signin" ? "signup" : "signin";
     setMode(newMode);
     setAcceptedTerms(false);
+    setShowGoogleAccountHint(false);
+  };
+
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || "";
+
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    const credential = credentialResponse.credential;
+    if (!credential) return;
+    setGoogleLoading(true);
+    try {
+      const roleForSignup = mode === "signup" ? selectedRole : undefined;
+      const user = await loginWithGoogle(credential, roleForSignup);
+      setShowResendVerification(false);
+      toast({
+        title: "Welcome!",
+        description: "Redirecting to your dashboard...",
+      });
+      const dashboardRoutes: Record<Role, string> = {
+        talent: "/talent/dashboard",
+        employer: "/employer/dashboard",
+        recruiter: "/recruiter/dashboard",
+        admin: "/admin/dashboard",
+        investor: "/investors",
+      };
+      navigate(dashboardRoutes[user.role]);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Google sign-in failed. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    toast({
+      title: "Google sign-in was cancelled or failed",
+      variant: "destructive",
+    });
+    setGoogleLoading(false);
   };
 
   return (
@@ -737,6 +786,19 @@ const Auth = () => {
                   </div>
                 )}
 
+                {mode === "signin" && showGoogleAccountHint && (
+                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-foreground">
+                    <p className="mb-1">This account uses Google Sign-In.</p>
+                    <p>
+                      Use the <strong>Sign in with Google</strong> button above, or{" "}
+                      <Link to="/forgot-password" className="text-primary hover:underline font-medium">
+                        set a password via Forgot password
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                )}
+
                 <Button
                   type="submit"
                   variant="hero"
@@ -750,6 +812,57 @@ const Auth = () => {
                     ? "Create Account"
                     : "Sign In"}
                 </Button>
+
+                <>
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">
+                        Or continue with
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-center">
+                    {googleClientId ? (
+                      <GoogleOAuthProvider clientId={googleClientId}>
+                        <div className={googleLoading ? "pointer-events-none opacity-70" : ""}>
+                          <GoogleLogin
+                            onSuccess={handleGoogleSuccess}
+                            onError={handleGoogleError}
+                            useOneTap={false}
+                            theme="filled_black"
+                            size="large"
+                            text={mode === "signin" ? "signin_with" : "continue_with"}
+                            shape="rectangular"
+                            width="320"
+                          />
+                        </div>
+                      </GoogleOAuthProvider>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full max-w-[320px] h-10 gap-2 bg-[#4285f4] text-white border-[#4285f4] hover:bg-[#357ae8] hover:text-white"
+                        disabled
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 24 24">
+                          <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                          <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        </svg>
+                        Sign in with Google
+                      </Button>
+                    )}
+                  </div>
+                  {!googleClientId && (
+                    <p className="text-center text-xs text-muted-foreground mt-2">
+                      Add VITE_GOOGLE_CLIENT_ID to your .env file to enable Google Sign-In.
+                    </p>
+                  )}
+                </>
               </form>
 
               <p className="text-center text-sm text-muted-foreground mt-6">

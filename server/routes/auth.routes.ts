@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   registerUser,
   loginUser,
+  loginOrRegisterWithGoogle,
   logoutUser,
   requestPasswordReset,
   resetPassword,
@@ -132,6 +133,37 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(401).json({ error: error.message || 'Login failed' });
+  }
+});
+
+// Sign in or sign up with Google (idToken from frontend Google Sign-In)
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const { idToken, role } = req.body;
+
+    if (!idToken || typeof idToken !== 'string') {
+      res.status(400).json({ error: 'Google ID token is required' });
+      return;
+    }
+
+    const { user, token } = await loginOrRegisterWithGoogle({ idToken, role });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      user,
+      token,
+      message: 'Signed in with Google',
+    });
+  } catch (error: any) {
+    console.error('Google auth error:', error);
+    res.status(401).json({ error: error.message || 'Google sign-in failed' });
   }
 });
 
