@@ -16,8 +16,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
+import RecommendedCandidatesModal from "@/components/employer/RecommendedCandidatesModal";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
@@ -41,20 +42,44 @@ interface Job {
   match_score?: number;
   skills?: string[];
   description?: string;
+  autopilot_sourcing?: boolean;
+  target_count?: number | null;
 }
+
+type JobDetails = {
+  id: string;
+  title: string;
+  company?: string;
+  location: string;
+  type: "remote" | "hybrid" | "onsite";
+  salary?: string;
+  postedAt: string;
+  matchScore: number;
+  skills: string[];
+  description: string;
+  autopilot_sourcing?: boolean;
+  target_count?: number | null;
+};
 
 const EmployerJobs = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobForView, setSelectedJobForView] = useState<any>(null);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
-  const [selectedJobForEdit, setSelectedJobForEdit] = useState<Job | null>(null);
+  const [selectedJobForEdit, setSelectedJobForEdit] = useState<JobDetails | null>(
+    null,
+  );
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedJobForClose, setSelectedJobForClose] = useState<Job | null>(null);
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
+
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  const [selectedRecommendedJobId, setSelectedRecommendedJobId] = useState<string | null>(null);
+  const [selectedRecommendedJobTitle, setSelectedRecommendedJobTitle] = useState<string>("");
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -67,12 +92,14 @@ const EmployerJobs = () => {
       try {
         setLoading(true);
         // Fetch all jobs (employer can see all jobs)
-        const jobsResponse = await apiClient.getAllJobs();
-        
-        if (jobsResponse.success && jobsResponse.data) {
+        const jobsResponse = (await apiClient.getAllJobs()) as any;
+
+        if (jobsResponse.success && Array.isArray(jobsResponse.data)) {
+          const jobsData: any[] = jobsResponse.data;
+
           // Get applications for employer's jobs
-          const applicationsResponse = await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
-          const applications = applicationsResponse.success ? applicationsResponse.data : [];
+          const applicationsResponse = (await apiClient.getApplications().catch(() => ({ success: false, data: [] }))) as any;
+          const applications: any[] = applicationsResponse.success && Array.isArray(applicationsResponse.data) ? applicationsResponse.data : [];
           
           // Group applications by job_id
           const applicationsByJob: Record<string, any[]> = {};
@@ -92,8 +119,8 @@ const EmployerJobs = () => {
           
           // Filter jobs by company if available
           const employerJobs = companyName 
-            ? jobsResponse.data.filter((job: any) => job.company === companyName)
-            : jobsResponse.data;
+            ? jobsData.filter((job: any) => job.company === companyName)
+            : jobsData;
           
           // Store company name for later use
           if (companyName) {
@@ -120,9 +147,11 @@ const EmployerJobs = () => {
               applicants: jobApplications.length,
               newApplicants: newApplicants,
               views: 0, // Views tracking can be added later
-              postedAt: job.posted_at 
+              postedAt: job.posted_at
                 ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
                 : "Recently",
+              autopilot_sourcing: Boolean(job.autopilot_sourcing),
+              target_count: job.target_count ?? null,
             };
           });
           
@@ -141,12 +170,27 @@ const EmployerJobs = () => {
     fetchJobs();
   }, []);
 
+  // Open recommendations modal via query params (supports click → deep-link)
+  useEffect(() => {
+    const jobId = searchParams.get("jobId");
+    const recommended = searchParams.get("recommended");
+    if (jobId && recommended === "1") {
+      const job = jobs.find((j) => j.id === jobId);
+      if (job?.autopilot_sourcing) {
+        setSelectedRecommendedJobId(jobId);
+        setSelectedRecommendedJobTitle(job.title);
+        setRecommendationsOpen(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, jobs]);
+
   const handleViewJob = async (job: Job) => {
     try {
       // Fetch full job details
-      const jobResponse = await apiClient.getJobById(job.id);
+      const jobResponse = (await apiClient.getJobById(job.id)) as any;
       if (jobResponse.success && jobResponse.data) {
-        const fullJob = jobResponse.data;
+        const fullJob = jobResponse.data as any;
         const jobForView = {
           id: fullJob.id,
           title: fullJob.title,
@@ -168,7 +212,7 @@ const EmployerJobs = () => {
     }
   };
 
-  const handleEditJob = async (jobId: string, jobData: Partial<Job>) => {
+  const handleEditJob = async (jobId: string, jobData: Partial<JobDetails>) => {
     try {
       await apiClient.updateJob(jobId, jobData);
       toast.success("Job updated successfully");
@@ -228,6 +272,25 @@ const EmployerJobs = () => {
       userName="Jane Smith"
       companyName="TechCorp AI"
     >
+      <RecommendedCandidatesModal
+        open={recommendationsOpen}
+        onOpenChange={(open) => {
+          setRecommendationsOpen(open);
+          if (!open) {
+            setSelectedRecommendedJobId(null);
+            setSelectedRecommendedJobTitle("");
+            // Clear query params
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("jobId");
+              next.delete("recommended");
+              return next;
+            });
+          }
+        }}
+        jobId={selectedRecommendedJobId}
+        jobTitle={selectedRecommendedJobTitle}
+      />
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">
@@ -350,6 +413,24 @@ const EmployerJobs = () => {
                     {job.views} views
                   </span>
                 </div>
+                {job.autopilot_sourcing ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Open modal directly (query-param approach was flaky due to state timing)
+                      setSelectedRecommendedJobId(job.id);
+                      setSelectedRecommendedJobTitle(job.title);
+                      setRecommendationsOpen(true);
+
+                      // keep deep-link in URL for refresh/share
+                      setSearchParams({ jobId: job.id, recommended: "1" });
+                    }}
+                  >
+                    Recommended candidates
+                  </Button>
+                ) : null}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon">
@@ -363,19 +444,28 @@ const EmployerJobs = () => {
                     <DropdownMenuItem onClick={async () => {
                       // Fetch full job details before opening edit modal
                       try {
-                        const jobResponse = await apiClient.getJobById(job.id);
+                        const jobResponse = (await apiClient.getJobById(job.id)) as any;
                         if (jobResponse.success && jobResponse.data) {
-                          const fullJob = jobResponse.data;
+                          const fullJob = jobResponse.data as any;
                           setSelectedJobForEdit({
                             id: fullJob.id,
                             title: fullJob.title,
                             company: fullJob.company || companyName || "",
                             location: fullJob.location,
-                            type: fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite",
+                            type: fullJob.type.toLowerCase() as
+                              | "remote"
+                              | "hybrid"
+                              | "onsite",
                             salary: fullJob.salary,
-                            match_score: fullJob.match_score,
-                            skills: fullJob.skills,
+                            postedAt:
+                              fullJob.posted_at ||
+                              fullJob.postedAt ||
+                              new Date().toISOString(),
+                            matchScore: fullJob.match_score || 0,
+                            skills: fullJob.skills || [],
                             description: fullJob.description || "",
+                            autopilot_sourcing: fullJob.autopilot_sourcing,
+                            target_count: fullJob.target_count,
                           });
                           setEditModalOpen(true);
                         } else {
@@ -449,8 +539,8 @@ const EmployerJobs = () => {
         <EditJobModal
           open={editModalOpen}
           onOpenChange={setEditModalOpen}
-          job={selectedJobForEdit}
-          onSave={handleEditJob}
+          job={selectedJobForEdit as any}
+          onSave={handleEditJob as any}
         />
       )}
 

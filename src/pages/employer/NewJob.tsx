@@ -1,6 +1,8 @@
  import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import RecommendedCandidatesModal from "@/components/employer/RecommendedCandidatesModal";
+import SourcingProgressModal from "@/components/employer/SourcingProgressModal";
 import { employerNavItems } from "@/components/layout/navItems";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,9 +42,16 @@ const NewJob = () => {
     daysInOffice: "",
     linkedInUrl: "",
     autoSource: false,
+    autoSourceGoal: "25",
   });
 
   const [skills, setSkills] = useState<string[]>([]);
+
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  const [sourcingProgressOpen, setSourcingProgressOpen] = useState(false);
+  const [createdJobId, setCreatedJobId] = useState<string | null>(null);
+  const [createdJobTitle, setCreatedJobTitle] = useState<string>("");
+  const [createdTargetCount, setCreatedTargetCount] = useState<number>(25);
   const [skillInput, setSkillInput] = useState("");
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [requirementInput, setRequirementInput] = useState("");
@@ -241,6 +250,8 @@ const NewJob = () => {
           : undefined;
 
       // Prepare job data
+      const goalNum = Number(formData.autoSourceGoal);
+
       const jobData = {
         title: formData.title,
         company: companyName,
@@ -256,17 +267,39 @@ const NewJob = () => {
         addNotes,
         // Back-end will parse requirements when enabled (mirrors ch-job-marketplace "autopilot_sourcing")
         autopilot_sourcing: Boolean(formData.autoSource),
+        target_count:
+          formData.autoSource && Number.isFinite(goalNum) && goalNum > 0
+            ? goalNum
+            : null,
       };
 
       // Create the job via API
       const response = await apiClient.createJob(jobData);
 
       if (response.success) {
+        const created = (response as any)?.data;
+        const newJobId = created?.id ? String(created.id) : null;
+
         sonnerToast.success("Job Posted!", {
           description: formData.autoSource
             ? "Sourcing candidates automatically..."
             : "Your job is now live.",
         });
+
+        if (formData.autoSource && newJobId) {
+          // ch-job-marketplace parity:
+          // 1) show animated "autosourcing count" modal
+          // 2) then open recommended candidates list (real DB-backed)
+          setCreatedJobId(newJobId);
+          setCreatedJobTitle(formData.title);
+          setCreatedTargetCount(
+            formData.autoSource && Number.isFinite(goalNum) && goalNum > 0 ? goalNum : 25,
+          );
+          setSourcingProgressOpen(true);
+          // stay on page while modals handle next steps; user can close when done
+          return;
+        }
+
         navigate("/employer/dashboard");
       } else {
         throw new Error(response.error || "Failed to create job");
@@ -289,6 +322,35 @@ const NewJob = () => {
       companyName="TechCorp AI"
     >
       <div className="max-w-4xl mx-auto">
+        <SourcingProgressModal
+          open={sourcingProgressOpen}
+          onOpenChange={(open) => {
+            setSourcingProgressOpen(open);
+            if (!open) {
+              // If user closes progress modal early, still allow them to proceed to dashboard.
+              navigate("/employer/dashboard");
+            }
+          }}
+          jobTitle={createdJobTitle}
+          targetCount={createdTargetCount}
+          onDone={() => {
+            setSourcingProgressOpen(false);
+            setRecommendationsOpen(true);
+          }}
+        />
+
+        <RecommendedCandidatesModal
+          open={recommendationsOpen}
+          onOpenChange={(open) => {
+            setRecommendationsOpen(open);
+            if (!open) {
+              // after closing, go back to dashboard
+              navigate("/employer/dashboard");
+            }
+          }}
+          jobId={createdJobId}
+          jobTitle={createdJobTitle}
+        />
         {/* Header */}
         <div className="mb-8">
           <button
@@ -705,6 +767,29 @@ const NewJob = () => {
                 }
               />
             </div>
+
+            {formData.autoSource && (
+              <div className="mt-6 grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="autoSourceGoal">Goal (number of candidates)</Label>
+                  <Input
+                    id="autoSourceGoal"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={formData.autoSourceGoal}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^0-9]/g, "");
+                      setFormData({ ...formData, autoSourceGoal: next });
+                    }}
+                    placeholder="e.g. 25"
+                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    We’ll keep sourcing until we reach this many recommended candidates.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Submit */}

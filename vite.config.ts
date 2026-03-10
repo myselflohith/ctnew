@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 5173,
+    allowedHosts: ["aurora-sizy-abruptly.ngrok-free.dev"],
     hmr: {
       overlay: false,
     },
@@ -16,13 +17,13 @@ export default defineConfig(({ mode }) => ({
       "Cross-Origin-Embedder-Policy": "unsafe-none",
     },
     proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
+      "/api": {
+        target: "http://localhost:3001",
         changeOrigin: true,
         secure: false,
       },
-      '/uploads': {
-        target: 'http://localhost:3001',
+      "/uploads": {
+        target: "http://localhost:3001",
         changeOrigin: true,
         secure: false,
       },

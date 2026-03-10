@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Download, AlertCircle, CheckCircle, TrendingUp, Calendar, User, Briefcase } from 'lucide-react';
+import { ArrowLeft, Download, AlertCircle, CheckCircle, TrendingUp, Calendar, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -261,10 +261,6 @@ const EmployerCandidateReportPage = () => {
                 <td>${reportData.interview_title}</td>
               </tr>
               <tr>
-                <td>Category:</td>
-                <td>${reportData.interview_category}</td>
-              </tr>
-              <tr>
                 <td>Overall Rating:</td>
                 <td><strong>${reportData.rating || ((reportData as any)?.is_processing ? 'Generating...' : 'Pending')}</strong></td>
               </tr>
@@ -428,7 +424,7 @@ const EmployerCandidateReportPage = () => {
         {/* Summary Card */}
         <Card className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-slate-900">
           <div className="p-8">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
               {/* Candidate Info */}
               <div className="flex items-start gap-3">
                 <User className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -439,14 +435,6 @@ const EmployerCandidateReportPage = () => {
                 </div>
               </div>
 
-              {/* Interview Category */}
-              <div className="flex items-start gap-3">
-                <Briefcase className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Category</p>
-                  <p className="font-semibold">{report.interview_category}</p>
-                </div>
-              </div>
 
               {/* Date */}
               <div className="flex items-start gap-3">
