@@ -54,18 +54,24 @@ const TalentJobs = () => {
 
   const toggleFilterType = (type: "remote" | "hybrid" | "onsite") => {
     setFilterType((prev) => (prev === type ? null : type));
+    // Re-fetch jobs so DB queries are visible in server logs when filters change.
+    refetch();
   };
   const toggleFilterMinSalary = () => {
     setFilterMinSalary((prev) => (prev !== null ? null : 150000));
+    refetch();
   };
   const toggleFilterMinMatch = () => {
     setFilterMinMatch((prev) => (prev !== null ? null : 90));
+    // This will also trigger fetchJobsWithMatch() via useEffect when first enabled.
+    refetch();
   };
   const hasActiveFilters = filterType !== null || filterMinSalary !== null || filterMinMatch !== null;
   const clearAllFilters = () => {
     setFilterType(null);
     setFilterMinSalary(null);
     setFilterMinMatch(null);
+    refetch();
   };
 
   const parseSalaryMax = (salary: string | undefined): number | null => {

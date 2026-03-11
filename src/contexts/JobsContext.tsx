@@ -12,6 +12,8 @@ interface Job {
   salary: string;
   postedAt: string;
   matchScore: number;
+  /** Human-readable explanation of why this job was recommended (from score_summary). */
+  matchSummary?: string;
   skills: string[];
   description?: string;
 }
@@ -68,6 +70,12 @@ const convertApiJobToJob = (apiJob: any): Job => {
       ? formatDistanceToNow(new Date(apiJob.posted_at), { addSuffix: true })
       : "Recently",
     matchScore: apiJob.match_score || 0,
+    matchSummary:
+      typeof apiJob.match_score_summary === "string"
+        ? apiJob.match_score_summary
+        : typeof apiJob.score_summary === "string"
+        ? apiJob.score_summary
+        : undefined,
     skills: apiJob.skills || [],
     description: apiJob.description,
   };

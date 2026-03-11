@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MapPin, Clock, Building2, DollarSign, Bookmark } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { MapPin, Clock, Building2, DollarSign, Bookmark, Info } from "lucide-react";
 
 interface JobCardProps {
   id: string;
@@ -12,6 +13,8 @@ interface JobCardProps {
   salary?: string;
   postedAt: string;
   matchScore?: number;
+  /** Human-readable explanation of why this job was recommended. */
+  matchSummary?: string;
   skills?: string[];
   description?: string;
   onApply?: () => void;
@@ -32,6 +35,7 @@ const JobCard = ({
   salary,
   postedAt,
   matchScore,
+  matchSummary,
   skills = [],
   description,
   onApply,
@@ -72,10 +76,34 @@ const JobCard = ({
               >
                 {title}
               </h3>
-              {matchScore && (
-                <Badge variant={getMatchVariant(matchScore)}>
-                  {matchScore}% Match
-                </Badge>
+              {(matchScore || matchSummary) && (
+                <TooltipProvider>
+                  <div className="flex items-center gap-2">
+                    {matchScore && (
+                      <Badge variant={getMatchVariant(matchScore)}>
+                        {matchScore}% Match
+                      </Badge>
+                    )}
+                    {matchSummary && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-full p-0.5 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                            aria-label="Why this job is recommended"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="max-w-xs">
+                          <p className="text-xs whitespace-pre-line">
+                            {matchSummary}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </TooltipProvider>
               )}
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">

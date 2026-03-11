@@ -148,6 +148,7 @@ export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> 
        j.job_salary AS salary,
        j.created_at AS posted_at,
        m.match_score,
+       m.score_summary AS match_score_summary,
        CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
        j.description,
        CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
