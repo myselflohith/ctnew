@@ -28,6 +28,18 @@ const TalentSavedJobs = () => {
   const [selectedJobForView, setSelectedJobForView] = useState<typeof savedJobs[0] | null>(null);
   const { savedJobs, removeFromSaved, applyToJob } = useJobs();
 
+  const q = (searchQuery || "").trim().toLowerCase();
+  const filteredSavedJobs = q
+    ? savedJobs.filter(
+        (job) =>
+          (typeof job.title === "string" && job.title.toLowerCase().includes(q)) ||
+          (typeof job.company === "string" && job.company.toLowerCase().includes(q)) ||
+          (job.location && job.location.toLowerCase().includes(q)) ||
+          (job.skills && job.skills.some((skill) => String(skill).toLowerCase().includes(q))) ||
+          (job.description && job.description.toLowerCase().includes(q))
+      )
+    : savedJobs;
+
   const handleApplyClick = (job: typeof savedJobs[0]) => {
     setSelectedJobForApply(job);
     setApplyModalOpen(true);
@@ -51,7 +63,7 @@ const TalentSavedJobs = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedJobs(savedJobs.map((job) => job.id));
+      setSelectedJobs(filteredSavedJobs.map((job) => job.id));
     } else {
       setSelectedJobs([]);
     }
@@ -69,7 +81,8 @@ const TalentSavedJobs = () => {
     setJobDescriptionOpen(true);
   };
 
-  const allSelected = savedJobs.length > 0 && selectedJobs.length === savedJobs.length;
+  const allSelected = filteredSavedJobs.length > 0 && selectedJobs.length === filteredSavedJobs.length &&
+    filteredSavedJobs.every((job) => selectedJobs.includes(job.id));
   const someSelected = selectedJobs.length > 0;
 
   return (
@@ -111,18 +124,25 @@ const TalentSavedJobs = () => {
               Select All
             </label>
           </div>
-          {someSelected && (
-            <Button variant="outline" size="sm" onClick={handleRemoveSelected}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              Remove Selected ({selectedJobs.length})
-            </Button>
-          )}
+          <div className="flex items-center gap-4">
+            <p className="text-sm text-muted-foreground">
+              Showing {filteredSavedJobs.length} of {savedJobs.length} saved job{savedJobs.length !== 1 ? "s" : ""}
+              {q ? " matching your search" : ""}
+            </p>
+            {someSelected && (
+              <Button variant="outline" size="sm" onClick={handleRemoveSelected}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Remove Selected ({selectedJobs.length})
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
       {savedJobs.length > 0 ? (
+        filteredSavedJobs.length > 0 ? (
         <div className="space-y-4">
-          {savedJobs.map((job) => (
+          {filteredSavedJobs.map((job) => (
             <JobCard
               key={job.id}
               {...job}
@@ -134,6 +154,24 @@ const TalentSavedJobs = () => {
             />
           ))}
         </div>
+        ) : (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+            No saved jobs match your search
+          </h3>
+          <p className="text-muted-foreground">
+            Try a different search term or clear the search box.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => setSearchQuery("")}
+          >
+            Clear search
+          </Button>
+        </div>
+        )
       ) : (
         <div className="glass rounded-2xl p-12 text-center">
           <Heart className="w-12 h-12 text-muted-foreground mx-auto mb-4" />

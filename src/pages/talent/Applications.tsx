@@ -14,7 +14,7 @@ import {
   Clock,
   Calendar,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 
@@ -39,7 +39,12 @@ const TalentApplications = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<any>(null);
-  const { applications } = useJobs();
+  const { applications, refetch } = useJobs();
+
+  // Refetch applications (and related data) when user navigates to this page so list is up to date
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   const totalApplications = applications.length;
   const inProgress = applications.filter(a => a.status === "Under Review" || a.status === "Application Sent").length;

@@ -115,7 +115,7 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
   const [scheduledInterviewsCount, setScheduledInterviewsCount] = useState(0);
   const [scheduledInterviewsTodayCount, setScheduledInterviewsTodayCount] = useState(0);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     const token = apiClient.getToken();
     if (!token) {
       setLoading(false);
@@ -234,11 +234,11 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const removeFromAvailable = (jobId: string) => {
     setAvailableJobs((prev) => prev.filter((job) => job.id !== jobId));
