@@ -136,9 +136,15 @@ router.post(
       }
 
       // Enqueue background job to compute job–resume match scores (Ruby-style worker)
-      talentJobMatchingQueue.add('computeMatchScores', { userId: Number(req.user.id) }).catch((e) => {
-        console.warn('[parse-resume] Failed to enqueue talent-job-matching:', (e as Error)?.message);
-      });
+      const enqueueUserId = Number(req.user.id);
+      talentJobMatchingQueue
+        .add('computeMatchScores', { userId: enqueueUserId })
+        .then((j) => {
+          console.log('[parse-resume] Enqueued talent-job-matching', { userId: enqueueUserId, jobId: j?.id });
+        })
+        .catch((e) => {
+          console.warn('[parse-resume] Failed to enqueue talent-job-matching:', enqueueUserId, (e as Error)?.message);
+        });
 
       res.json({
         success: true,

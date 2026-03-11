@@ -847,6 +847,21 @@ export async function updatePersonParsedResume(
 }
 
 /**
+ * Get default resume URL for a user (S3 or other http(s) file_path) for use in RESUME_MATCH_API (resume_service_urls[].url).
+ * Returns empty string if no resume or file_path is not a URL.
+ */
+export async function getDefaultResumeUrlForUser(userId: string): Promise<string> {
+  const result = await query(
+    'SELECT file_path FROM resumes WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1',
+    [userId]
+  );
+  const path = result.rows?.[0]?.file_path;
+  if (typeof path !== 'string' || !path.trim()) return '';
+  const trimmed = path.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : '';
+}
+
+/**
  * Get resume text for a user for use in RESUME_MATCH_API (resume_service_urls[].resume_text).
  * Prefers people.resume_text if user has a linked person; else parses default resume once to get summary + skills.
  */

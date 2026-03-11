@@ -1,14 +1,12 @@
 import { Worker } from 'bullmq';
-import { Pool } from 'pg';
+import pool from '../database/connection.js';
 import { getAvailableJobsForMatching } from '../services/job.service.js';
-import { getResumeTextForUser, callResumeMatchApi } from '../services/resume.service.js';
+import {
+  getResumeTextForUser,
+  getDefaultResumeUrlForUser,
+  callResumeMatchApi,
+} from '../services/resume.service.js';
 import type { TalentJobMatchingJobData } from '../queues/talent-job-matching.queue.js';
-
-// ---- Database connection and query wrapper ----
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 export async function query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[] }> {
   const res = await pool.query(sql, params);
@@ -46,6 +44,7 @@ export function startTalentJobMatchingWorker() {
     async job => {
       const { userId } = job.data;
       const userIdStr = String(userId);
+      console.log('[talent-job-matching] Job started', { userId, jobId: job.id });
 
       // Get person_id (nullable), fallback to userId
       const personIdResult = await query(
@@ -53,7 +52,11 @@ export function startTalentJobMatchingWorker() {
         [userId]
       );
       const personId: number = (personIdResult.rows[0]?.person_id as number) ?? Number(userId);
-
+      console.log('[talent-job-matching] person_id', {
+        userId,
+        personId,
+        fromDb: personIdResult.rows[0]?.person_id != null,
+      });
 
       // Fetch resume text
       let resumeText = '';
@@ -62,11 +65,21 @@ export function startTalentJobMatchingWorker() {
       } catch (e) {
         console.warn('[talent-job-matching] getResumeTextForUser failed:', (e as Error)?.message);
       }
+      console.log('[talent-job-matching] resumeText length', resumeText.length);
 
-      const resumeServiceUrls = [{ id: userIdStr, url: '', resume_text: resumeText }];
+      let resumeUrl = '';
+      try {
+        resumeUrl = await getDefaultResumeUrlForUser(userIdStr);
+      } catch (e) {
+        console.warn('[talent-job-matching] getDefaultResumeUrlForUser failed:', (e as Error)?.message);
+      }
+      if (resumeUrl) console.log('[talent-job-matching] resume URL', resumeUrl);
+
+      const resumeServiceUrls = [{ id: userIdStr, url: resumeUrl, resume_text: resumeText }];
 
       // Fetch available jobs
       const jobs = await getAvailableJobsForMatching(userIdStr);
+      console.log('[talent-job-matching] available jobs count', jobs.length);
       if (jobs.length === 0) return { computed: 0 };
 
       // Delete previous matches for this person
@@ -119,6 +132,7 @@ export function startTalentJobMatchingWorker() {
         }
       }
 
+      console.log('[talent-job-matching] Job finished', { userId, personId, computed });
       return { computed };
     },
     {
@@ -132,7 +146,7 @@ export function startTalentJobMatchingWorker() {
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`❌ talent-job-matching job failed: ${job?.id}`, err);
+    console.error(`❌ talent-job-matching job failed: ${job?.id}`, err?.message ?? err, err?.stack);
   });
 
   console.log('📋 Talent job matching worker started (queue: talent-job-matching)');

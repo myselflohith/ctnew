@@ -165,6 +165,8 @@ export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> 
     [userId, AVAILABLE_JOBS_WITH_MATCH_LIMIT]
   );
   const rows = (result.rows || []) as (Job & { add_notes?: string | null })[];
+  const withScore = rows.filter((r) => r.match_score != null).length;
+  console.log('[getAvailableJobsWithMatch]', { userId, total: rows.length, withMatchScore: withScore });
   return rows;
 }
 
