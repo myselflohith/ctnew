@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { OAuth2Client } from 'google-auth-library';
 import { query } from '../database/connection.js';
 import { sendPasswordResetEmail } from './email.service.js';
+import { getOrCreatePersonForUser } from './resume.service.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -368,7 +369,7 @@ export async function loginOrRegisterWithGoogle(data: GoogleAuthData): Promise<{
   const existing = await query(
     `SELECT id, email, first_name, last_name, company_name, organization_id, role, email_verified,
             phone_number, location, linkedin_profile_url, picture_url, remote_interest, salary_expectations, skills,
-            provider, uid, created_at, updated_at
+            provider, uid, person_id, created_at, updated_at
      FROM users WHERE email = $1`,
     [email]
   );
@@ -397,6 +398,15 @@ export async function loginOrRegisterWithGoogle(data: GoogleAuthData): Promise<{
         userRow.provider = 'google';
         userRow.uid = googleUid;
         if (!userRow.picture_url) userRow.picture_url = pictureUrl;
+      }
+    }
+    // If talent and no person_id yet, get-or-create people row and link (same as new-user path)
+    if (userRow.role === ROLE_ENUM['talent'] && (userRow.person_id == null || userRow.person_id === undefined)) {
+      try {
+        const personId = await getOrCreatePersonForUser(Number(userRow.id));
+        userRow.person_id = personId;
+      } catch (err: any) {
+        console.warn('[Google auth] Failed to get-or-create person for talent user:', err?.message ?? err);
       }
     }
   } else {
