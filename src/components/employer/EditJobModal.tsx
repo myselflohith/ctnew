@@ -24,7 +24,7 @@ interface Job {
   title: string;
   company: string;
   location: string;
-  type: "remote" | "hybrid" | "onsite";
+  type?: "remote" | "hybrid" | "onsite" | null;
   salary?: string;
   match_score?: number;
   skills?: string[];

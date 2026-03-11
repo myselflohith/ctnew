@@ -51,7 +51,7 @@ type JobDetails = {
   title: string;
   company?: string;
   location: string;
-  type: "remote" | "hybrid" | "onsite";
+  type?: "remote" | "hybrid" | "onsite" | null;
   salary?: string;
   postedAt: string;
   matchScore: number;
@@ -142,7 +142,7 @@ const EmployerJobs = () => {
               id: job.id,
               title: job.title,
               location: job.location,
-              type: job.type.charAt(0).toUpperCase() + job.type.slice(1),
+              type: job.type ? job.type.charAt(0).toUpperCase() + job.type.slice(1) : undefined,
               status: job.status || "active",
               applicants: jobApplications.length,
               newApplicants: newApplicants,
@@ -196,7 +196,7 @@ const EmployerJobs = () => {
           title: fullJob.title,
           company: fullJob.company || companyName || "",
           location: fullJob.location,
-          type: fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite",
+          type: fullJob.type ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite") : undefined,
           salary: fullJob.salary,
           postedAt: fullJob.posted_at || fullJob.postedAt || new Date().toISOString(),
           matchScore: fullJob.match_score || 0,
@@ -452,10 +452,9 @@ const EmployerJobs = () => {
                             title: fullJob.title,
                             company: fullJob.company || companyName || "",
                             location: fullJob.location,
-                            type: fullJob.type.toLowerCase() as
-                              | "remote"
-                              | "hybrid"
-                              | "onsite",
+                            type: fullJob.type
+                              ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite")
+                              : "remote",
                             salary: fullJob.salary,
                             postedAt:
                               fullJob.posted_at ||

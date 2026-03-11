@@ -13,7 +13,7 @@ interface Job {
   title: string;
   company: string;
   location: string;
-  type: "remote" | "hybrid" | "onsite";
+  type?: "remote" | "hybrid" | "onsite" | null;
   salary?: string;
   postedAt: string;
   matchScore?: number;
@@ -55,7 +55,7 @@ const JobDescriptionDialog = ({
               <MapPin className="w-4 h-4" />
               {job.location}
             </span>
-            <Badge variant={job.type}>{job.type}</Badge>
+            {job.type && <Badge variant={job.type}>{job.type}</Badge>}
             {job.salary && (
               <span className="flex items-center gap-1">
                 <DollarSign className="w-4 h-4" />

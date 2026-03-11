@@ -24,8 +24,10 @@ import { toast } from "sonner";
 
 
 const TalentJobs = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [locationQuery, setLocationQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [locationInput, setLocationInput] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [appliedLocation, setAppliedLocation] = useState("");
   const [filterType, setFilterType] = useState<"remote" | "hybrid" | "onsite" | null>(null);
   const [filterMinSalary, setFilterMinSalary] = useState<number | null>(null);
   const [filterMinMatch, setFilterMinMatch] = useState<number | null>(null);
@@ -66,12 +68,25 @@ const TalentJobs = () => {
     // This will also trigger fetchJobsWithMatch() via useEffect when first enabled.
     refetch();
   };
-  const hasActiveFilters = filterType !== null || filterMinSalary !== null || filterMinMatch !== null;
+  const hasActiveFilters =
+    filterType !== null ||
+    filterMinSalary !== null ||
+    filterMinMatch !== null ||
+    appliedSearch !== "" ||
+    appliedLocation !== "";
   const clearAllFilters = () => {
     setFilterType(null);
     setFilterMinSalary(null);
     setFilterMinMatch(null);
+    setAppliedSearch("");
+    setAppliedLocation("");
+    setSearchInput("");
+    setLocationInput("");
     refetch();
+  };
+  const handleSearchClick = () => {
+    setAppliedSearch(searchInput.trim());
+    setAppliedLocation(locationInput.trim());
   };
 
   const parseSalaryMax = (salary: string | undefined): number | null => {
@@ -136,14 +151,14 @@ const TalentJobs = () => {
 
   const filteredJobs = baseJobs
     .filter((job) => {
-      const matchesSearch = !searchQuery ||
-        job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (job.skills && job.skills.some((skill) => String(skill).toLowerCase().includes(searchQuery.toLowerCase()))) ||
-        (job.description && job.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesSearch = !appliedSearch ||
+        (typeof job.title === "string" && job.title.toLowerCase().includes(appliedSearch.toLowerCase())) ||
+        (typeof job.company === "string" && job.company.toLowerCase().includes(appliedSearch.toLowerCase())) ||
+        (job.skills && job.skills.some((skill) => String(skill).toLowerCase().includes(appliedSearch.toLowerCase()))) ||
+        (job.description && job.description.toLowerCase().includes(appliedSearch.toLowerCase()));
 
-      const matchesLocation = !locationQuery ||
-        (job.location && job.location.toLowerCase().includes(locationQuery.toLowerCase()));
+      const matchesLocation = !appliedLocation ||
+        (job.location && job.location.toLowerCase().includes(appliedLocation.toLowerCase()));
 
       const matchesType = !filterType || (job.type && job.type.toLowerCase() === filterType.toLowerCase());
 
@@ -190,8 +205,9 @@ const TalentJobs = () => {
             <Input
               placeholder="Job title, skills, or company..."
               className="pl-12 h-12"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
             />
           </div>
           <div className="relative flex-1">
@@ -199,18 +215,12 @@ const TalentJobs = () => {
             <Input
               placeholder="Location..."
               className="pl-12 h-12"
-              value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
+              value={locationInput}
+              onChange={(e) => setLocationInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
             />
           </div>
-          <Button 
-            variant="hero" 
-            size="lg"
-            onClick={() => {
-              // Search is handled by filtering, but we can add a visual indicator
-              // The filtering happens automatically as user types
-            }}
-          >
+          <Button variant="hero" size="lg" onClick={handleSearchClick}>
             Search
           </Button>
           <Button
@@ -236,6 +246,13 @@ const TalentJobs = () => {
             onClick={() => toggleFilterType("hybrid")}
           >
             Hybrid
+          </Badge>
+          <Badge
+            variant={filterType === "onsite" ? "default" : "outline"}
+            className="cursor-pointer hover:bg-secondary"
+            onClick={() => toggleFilterType("onsite")}
+          >
+            On-site
           </Badge>
           <Badge
             variant={filterMinSalary !== null ? "default" : "outline"}
@@ -275,7 +292,7 @@ const TalentJobs = () => {
             </div>
           )}
           <p className="text-muted-foreground">
-            Showing {filteredJobs.length} {(searchQuery || locationQuery || hasActiveFilters) ? "filtered " : ""}job{filteredJobs.length !== 1 ? "s" : ""} {filteredJobs.length > 0 ? "sorted by match score" : ""}
+            Showing {filteredJobs.length} {(appliedSearch || appliedLocation || hasActiveFilters) ? "filtered " : ""}job{filteredJobs.length !== 1 ? "s" : ""} {filteredJobs.length > 0 ? "sorted by match score" : ""}
           </p>
         </div>
         {someSelected && (
@@ -311,23 +328,15 @@ const TalentJobs = () => {
         <div className="glass rounded-2xl p-12 text-center">
           <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-            {(searchQuery || locationQuery || hasActiveFilters) ? "No jobs found" : "No jobs available"}
+            {(appliedSearch || appliedLocation || hasActiveFilters) ? "No jobs found" : "No jobs available"}
           </h3>
           <p className="text-muted-foreground">
-            {(searchQuery || locationQuery || hasActiveFilters)
+            {(appliedSearch || appliedLocation || hasActiveFilters)
               ? "Try adjusting your search criteria or clearing filters."
               : "Check back later for new opportunities."}
           </p>
-          {(searchQuery || locationQuery || hasActiveFilters) && (
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => {
-                setSearchQuery("");
-                setLocationQuery("");
-                clearAllFilters();
-              }}
-            >
+          {(appliedSearch || appliedLocation || hasActiveFilters) && (
+            <Button variant="outline" className="mt-4" onClick={clearAllFilters}>
               Clear Filters
             </Button>
           )}

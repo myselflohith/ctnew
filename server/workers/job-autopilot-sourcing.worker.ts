@@ -32,10 +32,10 @@ async function getJob(jobId: number): Promise<{
   description: string | null;
   add_notes: string | null;
   location: string | null;
-  employment_type: string[] | null;
+  work_type: string | null;
 }> {
   const r = await query(
-    `SELECT id, name, skills, description, add_notes, location, employment_type
+    `SELECT id, name, skills, description, add_notes, location, work_type
      FROM jobs
      WHERE id = $1 AND discarded_at IS NULL`,
     [jobId]
@@ -100,8 +100,7 @@ export function startJobAutopilotSourcingWorker() {
       const job_info = await getJob(jobId);
 
       try {
-        const workType =
-          Array.isArray(job_info.employment_type) && job_info.employment_type.length > 0 ? String(job_info.employment_type[0]) : 'onsite';
+        const workType = job_info.work_type || 'onsite';
 
         const job_description = `${job_info.description || ''}\n Job Location is ${job_info.location || ''} and Work Type is ${workType}`;
 

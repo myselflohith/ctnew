@@ -9,7 +9,7 @@ interface JobCardProps {
   title: string;
   company: string;
   location: string;
-  type: "remote" | "hybrid" | "onsite";
+  type?: "remote" | "hybrid" | "onsite" | null;
   salary?: string;
   postedAt: string;
   matchScore?: number;
@@ -115,7 +115,7 @@ const JobCard = ({
                 <MapPin className="w-4 h-4" />
                 {location}
               </span>
-              <Badge variant={type}>{type}</Badge>
+              {type && <Badge variant={type}>{type}</Badge>}
             </div>
           </div>
         </div>

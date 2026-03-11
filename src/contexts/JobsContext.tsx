@@ -8,7 +8,7 @@ interface Job {
   title: string;
   company: string;
   location: string;
-  type: "remote" | "hybrid" | "onsite";
+  type?: "remote" | "hybrid" | "onsite" | null;
   salary: string;
   postedAt: string;
   matchScore: number;

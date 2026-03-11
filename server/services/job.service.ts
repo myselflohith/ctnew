@@ -1,13 +1,13 @@
 import { query } from '../database/connection.js';
 import { extractRequirementsFromJobDescription } from './job-ai.service.js';
 
-// Map jobs table row to Job shape (jobs uses: name, company_name, job_salary, employment_type, status int, active bool)
+// Map jobs table row to Job shape (jobs uses: name, company_name, job_salary, work_type, status int, active bool)
 const JOB_SELECT = `
   j.id,
   j.name AS title,
   j.company_name AS company,
   j.location,
-  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.work_type::varchar AS type,
   j.job_salary AS salary,
   j.created_at AS posted_at,
   NULL::integer AS match_score,
@@ -25,7 +25,7 @@ const JOB_SELECT_AS_JOB = `
   j.name AS title,
   j.company_name AS company,
   j.location,
-  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.work_type::varchar AS type,
   j.job_salary AS salary,
   j.created_at AS posted_at,
   NULL::integer AS match_score,
@@ -39,7 +39,7 @@ export interface Job {
   title: string;
   company: string;
   location: string;
-  type: 'remote' | 'hybrid' | 'onsite';
+  type?: 'remote' | 'hybrid' | 'onsite' | null;
   salary?: string;
   posted_at: Date;
   match_score?: number;
@@ -144,7 +144,7 @@ export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> 
        j.name AS title,
        j.company_name AS company,
        j.location,
-       COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+       j.work_type::varchar AS type,
        j.job_salary AS salary,
        j.created_at AS posted_at,
        m.match_score,
@@ -214,7 +214,7 @@ const PITCH_ROOM_SELECT = `
   j.name AS title,
   j.company_name AS company,
   j.location,
-  COALESCE(j.employment_type[1], 'onsite')::varchar AS type,
+  j.work_type::varchar AS type,
   j.job_salary AS salary,
   j.created_at AS posted_at,
   NULL::integer AS match_score,
@@ -288,8 +288,8 @@ export async function createJob(
       : Number((jobData as any)?.target_count);
 
   const result = await query(
-    `INSERT INTO jobs (name, company_name, location, employment_type, job_salary, skills, description, add_notes, active, status, creator_id, autopilot_sourcing, target_count)
-     VALUES ($1, $2, $3, ARRAY[$4]::varchar[], $5, $6, $7, $8, true, 0, $9, $10, $11)
+    `INSERT INTO jobs (name, company_name, location, work_type, job_salary, skills, description, add_notes, active, status, creator_id, autopilot_sourcing, target_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 0, $9, $10, $11)
      RETURNING id`,
     [
       jobData.title,
@@ -333,7 +333,7 @@ export async function updateJob(
     values.push(jobData.location);
   }
   if (jobData.type !== undefined) {
-    updates.push(`employment_type = ARRAY[$${paramCount++}]::varchar[]`);
+    updates.push(`work_type = $${paramCount++}`);
     values.push(jobData.type);
   }
   if (jobData.salary !== undefined) {
