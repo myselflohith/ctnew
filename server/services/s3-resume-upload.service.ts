@@ -8,14 +8,9 @@ function requireEnv(name: string): string {
   return v;
 }
 
-function getS3Client(): S3Client {
-  // Accept either pair:
-  // 1) AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (preferred)
-  // 2) AWS_ACCESS_KEY / AWS_SECRET_KEY (legacy in this repo; currently used for SES)
-  //
-  // If neither is provided, the AWS SDK will fall back to the default provider chain
-  // (instance profile / ECS task role / shared config), but local dev usually needs explicit keys.
-  const region = requireEnv('AWS_REGION');
+function getS3Client(region?: string): S3Client {
+  const resolvedRegion = (region || (process.env.RESUME_S3_REGION || '').trim() || (process.env.AWS_REGION || '').trim()).trim();
+  if (!resolvedRegion) throw new Error('AWS_REGION or RESUME_S3_REGION must be set for S3');
   const accessKeyId =
     (process.env.AWS_ACCESS_KEY_ID || '').trim() || (process.env.AWS_ACCESS_KEY || '').trim();
   const secretAccessKey =
@@ -23,12 +18,12 @@ function getS3Client(): S3Client {
 
   if (accessKeyId && secretAccessKey) {
     return new S3Client({
-      region,
+      region: resolvedRegion,
       credentials: { accessKeyId, secretAccessKey },
     });
   }
 
-  return new S3Client({ region });
+  return new S3Client({ region: resolvedRegion });
 }
 
 function buildPublicUrl(params: { bucket: string; region: string; key: string }): string {
@@ -54,7 +49,7 @@ export async function uploadResumeFileToS3(params: {
 }): Promise<{ bucket: string; key: string; url: string }> {
   const bucket = requireEnv('RESUME_S3_BUCKET');
   const prefix = (process.env.RESUME_S3_PREFIX || '').trim().replace(/^\/+|\/+$/g, '');
-  const region = requireEnv('AWS_REGION');
+  const region = (process.env.RESUME_S3_REGION || '').trim() || requireEnv('AWS_REGION');
 
   const now = new Date();
   const yyyy = String(now.getUTCFullYear());
@@ -67,7 +62,7 @@ export async function uploadResumeFileToS3(params: {
 
   const body = await fs.readFile(params.localFullPath);
 
-  const s3 = getS3Client();
+  const s3 = getS3Client(region);
   await s3.send(
     new PutObjectCommand({
       Bucket: bucket,
@@ -75,6 +70,40 @@ export async function uploadResumeFileToS3(params: {
       Body: body,
       ContentType: params.contentType || undefined,
       ACL: 'public-read', // you chose public URLs
+    })
+  );
+
+  const url = buildPublicUrl({ bucket, region, key });
+  return { bucket, key, url };
+}
+
+/** Upload resume from buffer (e.g. from parse-resume in-memory file). Same key pattern as uploadResumeFileToS3. */
+export async function uploadResumeBufferToS3(params: {
+  buffer: Buffer;
+  originalFileName: string;
+  contentType?: string | null;
+}): Promise<{ bucket: string; key: string; url: string }> {
+  const bucket = requireEnv('RESUME_S3_BUCKET');
+  const prefix = (process.env.RESUME_S3_PREFIX || '').trim().replace(/^\/+|\/+$/g, '');
+  const region = (process.env.RESUME_S3_REGION || '').trim() || requireEnv('AWS_REGION');
+
+  const now = new Date();
+  const yyyy = String(now.getUTCFullYear());
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(now.getUTCDate()).padStart(2, '0');
+  const datePath = `${yyyy}-${mm}-${dd}`;
+
+  const base = safeFileName(params.originalFileName || 'resume.pdf');
+  const key = `${prefix ? `${prefix}/` : ''}${datePath}/${base}`;
+
+  const s3 = getS3Client(region);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: params.buffer,
+      ContentType: params.contentType || undefined,
+      ACL: 'public-read',
     })
   );
 

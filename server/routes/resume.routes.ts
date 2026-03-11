@@ -24,6 +24,7 @@ import {
   callResumeMatchApi,
 } from '../services/resume.service.js';
 import { talentJobMatchingQueue } from '../queues/talent-job-matching.queue.js';
+import { uploadResumeBufferToS3 } from '../services/s3-resume-upload.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,7 +109,18 @@ router.post(
       } else {
         try {
           console.log('[parse-resume] Calling RESUME_SCORE_API:', scoreApiUrl);
-          rankResult = await callResumeScoreApi(parseResult);
+          let resumeUrl: string | undefined;
+          try {
+            const uploaded = await uploadResumeBufferToS3({
+              buffer: req.file.buffer,
+              originalFileName: req.file.originalname,
+            });
+            resumeUrl = uploaded.url;
+            console.log('[parse-resume] Resume uploaded to S3 for /rank:', resumeUrl);
+          } catch (s3Err: any) {
+            console.warn('[parse-resume] S3 upload skipped, rank will use resume_text:', (s3Err?.message || s3Err));
+          }
+          rankResult = await callResumeScoreApi(parseResult, resumeUrl ? { resumeUrl } : undefined);
           console.log('[parse-resume] Rank API success');
           if (personId != null) {
             try {

@@ -428,6 +428,8 @@ export async function createResume(
         contentType: undefined,
       });
       storedPath = uploaded.url;
+      console.log('[RESUME_UPLOAD] S3 uploaded URL:', uploaded.url);
+      console.log('[RESUME_UPLOAD] S3 bucket/key:', uploaded.bucket, uploaded.key);
     }
   } catch (e: any) {
     // Keep backward compatibility: if S3 isn't configured or upload fails, fall back to local file_path.
@@ -441,6 +443,13 @@ export async function createResume(
      RETURNING *`,
     [userId, fileName, storedPath, fileSize, isFirst]
   );
+
+  console.log('[RESUME_UPLOAD] DB row inserted into resumes:', {
+    id: result.rows[0]?.id,
+    user_id: result.rows[0]?.user_id,
+    file_path: result.rows[0]?.file_path,
+    is_default: result.rows[0]?.is_default,
+  });
 
   return result.rows[0];
 }
@@ -548,9 +557,12 @@ export async function parseResumeWithParserApi(
 /**
  * Call RESUME_SCORE_API /rank (same as ch-job-marketplace get_rank_score_data).
  * Rails sends only: [{ id: string, url: string, resume_text: string }].
- * Do not send the full parsed resume object — the rank API expects this shape only.
+ * When resumeUrl is provided, sends that URL and resume_text ""; otherwise sends parsed summary+skills as resume_text.
  */
-export async function callResumeScoreApi(parsedResumeData: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function callResumeScoreApi(
+  parsedResumeData: Record<string, unknown>,
+  options?: { resumeUrl?: string }
+): Promise<Record<string, unknown>> {
   const apiUrl = (process.env.RESUME_SCORE_API || '').trim();
   if (!apiUrl) {
     throw new Error('RESUME_SCORE_API is not configured');
@@ -560,17 +572,19 @@ export async function callResumeScoreApi(parsedResumeData: Record<string, unknow
   const timeoutMs = Number(process.env.RESUME_SCORE_TIMEOUT_MS || 30000);
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  // Match Rails payload: array of { id, url, resume_text } only (see users/registrations_controller, job_matching_process_controller)
-  const summary = typeof parsedResumeData.summary === 'string' ? parsedResumeData.summary : '';
-  const skills = Array.isArray(parsedResumeData.skills)
-    ? (parsedResumeData.skills as string[]).join(', ')
-    : '';
-  const resumeText = [summary, skills].filter(Boolean).join('\n').trim() || '';
+  const resumeUrl = (options?.resumeUrl || '').trim();
+  const resumeText = resumeUrl ? '' : (() => {
+    const summary = typeof parsedResumeData.summary === 'string' ? parsedResumeData.summary : '';
+    const skills = Array.isArray(parsedResumeData.skills)
+      ? (parsedResumeData.skills as string[]).join(', ')
+      : '';
+    return [summary, skills].filter(Boolean).join('\n').trim() || '';
+  })();
 
   const body = [
     {
       id: '1',
-      url: '',
+      url: resumeUrl,
       resume_text: resumeText,
     },
   ];
@@ -639,6 +653,42 @@ interface RankResultItem {
   latest_school?: string | null;
 }
 
+function pickRankResultCandidate(raw: any): RankResultItem | null {
+  if (!raw) return null;
+
+  const looksLikeCandidate = (obj: any) =>
+    obj &&
+    typeof obj === 'object' &&
+    (typeof obj.score === 'number' ||
+      typeof obj.score_edu === 'number' ||
+      typeof obj.score_company === 'number');
+
+  // Direct object candidate
+  if (looksLikeCandidate(raw)) return raw as RankResultItem;
+
+  // Array of candidates (e.g. results: [ { ... }, ... ])
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const found = pickRankResultCandidate(item);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Nested under common wrapper keys
+  if (typeof raw === 'object') {
+    const wrapperKeys = ['results', 'data', 'result'];
+    for (const key of wrapperKeys) {
+      if (key in raw) {
+        const found = pickRankResultCandidate((raw as any)[key]);
+        if (found) return found;
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * Update people row with rank/score fields from RESUME_SCORE_API response (same as Rails users/registrations_controller).
  */
@@ -646,9 +696,12 @@ export async function updatePersonRankFromApi(
   personId: number,
   rankApiResult: Record<string, unknown>
 ): Promise<void> {
-  const results = rankApiResult.results as RankResultItem[] | undefined;
-  const res = Array.isArray(results) && results.length > 0 ? results[0] : null;
-  if (!res) return;
+  const anyResult = rankApiResult as any;
+  const res = pickRankResultCandidate(anyResult);
+  if (!res) {
+    console.warn('[updatePersonRankFromApi] Rank API result had no usable score payload:', anyResult);
+    return;
+  }
 
   const rankScore = res.score != null ? Number(res.score) : null;
   const scoreEdu = res.score_edu != null ? Number(res.score_edu) : null;
@@ -667,6 +720,19 @@ export async function updatePersonRankFromApi(
   const latestSchool = res.latest_school != null && String(res.latest_school).trim() !== ''
     ? String(res.latest_school).trim()
     : null;
+
+  console.log('[updatePersonRankFromApi] Final rank payload for people update:', {
+    personId,
+    rankScore,
+    scoreEdu,
+    scoreCompany,
+    highestSchool,
+    highestCompany,
+    companyRanked,
+    schoolRanked,
+    latestCompany,
+    latestSchool,
+  });
 
   await query(
     `UPDATE people SET
