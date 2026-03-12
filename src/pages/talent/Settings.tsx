@@ -27,7 +27,7 @@ import { useResumes } from "@/hooks/useResumes";
 import { apiClient } from "@/lib/api";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { getCurrentUser, type User } from "@/lib/auth";
+import { getCurrentUser, setCachedCurrentUser, type User } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 
 const TalentSettings = () => {
@@ -270,12 +270,9 @@ const TalentSettings = () => {
       });
 
       // Refresh caches so navbar + form reflect latest values everywhere
-      setCurrentUser(res.user as User);
-      try {
-        sessionStorage.setItem("ct.currentUser", JSON.stringify(res.user));
-      } catch {
-        // ignore
-      }
+      const updatedUser = res.user as User;
+      setCurrentUser(updatedUser);
+      setCachedCurrentUser(updatedUser);
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
 
       toast.success("Profile saved");

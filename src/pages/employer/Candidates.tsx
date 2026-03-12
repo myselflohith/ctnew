@@ -311,8 +311,6 @@ Best regards,
     <DashboardLayout
       role="employer"
       navItems={employerNavItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">

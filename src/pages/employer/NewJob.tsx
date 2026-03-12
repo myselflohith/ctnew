@@ -318,8 +318,6 @@ const NewJob = () => {
     <DashboardLayout
       role="employer"
       navItems={employerNavItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
     >
       <div className="max-w-4xl mx-auto">
         <SourcingProgressModal

@@ -210,8 +210,6 @@ const EmployerDashboard = () => {
     <DashboardLayout
       role="employer"
       navItems={employerNavItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-8">

@@ -243,8 +243,6 @@ export default function InterviewDetails() {
     return (
       <DashboardLayout
         role="employer"
-        userName="Jane Smith"
-        companyName="TechCorp AI"
       >
         <div className="flex items-center justify-center min-h-96">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -257,8 +255,6 @@ export default function InterviewDetails() {
     return (
       <DashboardLayout
         role="employer"
-        userName="Jane Smith"
-        companyName="TechCorp AI"
       >
         <div>
           <Button
@@ -280,8 +276,6 @@ export default function InterviewDetails() {
   return (
     <DashboardLayout
       role="employer"
-      userName="Jane Smith"
-      companyName="TechCorp AI"
     >
       {/* Archive reason modal (page-level, not inside candidates card) */}
       {archiveOpen ? (

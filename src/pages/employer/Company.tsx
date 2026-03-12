@@ -262,12 +262,9 @@ const EmployerCompany = () => {
     }
   };
 
-  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "Employer";
-  const displayCompany = companyName || org?.name || "Company";
-
   if (fetching) {
     return (
-      <DashboardLayout role="employer" navItems={navItems} userName={displayName} companyName={displayCompany}>
+      <DashboardLayout role="employer" navItems={navItems}>
         <div className="mb-8">
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">Company Profile</h1>
           <p className="text-muted-foreground">Loading company data...</p>
@@ -282,8 +279,6 @@ const EmployerCompany = () => {
     <DashboardLayout
       role="employer"
       navItems={navItems}
-      userName={displayName}
-      companyName={displayCompany}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">

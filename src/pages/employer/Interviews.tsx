@@ -120,8 +120,6 @@ const EmployerInterviews = () => {
     <DashboardLayout
       role="employer"
       navItems={navItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
     >
       <div className="mb-8 flex items-center justify-between">
         <div>

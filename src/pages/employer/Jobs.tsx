@@ -300,8 +300,6 @@ const EmployerJobs = () => {
     <DashboardLayout
       role="employer"
       navItems={employerNavItems}
-      userName="Jane Smith"
-      companyName="TechCorp AI"
     >
       <RecommendedCandidatesModal
         open={recommendationsOpen}

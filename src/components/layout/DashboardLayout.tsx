@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, logout, setCachedCurrentUser } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { adminNavItems, employerNavItems, recruiterNavItems, talentNavItems } from "@/components/layout/navItems";
 
@@ -94,16 +94,28 @@ const DashboardLayout = ({
   }, []);
 
   // Avoid showing "User" flicker before async getCurrentUser() resolves.
-  // If no name is available yet, render an empty string (avatar falls back to "?").
+  // Name, email, and company are always taken from the authenticated user when available,
+  // falling back to any explicit props only if provided (for non-auth contexts).
   const computedName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
-  const displayName = userNameProp || computedName || "";
+  const displayName = computedName || userNameProp || "";
+  const displayEmail = user?.email ?? "";
   const displayCompany = user?.company_name ?? companyNameProp ?? undefined;
 
   const handleLogout = async () => {
-    const { apiClient } = await import("@/lib/api");
-    await apiClient.logout();
-    navigate("/");
+    await logout();
+    navigate("/auth");
   };
+
+  useEffect(() => {
+    const handleUserUpdated = (event: Event) => {
+      const custom = event as CustomEvent<Awaited<ReturnType<typeof getCurrentUser>>>;
+      setUser(custom.detail ?? null);
+    };
+    window.addEventListener("ct.currentUser.updated", handleUserUpdated as EventListener);
+    return () => {
+      window.removeEventListener("ct.currentUser.updated", handleUserUpdated as EventListener);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background flex overflow-hidden">
@@ -147,13 +159,24 @@ const DashboardLayout = ({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-sidebar-accent transition-colors">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white font-semibold">
-                  {(displayName || "?").charAt(0)}
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white font-semibold overflow-hidden">
+                  {user?.picture_url ? (
+                    <img
+                      src={typeof user.picture_url === "string" ? user.picture_url : String(user.picture_url)}
+                      alt={displayName || "Profile"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    (displayName || "?").charAt(0)
+                  )}
                 </div>
                 <div className="flex-1 text-left">
                   <p className="text-sm font-medium text-sidebar-foreground">
                     {displayName || " "}
                   </p>
+                  {displayEmail && (
+                    <p className="text-xs text-muted-foreground">{displayEmail}</p>
+                  )}
                   {displayCompany && (
                     <p className="text-xs text-muted-foreground">{displayCompany}</p>
                   )}

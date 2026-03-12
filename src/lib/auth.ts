@@ -30,15 +30,42 @@ export interface AuthState {
   isLoading: boolean;
 }
 
+// Central helper to keep the in-memory and session-stored current user in sync
+// and notify listeners (e.g. DashboardLayout) when it changes.
+export function setCachedCurrentUser(user: User | null) {
+  try {
+    if (user) {
+      sessionStorage.setItem("ct.currentUser", JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem("ct.currentUser");
+    }
+  } catch {
+    // ignore cache errors
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent("ct.currentUser.updated", {
+        detail: user,
+      } as CustomEventInit<User | null>)
+    );
+  } catch {
+    // window may not exist in some environments (SSR); ignore
+  }
+}
+
 // Auth helper functions
 export async function login(email: string, password: string): Promise<User> {
   const response = await apiClient.login(email, password);
-  return response.user;
+  const user = response.user as User;
+  setCachedCurrentUser(user);
+  return user;
 }
 
 export async function loginWithGoogle(idToken: string, role?: string): Promise<User> {
   const response = await apiClient.loginWithGoogle(idToken, role);
-  return response.user;
+  const user = response.user as User;
+  setCachedCurrentUser(user);
+  return user;
 }
 
 export async function register(data: {
@@ -63,6 +90,7 @@ export async function register(data: {
 
 export async function logout(): Promise<void> {
   await apiClient.logout();
+  setCachedCurrentUser(null);
 }
 
 export async function getCurrentUser(opts?: { force?: boolean }): Promise<User | null> {
@@ -80,12 +108,7 @@ export async function getCurrentUser(opts?: { force?: boolean }): Promise<User |
   try {
     const response = await apiClient.getCurrentUser();
     const user = response.user as User | null;
-
-    try {
-      if (user) sessionStorage.setItem("ct.currentUser", JSON.stringify(user));
-    } catch {
-      // ignore cache errors
-    }
+    setCachedCurrentUser(user);
 
     return user;
   } catch (error) {

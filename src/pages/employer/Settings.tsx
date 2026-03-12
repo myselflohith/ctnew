@@ -17,6 +17,7 @@ import {
 import { apiClient } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { User as AuthUser } from "@/lib/auth";
+import { setCachedCurrentUser } from "@/lib/auth";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
@@ -76,6 +77,7 @@ const EmployerSettings = () => {
       });
       if (res.success && res.user) {
         setUser(res.user);
+        setCachedCurrentUser(res.user as AuthUser);
         toast({
           title: "Saved",
           description: "Your name has been updated.",
@@ -96,10 +98,6 @@ const EmployerSettings = () => {
     <DashboardLayout
       role="employer"
       navItems={navItems}
-      userName={
-        user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : "Employer"
-      }
-      companyName={user?.company_name ?? undefined}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
