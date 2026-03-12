@@ -14,13 +14,24 @@ UPDATE people SET email_address = '' WHERE email_address IS NULL;
 ALTER TABLE people
   ALTER COLUMN email_address SET NOT NULL;
 
--- 3) cv_url: text[] → varchar (first element; null/empty array → NULL)
-ALTER TABLE people
-  ALTER COLUMN cv_url TYPE VARCHAR USING (
-    CASE WHEN cv_url IS NULL OR array_length(cv_url, 1) IS NULL THEN NULL
-         ELSE cv_url[1]
-    END
-  );
+-- 3) cv_url: text[] → varchar (first element; null/empty array → NULL), but only if it is an array.
+DO $$
+DECLARE
+  cv_udt text;
+BEGIN
+  SELECT udt_name INTO cv_udt
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'people' AND column_name = 'cv_url';
+
+  IF cv_udt LIKE '\_%' THEN
+    ALTER TABLE people
+      ALTER COLUMN cv_url TYPE VARCHAR USING (
+        CASE WHEN cv_url IS NULL OR array_length(cv_url, 1) IS NULL THEN NULL
+             ELSE cv_url[1]
+        END
+      );
+  END IF;
+END $$;
 
 -- 4) Add OLD-table indexes (IF NOT EXISTS so safe to re-run)
 CREATE INDEX IF NOT EXISTS idx_people_links ON people(links);
