@@ -106,6 +106,27 @@ const TalentJobs = () => {
     return allNumbers.length ? Math.max(...allNumbers) : null;
   };
 
+  /** Match search query as full words only (e.g. "Java" matches "Java" but not "JavaScript"). */
+  const jobMatchesSearch = (job: { title?: string; company?: string; skills?: string[]; description?: string }, query: string): boolean => {
+    const q = query.trim();
+    if (!q) return true;
+    const words = q.split(/\s+/).filter(Boolean);
+    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const searchableText = [
+      job.title,
+      job.company,
+      ...(job.skills || []).map(String),
+      job.description,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (!searchableText) return false;
+    return words.every((word) => {
+      const re = new RegExp(`\\b${escapeRegex(word)}\\b`, "i");
+      return re.test(searchableText);
+    });
+  };
+
   const handleApplyClick = (job: typeof availableJobs[0]) => {
     setSelectedJobForApply(job);
     setApplyModalOpen(true);
@@ -169,11 +190,7 @@ const TalentJobs = () => {
     .filter((job) => {
       const matchesSavedOnly = !filterSavedOnly || savedJobIds.has(job.id);
 
-      const matchesSearch = !appliedSearch ||
-        (typeof job.title === "string" && job.title.toLowerCase().includes(appliedSearch.toLowerCase())) ||
-        (typeof job.company === "string" && job.company.toLowerCase().includes(appliedSearch.toLowerCase())) ||
-        (job.skills && job.skills.some((skill) => String(skill).toLowerCase().includes(appliedSearch.toLowerCase()))) ||
-        (job.description && job.description.toLowerCase().includes(appliedSearch.toLowerCase()));
+      const matchesSearch = !appliedSearch || jobMatchesSearch(job, appliedSearch);
 
       const matchesLocation = !appliedLocation ||
         (job.location && job.location.toLowerCase().includes(appliedLocation.toLowerCase()));
