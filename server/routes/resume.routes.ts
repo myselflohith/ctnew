@@ -22,6 +22,7 @@ import {
   updatePersonParsedResume,
   getResumeTextForUser,
   callResumeMatchApi,
+  runParseRankAndMatchForResume,
 } from '../services/resume.service.js';
 import { talentJobMatchingQueue } from '../queues/talent-job-matching.queue.js';
 import { uploadResumeBufferToS3 } from '../services/s3-resume-upload.service.js';
@@ -589,6 +590,14 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
     } catch (e) {
       console.warn('Resume profile extraction failed (ignored):', e);
     }
+
+    // Kick off parse + rank + match for this newly uploaded resume (non-blocking)
+    runParseRankAndMatchForResume(String(req.user.id), req.file.filename).catch((e: any) => {
+      console.warn(
+        '[resumes/upload] runParseRankAndMatchForResume failed:',
+        e?.message || e
+      );
+    });
 
     res.status(201).json({
       success: true,
