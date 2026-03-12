@@ -16,8 +16,9 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
 import { useJobs } from "@/contexts/JobsContext";
-
+import { apiClient } from "@/lib/api";
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -34,9 +35,40 @@ const getStatusVariant = (status: string) => {
   }
 };
 
+const getMatchVariant = (score: number) => {
+  if (score >= 85) return "excellent";
+  if (score >= 70) return "good";
+  return "fair";
+};
+
+// Map API application response to same shape as JobsContext applications
+const mapApiApplication = (apiApp: any) => {
+  const job = apiApp.job || {};
+  return {
+    id: apiApp.id,
+    jobTitle: job.title || "",
+    company: job.company || "",
+    location: job.location || "",
+    appliedAt: apiApp.applied_at
+      ? formatDistanceToNow(new Date(apiApp.applied_at), { addSuffix: true })
+      : "Just now",
+    status: apiApp.status || "Application Sent",
+    matchScore: job.match_score ?? 0,
+    type: job.type,
+    salary: job.salary,
+    postedAt: job.posted_at
+      ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
+      : undefined,
+    skills: job.skills || [],
+    description: job.description,
+  };
+};
+
 const TalentApplications = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [loadingSearch, setLoadingSearch] = useState(false);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<any>(null);
   const { applications, refetch } = useJobs();
@@ -45,6 +77,32 @@ const TalentApplications = () => {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  // When search query changes, debounce and call API (server-side search)
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setLoadingSearch(false);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setLoadingSearch(true);
+      try {
+        const res = await apiClient.getApplications(trimmed);
+        const list = Array.isArray(res.data) ? res.data : [];
+        setSearchResults(list.map(mapApiApplication));
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setLoadingSearch(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const isSearching = searchQuery.trim().length > 0;
+  const displayApplications = isSearching ? (searchResults ?? []) : applications;
 
   const totalApplications = applications.length;
   const inProgress = applications.filter(a => a.status === "Under Review" || a.status === "Application Sent").length;
@@ -114,46 +172,67 @@ const TalentApplications = () => {
       </div>
 
       {/* Applications List */}
-      {applications.length > 0 ? (
+      {applications.length > 0 || isSearching ? (
         <div className="glass rounded-2xl p-6">
+          {isSearching && (
+            <p className="text-sm text-muted-foreground mb-4">
+              {loadingSearch
+                ? "Searching..."
+                : `Showing ${displayApplications.length} result${displayApplications.length !== 1 ? "s" : ""} for "${searchQuery.trim()}"`}
+            </p>
+          )}
           <div className="space-y-4">
-            {applications.map((application) => (
-              <div
-                key={application.id}
-                className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer gap-4"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center shrink-0">
-                    <Building2 className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 
-                      className="font-medium text-foreground cursor-pointer hover:text-primary underline-offset-4 hover:underline"
-                      onClick={() => handleViewJob(application)}
-                    >
-                      {application.jobTitle}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">{application.company}</p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {application.location}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Applied {application.appliedAt}
-                      </span>
+            {loadingSearch ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <p>Loading...</p>
+              </div>
+            ) : displayApplications.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <Search className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p className="font-medium">No applications match &quot;{searchQuery.trim()}&quot;</p>
+                <p className="text-sm mt-1">Try a different job title or company name.</p>
+              </div>
+            ) : (
+              displayApplications.map((application) => (
+                <div
+                  key={application.id}
+                  className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer gap-4"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center shrink-0">
+                      <Building2 className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 
+                        className="font-medium text-foreground cursor-pointer hover:text-primary underline-offset-4 hover:underline"
+                        onClick={() => handleViewJob(application)}
+                      >
+                        {application.jobTitle}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">{application.company}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {application.location}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Applied {application.appliedAt}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-4">
+                    <Badge variant={getMatchVariant(application.matchScore ?? 0)}>
+                      {(application.matchScore ?? 0)}% Match
+                    </Badge>
+                    <Badge variant={getStatusVariant(application.status)}>
+                      {application.status}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <Badge variant="secondary">{application.matchScore}% Match</Badge>
-                  <Badge variant={getStatusVariant(application.status)}>
-                    {application.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       ) : (

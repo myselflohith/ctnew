@@ -605,10 +605,13 @@ export async function updateApplicationStatus(
   return row ? { id: row.id, user_id: row.user_id, job_id: row.job_id, resume_id: row.resume_id, status: row.status, applied_at: row.applied_at, updated_at: row.updated_at } : null;
 }
 
-// Get applications for a user
-export async function getUserApplications(userId: string): Promise<JobApplication[]> {
-  const result = await query(
-    `SELECT 
+// Get applications for a user (includes match_score via employer_auto_matched_candidates using person_id + job_id).
+// Optional keyword filters by job title or company name (server-side).
+export async function getUserApplications(userId: string, keyword?: string): Promise<JobApplication[]> {
+  const hasKeyword = typeof keyword === 'string' && keyword.trim().length > 0;
+  const pattern = hasKeyword ? `%${keyword.trim()}%` : null;
+
+  const sql = `SELECT 
        a.id as application_id,
        a.user_id,
        a.job_id,
@@ -616,15 +619,45 @@ export async function getUserApplications(userId: string): Promise<JobApplicatio
        a.status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       ${JOB_SELECT_AS_JOB},
+       j.id AS job_id,
+       j.name AS title,
+       j.company_name AS company,
+       j.location,
+       j.work_type::varchar AS type,
+       j.job_salary AS salary,
+       j.created_at AS posted_at,
+       COALESCE(m.match_score, 0)::integer AS match_score,
+       CASE 
+         WHEN j.skills IS NOT NULL AND j.skills != '' 
+         THEN string_to_array(trim(j.skills), ',') 
+         ELSE ARRAY[]::text[] 
+       END AS skills,
+       j.description,
+       CASE 
+         WHEN j.active = false THEN 'closed' 
+         WHEN j.status = 1 THEN 'paused' 
+         ELSE 'active' 
+       END AS status,
        j.created_at as job_created_at,
        j.updated_at as job_updated_at
      FROM ct_job_applications a
+     JOIN users u ON a.user_id = u.id
      JOIN jobs j ON a.job_id = j.id
+     LEFT JOIN employer_auto_matched_candidates m
+       ON m.person_id = u.person_id
+      AND m.job_id    = j.id
+      AND m.source_type = 'talent'
      WHERE a.user_id = $1
-     ORDER BY a.applied_at DESC`,
-    [userId]
-  );
+     ${hasKeyword ? 'AND (j.name ILIKE $2 OR j.company_name ILIKE $2)' : ''}
+     ORDER BY a.applied_at DESC`;
+
+  const params = hasKeyword ? [userId, pattern] : [userId];
+  const runnableQuery = sql
+    .replace(/\$1/g, `'${String(userId).replace(/'/g, "''")}'`)
+    .replace(/\$2/g, pattern ? `'${String(pattern).replace(/'/g, "''")}'` : '');
+  console.log('[applications/list] Query run:\n', runnableQuery);
+
+  const result = await query(sql, params);
   return result.rows.map(row => ({
     id: row.application_id,
     user_id: row.user_id,

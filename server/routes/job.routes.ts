@@ -437,8 +437,9 @@ router.get('/applications/list', authenticateToken, async (req: Request, res: Re
       return;
     }
 
-    // Otherwise, get applications for the logged-in user (talent)
-    const applications = await getUserApplications(req.user.id);
+    // Otherwise, get applications for the logged-in user (talent). Optional ?keyword= for search by job title or company.
+    const keyword = typeof req.query.keyword === 'string' ? req.query.keyword : undefined;
+    const applications = await getUserApplications(req.user.id, keyword);
     res.json({ success: true, data: applications });
   } catch (error: any) {
     console.error('Get applications error:', error);

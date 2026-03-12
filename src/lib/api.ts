@@ -432,8 +432,9 @@ class ApiClient {
     });
   }
 
-  async getApplications() {
-    return this.request('/jobs/applications/list');
+  async getApplications(keyword?: string) {
+    const params = keyword?.trim() ? `?keyword=${encodeURIComponent(keyword.trim())}` : '';
+    return this.request(`/jobs/applications/list${params}`);
   }
 
   /** Employer/Admin: update application status (e.g. Reject / Cancel rejection). */
