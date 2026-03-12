@@ -10,8 +10,10 @@ const router = Router();
  * - PUT /api/profile -> updates editable profile fields
  */
 
-const USER_SELECT = `id, email, first_name, last_name, company_name, organization_id, role, email_verified,
-                     phone_number, location, linkedin_profile_url, picture_url, remote_interest, salary_expectations, skills, created_at, updated_at`;
+const USER_SELECT = `u.id, u.email, u.first_name, u.last_name, u.company_name, u.organization_id, u.role, u.email_verified,
+                     u.phone_number, u.location, u.linkedin_profile_url, u.picture_url, u.remote_interest, u.salary_expectations, u.skills,
+                     p.job_type, p.work_types,
+                     u.created_at, u.updated_at`;
 
 const toUserResponse = (row: any) => ({
   id: row.id?.toString?.() ?? String(row.id),
@@ -20,8 +22,6 @@ const toUserResponse = (row: any) => ({
   last_name: row.last_name ?? null,
   company_name: row.company_name ?? null,
   organization_id: row.organization_id ?? null,
-  // Role comes from DB as int in this project; keep what auth.service returns elsewhere.
-  // For profile responses, frontend only needs fields; leave role as-is.
   role: row.role,
   email_verified: !!row.email_verified,
   phone_number: row.phone_number ?? null,
@@ -36,6 +36,8 @@ const toUserResponse = (row: any) => ({
   remote_interest: row.remote_interest ?? null,
   salary_expectations: row.salary_expectations ?? null,
   skills: Array.isArray(row.skills) ? row.skills : [],
+  job_type: row.job_type ?? null,
+  work_type: row.work_types ?? null,
   created_at: row.created_at,
   updated_at: row.updated_at,
 });
@@ -45,7 +47,10 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
-    const result = await query(`SELECT ${USER_SELECT} FROM users WHERE id = $1`, [req.user.id]);
+    const result = await query(
+      `SELECT ${USER_SELECT} FROM users u LEFT JOIN people p ON u.person_id = p.id WHERE u.id = $1`,
+      [req.user.id]
+    );
     if (!result.rows[0]) return res.status(404).json({ success: false, error: 'User not found' });
 
     return res.json({ success: true, user: toUserResponse(result.rows[0]) });
@@ -70,6 +75,8 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
       remote_interest,
       salary_expectations,
       skills,
+      job_type,
+      work_type,
     } = req.body ?? {};
 
     // `users.picture_url` is JSON in this DB. Store URL as JSON string.
@@ -80,14 +87,19 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
       Array.isArray(skills) ? skills.map((s: any) => String(s).trim()).filter(Boolean) : null;
 
     const nextRemoteInterest =
-      remote_interest === undefined || remote_interest === null
-        ? null
-        : remote_interest === true ||
+      remote_interest !== undefined && remote_interest !== null
+        ? (remote_interest === true ||
             remote_interest === 'true' ||
             remote_interest === 'remote' ||
             remote_interest === 'remote_only'
           ? 'remote'
-          : 'any';
+          : 'any')
+        : work_type !== undefined && work_type !== null
+          ? (work_type === 'remote' ? 'remote' : 'any')
+          : null;
+
+    const hasJobType = job_type !== undefined;
+    const hasWorkType = work_type !== undefined;
 
     // IMPORTANT:
     // If a field is omitted (undefined) we must keep existing.
@@ -136,7 +148,9 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
            skills = COALESCE($15, skills),
            updated_at = NOW()
        WHERE id = $1
-       RETURNING ${USER_SELECT}`,
+       RETURNING id, email, first_name, last_name, company_name, organization_id, role, email_verified,
+                 phone_number, location, linkedin_profile_url, picture_url, remote_interest, salary_expectations, skills,
+                 person_id, created_at, updated_at`,
       [
         req.user.id,
         first_name ?? null,
@@ -163,7 +177,32 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
       ]
     );
 
-    return res.json({ success: true, user: toUserResponse(updated.rows[0]) });
+    let userRow = updated.rows[0];
+    if (userRow && (hasJobType || hasWorkType) && userRow.person_id) {
+      await query(
+        `UPDATE people SET
+           job_type = CASE WHEN $2::boolean IS FALSE THEN job_type ELSE $3 END,
+           work_types = CASE WHEN $4::boolean IS FALSE THEN work_types ELSE $5 END,
+           updated_at = NOW()
+         WHERE id = $1`,
+        [
+          userRow.person_id,
+          hasJobType,
+          hasJobType ? (job_type ?? null) : null,
+          hasWorkType,
+          hasWorkType ? (work_type ?? null) : null,
+        ]
+      );
+      const peopleResult = await query(
+        `SELECT p.job_type, p.work_types FROM people p WHERE p.id = $1`,
+        [userRow.person_id]
+      );
+      const pr = peopleResult.rows[0];
+      if (pr) {
+        userRow = { ...userRow, job_type: pr.job_type, work_types: pr.work_types };
+      }
+    }
+    return res.json({ success: true, user: toUserResponse(userRow) });
   } catch (e) {
     console.error('PUT /profile failed:', e);
     return res.status(500).json({ success: false, error: 'Failed to update profile' });

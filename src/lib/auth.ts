@@ -19,6 +19,8 @@ export interface User {
   remote_interest?: string | null;
   salary_expectations?: string | null;
   skills?: string[];
+  job_type?: string | null;
+  work_type?: string | null;
 
   created_at: string;
   updated_at: string;

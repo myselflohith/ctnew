@@ -312,6 +312,10 @@ class ApiClient {
   }
 
   // Profile endpoints
+  async getTalentProfile() {
+    return this.request<{ success: boolean; user: any }>('/profile');
+  }
+
   async updateTalentProfile(data: {
     first_name?: string | null;
     last_name?: string | null;
@@ -322,6 +326,8 @@ class ApiClient {
     remote_interest?: string | boolean | null;
     salary_expectations?: string | null;
     skills?: string[] | null;
+    job_type?: string | null;
+    work_type?: string | null;
   }) {
     return this.request('/profile', {
       method: 'PUT',

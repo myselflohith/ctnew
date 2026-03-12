@@ -48,7 +48,15 @@ const TalentSettings = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    getCurrentUser({ force: true }).then(setCurrentUser);
+    apiClient.getTalentProfile().then((res) => {
+      if (res?.user) {
+        const u = res.user as User;
+        setCurrentUser(u);
+        setCachedCurrentUser(u);
+      }
+    }).catch(() => {
+      getCurrentUser({ force: true }).then(setCurrentUser);
+    });
   }, []);
 
   const displayName = useMemo(() => {
@@ -63,16 +71,18 @@ const TalentSettings = () => {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
 
-  // Optional fields (blank unless resume parsed / user explicitly fills)
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [location, setLocation] = useState(""); // location on backend
-  const [linkedInUrl, setLinkedInUrl] = useState(""); // linkedin_profile_url on backend
+  const [location, setLocation] = useState("");
+  const [linkedInUrl, setLinkedInUrl] = useState("");
+
+  const [jobType, setJobType] = useState<"full_time" | "contract" | "">("");
+  const [workType, setWorkType] = useState<"all_types" | "remote" | "hybrid" | "onsite" | "">("");
 
   const [pictureUrl, setPictureUrl] = useState<string>("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  const [remoteInterest, setRemoteInterest] = useState<"any" | "remote">("any");
   const [salaryExpectations, setSalaryExpectations] = useState("");
+  const [remoteInterest, setRemoteInterest] = useState<"any" | "remote">("any");
 
   const [skills, setSkills] = useState<string[]>([]);
   const [extractingSkills, setExtractingSkills] = useState(false);
@@ -87,10 +97,19 @@ const TalentSettings = () => {
     setLocation((currentUser as any)?.location ?? "");
     setLinkedInUrl((currentUser as any)?.linkedin_profile_url ?? "");
     setPictureUrl((currentUser as any)?.picture_url ?? "");
+    const wt = (currentUser as any)?.work_type;
+    setWorkType(
+      wt === "all_types" || wt === "remote" || wt === "hybrid" || wt === "onsite"
+        ? wt
+        : ""
+    );
+    const jt = (currentUser as any)?.job_type;
+    setJobType(jt === "full_time" || jt === "contract" ? jt : "");
     setRemoteInterest(
       (currentUser as any)?.remote_interest === "remote" ||
         (currentUser as any)?.remote_interest === true ||
-        (currentUser as any)?.remote_interest === "true"
+        (currentUser as any)?.remote_interest === "true" ||
+        wt === "remote"
         ? "remote"
         : "any"
     );
@@ -99,11 +118,22 @@ const TalentSettings = () => {
   }, [currentUser]);
 
   const refreshCurrentUser = async () => {
-    // Clear cached user so we definitely re-fetch latest profile from server
     try {
       sessionStorage.removeItem("ct.currentUser");
     } catch {
       // ignore
+    }
+    try {
+      const res = await apiClient.getTalentProfile();
+      if (res?.user) {
+        const u = res.user as User;
+        setCurrentUser(u);
+        setCachedCurrentUser(u);
+        await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+        return;
+      }
+    } catch {
+      // fallback to auth/me
     }
     const fresh = await getCurrentUser({ force: true });
     setCurrentUser(fresh);
@@ -267,6 +297,8 @@ const TalentSettings = () => {
         remote_interest: remoteInterest,
         salary_expectations: salaryExpectations || null,
         skills,
+        job_type: jobType || null,
+        work_type: workType || null,
       });
 
       // Refresh caches so navbar + form reflect latest values everywhere
@@ -358,20 +390,85 @@ const TalentSettings = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} readOnly />
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" value={email} readOnly />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone_number">Phone</Label>
+                <Input
+                  id="phone_number"
+                  type="tel"
+                  value={phoneNumber}
+                  placeholder="(optional)"
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="phone_number">Phone</Label>
-              <Input
-                id="phone_number"
-                type="tel"
-                value={phoneNumber}
-                placeholder="(optional)"
-                onChange={(e) => setPhoneNumber(e.target.value)}
-              />
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="jobType">Job Type</Label>
+                <Select
+                  value={jobType || undefined}
+                  onValueChange={(v) => setJobType((v || "") as "full_time" | "contract")}
+                >
+                  <SelectTrigger id="jobType">
+                    <SelectValue placeholder="Select job type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full_time">Full Time</SelectItem>
+                    <SelectItem value="contract">Contract</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="workType">Work Type</Label>
+                <Select
+                  value={workType || undefined}
+                  onValueChange={(v) => {
+                    const val = (v || "") as "all_types" | "remote" | "hybrid" | "onsite";
+                    setWorkType(val);
+                    setRemoteInterest(val === "remote" ? "remote" : "any");
+                  }}
+                >
+                  <SelectTrigger id="workType">
+                    <SelectValue placeholder="Select work type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all_types">All Types</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="onsite">On-Site</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  value={location}
+                  placeholder="(optional)"
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="salaryExpectations">Minimum Salary Expectations</Label>
+                <Input
+                  id="salaryExpectations"
+                  type="text"
+                  placeholder="e.g. $120,000"
+                  value={salaryExpectations}
+                  onChange={(e) => setSalaryExpectations(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for job matching / auto-apply thresholds
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -386,51 +483,6 @@ const TalentSettings = () => {
                 placeholder="https://linkedin.com/in/yourprofile"
                 onChange={(e) => setLinkedInUrl(e.target.value)}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                value={location}
-                placeholder="(optional)"
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="remoteInterest">Job Type</Label>
-                <Select
-                  value={remoteInterest}
-                  onValueChange={(v) => setRemoteInterest(v as "any" | "remote")}
-                >
-                  <SelectTrigger id="remoteInterest">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any</SelectItem>
-                    <SelectItem value="remote">Remote Only</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Filter by work location preference
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="salaryExpectations">Minimum Salary Expectations</Label>
-                <Input
-                  id="salaryExpectations"
-                  type="text"
-                  placeholder="e.g. $120,000"
-                  value={salaryExpectations}
-                  onChange={(e) => setSalaryExpectations(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Used for job matching / auto-apply thresholds
-                </p>
-              </div>
             </div>
           </div>
 
