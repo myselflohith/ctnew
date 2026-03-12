@@ -11,10 +11,11 @@ import {
   Users,
 } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import CandidateProfileModal from "@/components/employer/CandidateProfileModal";
+import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import {
   Dialog,
   DialogContent,
@@ -57,12 +58,15 @@ const getStatusVariant = (status: string) => {
 
 const EmployerCandidates = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const jobIdFilter = searchParams.get("jobId");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [selectedJobForView, setSelectedJobForView] = useState<any>(null);
+  const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [jobFilter, setJobFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "rejected">("all");
   const [matchMin, setMatchMin] = useState<number>(0);
@@ -224,6 +228,36 @@ const EmployerCandidates = () => {
       }
       return next;
     });
+  };
+
+  const handleViewJob = async (jobId: string) => {
+    try {
+      const jobResponse = (await apiClient.getJobById(jobId)) as any;
+      if (jobResponse.success && jobResponse.data) {
+        const fullJob = jobResponse.data as any;
+        const jobForView = {
+          id: fullJob.id,
+          title: fullJob.title,
+          company: fullJob.company || "",
+          location: fullJob.location,
+          type: fullJob.type ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite") : undefined,
+          salary: fullJob.salary,
+          postedAt: fullJob.posted_at || fullJob.postedAt || new Date().toISOString(),
+          matchScore: fullJob.match_score || 0,
+          skills: fullJob.skills || [],
+          description: fullJob.description || "",
+        };
+        setSelectedJobForView(jobForView);
+        setJobDescriptionOpen(true);
+      }
+    } catch (err) {
+      console.error("Failed to load job", err);
+    }
+  };
+
+  const handleEditJobFromDescription = (job: { id: string }) => {
+    setJobDescriptionOpen(false);
+    navigate(`/employer/jobs?jobId=${job.id}`);
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
@@ -488,14 +522,13 @@ Best regards,
                       </button>
                     </td>
                     <td className="px-4 py-2 align-top">
-                      <a
-                        href={`/employer/jobs?jobId=${candidate.jobId}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary underline-offset-2 hover:underline"
+                      <button
+                        type="button"
+                        onClick={() => handleViewJob(candidate.jobId)}
+                        className="text-primary underline-offset-2 hover:underline text-left"
                       >
                         {candidate.jobTitle}
-                      </a>
+                      </button>
                     </td>
                     <td className="px-4 py-2 align-top">
                       {candidate.matchScore != null ? (
@@ -599,6 +632,14 @@ Best regards,
           candidate={selectedCandidate}
         />
       )}
+
+      {/* Job Description Modal (same as Jobs page) */}
+      <JobDescriptionDialog
+        open={jobDescriptionOpen}
+        onOpenChange={setJobDescriptionOpen}
+        job={selectedJobForView}
+        onEditJob={handleEditJobFromDescription}
+      />
 
       {/* Contact modal */}
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
