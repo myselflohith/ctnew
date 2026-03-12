@@ -6,7 +6,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Building2, DollarSign, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { MapPin, Building2, DollarSign, Clock, Pencil } from "lucide-react";
 
 interface Job {
   id: string;
@@ -25,23 +26,46 @@ interface JobDescriptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   job: Job | null;
+  /** When provided, shows an "Edit Job" button in the header that calls this with the job (e.g. employer Jobs) */
+  onEditJob?: (job: Job) => void;
 }
 
 const JobDescriptionDialog = ({
   open,
   onOpenChange,
   job,
+  onEditJob,
 }: JobDescriptionDialogProps) => {
   if (!job) return null;
+
+  const handleEdit = () => {
+    onOpenChange(false);
+    onEditJob?.(job);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl">{job.title}</DialogTitle>
-          <DialogDescription className="text-base">
-            {job.company}
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <DialogTitle className="text-2xl">{job.title}</DialogTitle>
+              <DialogDescription className="text-base">
+                {job.company}
+              </DialogDescription>
+            </div>
+            {onEditJob && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleEdit}
+                className="shrink-0"
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit Job
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="space-y-6 mt-4">

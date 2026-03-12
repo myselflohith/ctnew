@@ -212,6 +212,37 @@ const EmployerJobs = () => {
     }
   };
 
+  /** Called when user clicks "Edit Job" in the description modal: open Edit Job modal with full details */
+  const handleEditJobFromDescription = async (jobFromView: { id: string; title: string; company?: string; location: string; type?: string; salary?: string; postedAt: string; matchScore?: number; skills?: string[]; description?: string }) => {
+    setJobDescriptionOpen(false);
+    try {
+      const jobResponse = (await apiClient.getJobById(jobFromView.id)) as any;
+      if (jobResponse.success && jobResponse.data) {
+        const fullJob = jobResponse.data as any;
+        setSelectedJobForEdit({
+          id: fullJob.id,
+          title: fullJob.title,
+          company: fullJob.company || companyName || "",
+          location: fullJob.location,
+          type: fullJob.type ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite") : "remote",
+          salary: fullJob.salary,
+          postedAt: fullJob.posted_at || fullJob.postedAt || new Date().toISOString(),
+          matchScore: fullJob.match_score || 0,
+          skills: fullJob.skills || [],
+          description: fullJob.description || "",
+          autopilot_sourcing: fullJob.autopilot_sourcing,
+          target_count: fullJob.target_count,
+        });
+        setEditModalOpen(true);
+      } else {
+        toast.error("Failed to load job details");
+      }
+    } catch (error) {
+      console.error("Error fetching job details:", error);
+      toast.error("Failed to load job details");
+    }
+  };
+
   const handleEditJob = async (jobId: string, jobData: Partial<JobDetails>) => {
     try {
       await apiClient.updateJob(jobId, jobData);
@@ -530,6 +561,7 @@ const EmployerJobs = () => {
           open={jobDescriptionOpen}
           onOpenChange={setJobDescriptionOpen}
           job={selectedJobForView}
+          onEditJob={handleEditJobFromDescription}
         />
       )}
 
