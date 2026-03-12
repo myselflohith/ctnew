@@ -154,4 +154,64 @@ router.post(
   }
 );
 
+// POST /api/uploads/company-logo  (multipart/form-data field: logo)
+// Uploads to S3 when RESUME_S3_* env is set; otherwise saves to disk. Saves absolute URL suitable for organizations.image_url.
+router.post(
+  '/company-logo',
+  authenticateToken,
+  uploadPhotoMemory.single('logo'),
+  async (req: any, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No logo uploaded' });
+      }
+
+      const { organizationId } = req.body || {};
+      if (!organizationId || typeof organizationId !== 'string') {
+        return res.status(400).json({ success: false, error: 'Missing organizationId' });
+      }
+
+      let url: string;
+      const buffer = req.file.buffer as Buffer;
+      const originalName = req.file.originalname || 'logo.jpg';
+      const mimeType = req.file.mimetype || 'image/jpeg';
+
+      try {
+        const result = await uploadProfilePhotoToS3({
+          buffer,
+          userId: String(organizationId),
+          originalFileName: originalName,
+          contentType: mimeType,
+        });
+        url = result.url;
+      } catch (s3Err: any) {
+        const filename = safeFilename(originalName);
+        const filePath = path.join(profilePhotoDir, filename);
+        fs.writeFileSync(filePath, buffer);
+        const baseUrl = (process.env.SITE_URL || process.env.APP_URL || '').trim().replace(/\/$/, '');
+        url = baseUrl ? `${baseUrl}/uploads/profile-photos/${filename}` : `/uploads/profile-photos/${filename}`;
+      }
+
+      await query(
+        `UPDATE organizations
+         SET image_url = $2,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [organizationId, url]
+      );
+
+      return res.json({
+        success: true,
+        url,
+      });
+    } catch (e) {
+      console.error('Company logo upload failed:', e);
+      return res.status(500).json({ success: false, error: 'Failed to upload logo' });
+    }
+  }
+);
+
 export default router;

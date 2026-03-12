@@ -351,6 +351,29 @@ class ApiClient {
     return data as { success: boolean; url: string; user: any };
   }
 
+  async uploadCompanyLogo(file: File, organizationId: string) {
+    const formData = new FormData();
+    formData.append('logo', file);
+    formData.append('organizationId', organizationId);
+
+    const headers: HeadersInit = {};
+    const liveToken = localStorage.getItem('auth_token');
+    if (liveToken) headers['Authorization'] = `Bearer ${liveToken}`;
+
+    const response = await fetch(`${API_BASE_URL}/uploads/company-logo`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Upload failed');
+    }
+    return data as { success: boolean; url: string };
+  }
+
   // Job endpoints
   async getAvailableJobs() {
     return this.request('/jobs/available');

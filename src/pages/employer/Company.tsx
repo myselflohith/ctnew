@@ -20,7 +20,7 @@ import {
   X,
   Trash2,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -77,6 +77,9 @@ const EmployerCompany = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   // Fields not in API – kept on frontend only, not sent to backend
   const [localOnly, setLocalOnly] = useState({
@@ -215,6 +218,50 @@ const EmployerCompany = () => {
     setOrg((prev) => (prev ? { ...prev, ...updates } : null));
   };
 
+  const handleLogoButtonClick = () => {
+    if (!org) {
+      toast.error("Please load and save company details first.");
+      return;
+    }
+    logoInputRef.current?.click();
+  };
+
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!org) {
+      toast.error("No company loaded.");
+      return;
+    }
+
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      toast.error("Please upload a PNG or JPG image.");
+      e.target.value = "";
+      return;
+    }
+    const maxSize = 2 * 1024 * 1024; // 2MB
+    if (file.size > maxSize) {
+      toast.error("Logo must be 2MB or smaller.");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      const response = await apiClient.uploadCompanyLogo(file, org.id);
+      if (response.success && response.url) {
+        updateOrg({ image_url: response.url });
+        toast.success("Logo uploaded");
+      }
+    } catch (error: any) {
+      console.error("Error uploading logo:", error);
+      toast.error(error.message || "Failed to upload logo");
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = "";
+    }
+  };
+
   const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "Employer";
   const displayCompany = companyName || org?.name || "Company";
 
@@ -265,9 +312,16 @@ const EmployerCompany = () => {
                 <Building2 className="w-16 h-16 text-primary" />
               </div>
             )}
-            <Button variant="outline" size="sm">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={handleLogoFileChange}
+            />
+            <Button variant="outline" size="sm" onClick={handleLogoButtonClick} disabled={uploadingLogo}>
               <Upload className="w-4 h-4 mr-2" />
-              Upload Logo
+              {uploadingLogo ? "Uploading..." : "Upload Logo"}
             </Button>
             <p className="text-xs text-muted-foreground mt-2 text-center">
               PNG or JPG, max 2MB
