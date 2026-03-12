@@ -11,6 +11,33 @@ BEGIN
   END IF;
 END $$;
 
+-- Remove old constraint if it exists (Devise/Rails schema leftover)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'users_invitation_token_key'
+  ) THEN
+    ALTER TABLE users DROP CONSTRAINT users_invitation_token_key;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_reset_password_token_key'
+  ) THEN
+    ALTER TABLE users DROP CONSTRAINT users_reset_password_token_key;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_unlock_token_key'
+  ) THEN
+    ALTER TABLE users DROP CONSTRAINT users_unlock_token_key;
+  END IF;
+END $$;
+
 -- Add new columns (ignore if column already exists; each in its own block so one failure doesn't stop the rest)
 DO $$
 BEGIN
