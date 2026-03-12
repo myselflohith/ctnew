@@ -99,7 +99,7 @@ const EmployerDashboard = () => {
           const applications = applicationsResponse.success
             ? ((applicationsResponse.data as any[]) ?? [])
             : [];
-          
+
           const applicationsByJob: Record<string, any[]> = {};
           applications.forEach((app: any) => {
             const jobId = app.job_id || app.job?.id;
@@ -110,18 +110,28 @@ const EmployerDashboard = () => {
               applicationsByJob[jobId].push(app);
             }
           });
-          
+
           const oneWeekAgo = new Date();
           oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-          
+
           const jobsData = (jobsResponse.data as any[]) ?? [];
-          const allJobsWithStats = jobsData.map((job: any) => {
+
+          // Filter jobs to only those belonging to the logged-in employer's company
+          const userResponse = await apiClient
+            .getCurrentUser()
+            .catch(() => ({ success: false, user: null as any }));
+          const companyName = userResponse.user?.company_name as string | undefined;
+          const employerJobs = companyName
+            ? jobsData.filter((job: any) => job.company === companyName)
+            : jobsData;
+
+          const allJobsWithStats = employerJobs.map((job: any) => {
             const jobApplications = applicationsByJob[job.id] || [];
             const newApplicants = jobApplications.filter((app: any) => {
               const appliedDate = new Date(app.applied_at || app.appliedAt);
               return appliedDate >= oneWeekAgo;
             }).length;
-            
+
             return {
               id: job.id,
               title: job.title,
@@ -129,12 +139,12 @@ const EmployerDashboard = () => {
               applicants: jobApplications.length,
               newApplicants: newApplicants,
               views: 0,
-              postedAt: job.posted_at 
+              postedAt: job.posted_at
                 ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
                 : "Recently",
             };
           });
-          
+
           setAllJobs(allJobsWithStats);
           setJobs(allJobsWithStats.slice(0, 3));
         }
@@ -255,7 +265,7 @@ const EmployerDashboard = () => {
         <button onClick={() => navigate("/employer/jobs")} className="text-left">
           <MetricCard
             title="Total Jobs"
-            value={loading ? "..." : jobs.length}
+            value={loading ? "..." : allJobs.length}
             change=""
             changeType="neutral"
             icon={<CheckCircle className="w-6 h-6" />}
