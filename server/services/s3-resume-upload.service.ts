@@ -110,3 +110,42 @@ export async function uploadResumeBufferToS3(params: {
   const url = buildPublicUrl({ bucket, region, key });
   return { bucket, key, url };
 }
+
+/**
+ * Upload talent profile photo to S3 (same bucket/credentials as resumes).
+ * Key pattern: {RESUME_S3_PREFIX/}profile-photos/{userId}/{date}/{filename}
+ * Returns public URL for storing in users.picture_url.
+ */
+export async function uploadProfilePhotoToS3(params: {
+  buffer: Buffer;
+  userId: string;
+  originalFileName: string;
+  contentType?: string | null;
+}): Promise<{ bucket: string; key: string; url: string }> {
+  const bucket = requireEnv('RESUME_S3_BUCKET');
+  const prefix = (process.env.RESUME_S3_PREFIX || '').trim().replace(/^\/+|\/+$/g, '');
+  const region = (process.env.RESUME_S3_REGION || '').trim() || requireEnv('AWS_REGION');
+
+  const now = new Date();
+  const yyyy = String(now.getUTCFullYear());
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(now.getUTCDate()).padStart(2, '0');
+  const datePath = `${yyyy}-${mm}-${dd}`;
+
+  const base = safeFileName(params.originalFileName || 'photo.jpg');
+  const key = `${prefix ? `${prefix}/` : ''}profile-photos/${params.userId}/${datePath}/${base}`;
+
+  const s3 = getS3Client(region);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: params.buffer,
+      ContentType: params.contentType || undefined,
+      ACL: 'public-read',
+    })
+  );
+
+  const url = buildPublicUrl({ bucket, region, key });
+  return { bucket, key, url };
+}
