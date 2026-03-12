@@ -6,6 +6,7 @@ import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { uploadResumeFileToS3 } from './s3-resume-upload.service.js';
+import { talentJobMatchingQueue } from '../queues/talent-job-matching.queue.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -855,10 +856,127 @@ export async function getDefaultResumeUrlForUser(userId: string): Promise<string
     'SELECT file_path FROM resumes WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1',
     [userId]
   );
-  const path = result.rows?.[0]?.file_path;
-  if (typeof path !== 'string' || !path.trim()) return '';
-  const trimmed = path.trim();
+  const pathVal = result.rows?.[0]?.file_path;
+  if (typeof pathVal !== 'string' || !pathVal.trim()) return '';
+  const trimmed = pathVal.trim();
   return /^https?:\/\//i.test(trimmed) ? trimmed : '';
+}
+
+/**
+ * Get the default resume row for a user (for parse/rank: need file_path and name).
+ * Returns null if user has no resumes.
+ */
+export async function getDefaultResumeForUser(userId: string): Promise<Resume | null> {
+  const result = await query(
+    'SELECT * FROM resumes WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1',
+    [userId]
+  );
+  return result.rows?.length ? (result.rows[0] as Resume) : null;
+}
+
+/**
+ * Run parse (RESUME_PARSER_API), rank (RESUME_SCORE_API), and enqueue job-resume match using the user's
+ * default resume from DB. Use after email verification so we only process resumes for verified users.
+ * Gets resume from DB (file_path can be S3 URL or local filename); if URL, fetches to buffer and parses.
+ */
+export async function runParseRankAndMatchForUser(userId: string): Promise<void> {
+  const resume = await getDefaultResumeForUser(userId);
+  if (!resume?.file_path?.trim()) return;
+
+  const filePath = resume.file_path.trim();
+  const isUrl = /^https?:\/\//i.test(filePath);
+  let parseResult: Record<string, unknown>;
+
+  if (isUrl) {
+    try {
+      const response = await fetch(filePath);
+      if (!response.ok) throw new Error(`Fetch resume failed: ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      parseResult = await parseResumeWithParserApi(buffer, resume.name || 'resume.pdf');
+    } catch (parseErr: any) {
+      console.warn('[runParseRankAndMatchForUser] Parse (from URL) failed:', parseErr?.message || parseErr);
+      return;
+    }
+  } else {
+    const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
+    try {
+      parseResult = await parseResumeWithParserApi(fullPath);
+    } catch (parseErr: any) {
+      console.warn('[runParseRankAndMatchForUser] Parse (from disk) failed:', parseErr?.message || parseErr);
+      return;
+    }
+  }
+
+  let personId: number | null = null;
+  try {
+    personId = await getOrCreatePersonForUser(Number(userId));
+    await updatePersonParsedResume(personId, parseResult);
+  } catch (dbErr: any) {
+    console.warn('[runParseRankAndMatchForUser] Failed to save parsed resume to people:', dbErr?.message);
+  }
+
+  const scoreApiUrl = (process.env.RESUME_SCORE_API || '').trim();
+  if (scoreApiUrl) {
+    try {
+      const resumeUrl = await getDefaultResumeUrlForUser(userId);
+      const rankResult = await callResumeScoreApi(parseResult, resumeUrl ? { resumeUrl } : undefined);
+      if (personId != null) {
+        await updatePersonRankFromApi(personId, rankResult);
+      }
+    } catch (rankErr: any) {
+      console.warn('[runParseRankAndMatchForUser] Rank API failed:', rankErr?.message);
+    }
+  }
+
+  try {
+    await talentJobMatchingQueue.add('computeMatchScores', { userId: Number(userId) });
+  } catch (queueErr: any) {
+    console.warn('[runParseRankAndMatchForUser] Failed to enqueue match job:', queueErr?.message);
+  }
+}
+
+/**
+ * Run parse (RESUME_PARSER_API), rank (RESUME_SCORE_API), and enqueue job-resume match for a resume
+ * already saved to disk (local filename). Use when you have the file on disk, e.g. right after upload.
+ * For verified users, prefer runParseRankAndMatchForUser(userId) which loads resume from DB.
+ */
+export async function runParseRankAndMatchForResume(userId: string, resumeFileName: string): Promise<void> {
+  const fullPath = path.join(UPLOAD_DIR, path.basename(resumeFileName));
+  let parseResult: Record<string, unknown>;
+  try {
+    parseResult = await parseResumeWithParserApi(fullPath);
+  } catch (parseErr: any) {
+    console.warn('[runParseRankAndMatchForResume] Parse failed:', parseErr?.message || parseErr);
+    return;
+  }
+
+  let personId: number | null = null;
+  try {
+    personId = await getOrCreatePersonForUser(Number(userId));
+    await updatePersonParsedResume(personId, parseResult);
+  } catch (dbErr: any) {
+    console.warn('[runParseRankAndMatchForResume] Failed to save parsed resume to people:', dbErr?.message);
+  }
+
+  const scoreApiUrl = (process.env.RESUME_SCORE_API || '').trim();
+  if (scoreApiUrl) {
+    try {
+      const resumeUrl = await getDefaultResumeUrlForUser(userId);
+      const rankResult = await callResumeScoreApi(parseResult, resumeUrl ? { resumeUrl } : undefined);
+      if (personId != null) {
+        await updatePersonRankFromApi(personId, rankResult);
+      }
+    } catch (rankErr: any) {
+      console.warn('[runParseRankAndMatchForResume] Rank API failed:', rankErr?.message);
+    }
+  }
+
+  try {
+    await talentJobMatchingQueue.add('computeMatchScores', { userId: Number(userId) });
+  } catch (queueErr: any) {
+    console.warn('[runParseRankAndMatchForResume] Failed to enqueue match job:', queueErr?.message);
+  }
 }
 
 /**

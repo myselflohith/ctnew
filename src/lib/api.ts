@@ -117,6 +117,32 @@ class ApiClient {
     return response;
   }
 
+  /** Talent signup with optional resume (saved to account after creation). */
+  async registerTalent(data: {
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+  }, resumeFile?: File | null) {
+    const formData = new FormData();
+    formData.append('email', data.email);
+    formData.append('password', data.password);
+    if (data.firstName != null) formData.append('firstName', data.firstName);
+    if (data.lastName != null) formData.append('lastName', data.lastName);
+    if (resumeFile) formData.append('resume', resumeFile);
+
+    const response = await fetch(`${API_BASE_URL}/auth/register-talent`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(json.error || 'Registration failed');
+    }
+    return json as { success: boolean; user: any; message?: string };
+  }
+
   async login(email: string, password: string) {
     const response = await this.request('/auth/login', {
       method: 'POST',

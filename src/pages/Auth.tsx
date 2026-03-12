@@ -189,47 +189,6 @@ const Auth = () => {
     }
   };
 
-  const handleResumeUpload = async (token: string): Promise<boolean> => {
-    if (!resumeFile) return true; // Resume is optional
-
-    try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('file', resumeFile);
-
-      const response = await fetch('/api/resumes/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        body: formDataToSend,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        toast({
-          title: "Upload failed",
-          description: error.error || "Failed to upload resume.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      toast({
-        title: "Resume uploaded",
-        description: "Your resume has been uploaded successfully.",
-      });
-
-      return true;
-    } catch (error: any) {
-      toast({
-        title: "Upload error",
-        description: error.message || "Failed to upload resume.",
-        variant: "destructive",
-      });
-      return false;
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -259,27 +218,41 @@ const Auth = () => {
 
     try {
       if (mode === "signup") {
-        // Register new user
-        const { register } = await import("@/lib/auth");
-        // Use company name from form; if "Create new organization" was chosen, fallback to current input (state may not have flushed)
-        const companyNameToSend =
-          selectedRole === "employer"
-            ? undefined
-            : (formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : undefined));
-        const organizationIdToSend = selectedRole === "employer" ? undefined : (formData.organizationId ?? undefined);
-        await register({
-          email: formData.email,
-          password: formData.password,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          companyName: companyNameToSend || undefined,
-          organizationId: organizationIdToSend,
-          role: roleMap[selectedRole],
-        });
+        if (selectedRole === "talent") {
+          // Talent signup: use register-talent so optional resume is saved to the new account
+          await apiClient.registerTalent(
+            {
+              email: formData.email,
+              password: formData.password,
+              firstName: formData.firstName,
+              lastName: formData.lastName,
+            },
+            resumeFile ?? undefined
+          );
+        } else {
+          // Register new user (employer, recruiter, etc.)
+          const { register } = await import("@/lib/auth");
+          const companyNameToSend =
+            selectedRole === "employer"
+              ? undefined
+              : (formData.companyName?.trim() || (isEmployerOrRecruiter ? companyInputValue.trim() : undefined));
+          const organizationIdToSend = selectedRole === "employer" ? undefined : (formData.organizationId ?? undefined);
+          await register({
+            email: formData.email,
+            password: formData.password,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            companyName: companyNameToSend || undefined,
+            organizationId: organizationIdToSend,
+            role: roleMap[selectedRole],
+          });
+        }
 
         toast({
           title: "Account created!",
-          description: "Check your email to verify your account before logging in.",
+          description: resumeFile && selectedRole === "talent"
+            ? "Check your email to verify your account. Your resume has been saved."
+            : "Check your email to verify your account before logging in.",
         });
 
         // After signup, do not auto-login; redirect to signin screen

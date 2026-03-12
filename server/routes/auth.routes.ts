@@ -1,4 +1,7 @@
 import { Router, Request, Response } from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import {
   registerUser,
@@ -20,6 +23,10 @@ import {
 } from '../services/organization.service.js';
 import { sendCompanyApprovalRequestEmail, sendVerificationEmail } from '../services/email.service.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { createResume, ensureUploadDir, extractProfileFromResumeFilePath, runParseRankAndMatchForUser } from '../services/resume.service.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Import ROLE_ENUM for validation - investor=2, admin=3, talent=4, employer=5, recruiter=6
 const ROLE_ENUM: { [key: string]: number } = {
@@ -31,6 +38,104 @@ const ROLE_ENUM: { [key: string]: number } = {
 };
 
 const router = Router();
+
+// Multer for talent signup with optional resume (same storage as resume uploads)
+const resumeStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../../uploads/resumes'));
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${uuidv4()}${path.extname(file.originalname)}`);
+  },
+});
+const uploadResume = multer({
+  storage: resumeStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.pdf', '.doc', '.docx'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error('Invalid file type. Only PDF, DOC, and DOCX are allowed.'));
+  },
+});
+
+// Register new user (talent with optional resume) - multipart/form-data: email, password, firstName, lastName, resume (optional file)
+router.post('/register-talent', uploadResume.single('resume'), async (req: Request, res: Response) => {
+  try {
+    const { email, password, firstName, lastName } = req.body ?? {};
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+    const role = 4; // talent
+    const { user } = await registerUser({
+      email: String(email).trim(),
+      password: String(password),
+      firstName: firstName != null ? String(firstName).trim() : undefined,
+      lastName: lastName != null ? String(lastName).trim() : undefined,
+      companyName: undefined,
+      organizationId: null,
+      role,
+      username: null,
+      location: null,
+      linkedinUrl: null,
+    });
+
+    try {
+      await sendVerificationEmail(
+        user.email,
+        [user.first_name, user.last_name].filter(Boolean).join(' ') || 'User',
+        (await (async () => {
+          const { query } = await import('../database/connection.js');
+          const result = await query(
+            'SELECT verification_token FROM users WHERE email = $1 LIMIT 1',
+            [user.email.toLowerCase()]
+          );
+          return result.rows[0]?.verification_token as string;
+        })())
+      );
+    } catch (emailError) {
+      console.error('Failed to send verification email:', emailError);
+    }
+
+    if (req.file) {
+      try {
+        await ensureUploadDir();
+        await createResume(
+          user.id,
+          req.file.originalname,
+          req.file.filename,
+          req.file.size
+        );
+        try {
+          const extracted = await extractProfileFromResumeFilePath(req.file.filename);
+          if (extracted?.phone_number || extracted?.location || extracted?.linkedin_profile_url) {
+            const { query } = await import('../database/connection.js');
+            await query(
+              `UPDATE users SET phone_number = COALESCE($2, phone_number), location = COALESCE($3, location), linkedin_profile_url = COALESCE($4, linkedin_profile_url), updated_at = NOW() WHERE id = $1`,
+              [user.id, extracted.phone_number ?? null, extracted.location ?? null, extracted.linkedin_profile_url ?? null]
+            );
+          }
+        } catch {
+          // ignore profile extraction errors
+        }
+        // Parse/rank/match run after email verification (see verify-email) so we only process verified users
+      } catch (resumeErr: any) {
+        console.error('Talent signup: resume save failed', resumeErr);
+        // Still return 201 – user was created; resume can be uploaded after login
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      user,
+      message: 'User registered successfully. Please check your email to verify your account.',
+    });
+  } catch (error: any) {
+    console.error('Register-talent error:', error);
+    res.status(400).json({ error: error.message || 'Registration failed' });
+  }
+});
 
 // Register new user
 router.post('/register', async (req: Request, res: Response) => {
@@ -233,7 +338,7 @@ router.get('/verify-email', async (req: Request, res: Response) => {
 
     const { query } = await import('../database/connection.js');
     const result = await query(
-      'SELECT id FROM users WHERE verification_token = $1 LIMIT 1',
+      'SELECT id, role FROM users WHERE verification_token = $1 LIMIT 1',
       [token]
     );
 
@@ -243,11 +348,20 @@ router.get('/verify-email', async (req: Request, res: Response) => {
     }
 
     const userId = result.rows[0].id;
+    const role = result.rows[0].role;
 
     await query(
       'UPDATE users SET email_verified = true, verification_token = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
       [userId]
     );
+
+    // After verification, run parse/rank/match for talent users who have a resume (get resume from DB)
+    const isTalent = role === 4 || role === '4';
+    if (isTalent) {
+      runParseRankAndMatchForUser(String(userId)).catch((err: any) => {
+        console.warn('Verify-email: parse/rank/match for talent failed', err?.message || err);
+      });
+    }
 
     res.json({
       success: true,
