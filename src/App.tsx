@@ -23,7 +23,6 @@ import InvestorSignup from "./pages/InvestorSignup";
 import TalentDashboard from "./pages/talent/Dashboard";
 import TalentJobs from "./pages/talent/Jobs";
 import TalentApplications from "./pages/talent/Applications";
-import TalentSavedJobs from "./pages/talent/SavedJobs";
 import TalentInterviews from "./pages/talent/Interviews";
 import InterviewScreeningPage from "./pages/talent/InterviewScreeningPage";
 import TalentSettings from "./pages/talent/Settings";
@@ -98,7 +97,7 @@ const App = () => (
             <Route path="/talent/dashboard" element={<TalentDashboard />} />
             <Route path="/talent/jobs" element={<TalentJobs />} />
             <Route path="/talent/applications" element={<TalentApplications />} />
-            <Route path="/talent/saved" element={<TalentSavedJobs />} />
+            <Route path="/talent/saved" element={<Navigate to="/talent/jobs" replace />} />
             <Route path="/talent/interviews" element={<TalentInterviews />} />
             <Route path="/talent/interviews/thank-you" element={<InterviewThankYou />} />
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />

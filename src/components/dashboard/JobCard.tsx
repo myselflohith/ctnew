@@ -19,11 +19,14 @@ interface JobCardProps {
   description?: string;
   onApply?: () => void;
   onSave?: () => void;
+  onUnsave?: () => void;
   onView?: () => void;
   onRemove?: () => void;
   onToggleSelect?: (checked: boolean) => void;
   showRemove?: boolean;
   isSelected?: boolean;
+  /** When true, show "Saved Job" tag in red and allow unsave */
+  isSaved?: boolean;
 }
 
 const JobCard = ({
@@ -40,10 +43,12 @@ const JobCard = ({
   description,
   onApply,
   onSave,
+  onUnsave,
   onView,
   onToggleSelect,
   showRemove = false,
   isSelected = false,
+  isSaved = false,
 }: JobCardProps) => {
   const getMatchVariant = (score: number) => {
     if (score >= 85) return "excellent";
@@ -76,6 +81,11 @@ const JobCard = ({
               >
                 {title}
               </h3>
+              {isSaved && (
+                <Badge variant="destructive" className="text-xs">
+                  Saved Job
+                </Badge>
+              )}
               {(matchScore || matchSummary) && (
                 <TooltipProvider>
                   <div className="flex items-center gap-2">
@@ -119,9 +129,14 @@ const JobCard = ({
             </div>
           </div>
         </div>
-        {onSave && (
-          <Button variant="ghost" size="icon" onClick={onSave}>
-            <Bookmark className="w-5 h-5" />
+        {(onSave || onUnsave) && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={isSaved ? onUnsave : onSave}
+            title={isSaved ? "Remove from saved jobs" : "Save job"}
+          >
+            <Bookmark className={`w-5 h-5 ${isSaved ? "fill-current" : ""}`} />
           </Button>
         )}
       </div>

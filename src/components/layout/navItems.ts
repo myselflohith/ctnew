@@ -7,7 +7,6 @@ import {
   Settings,
   Calendar,
   Search,
-  Heart,
   FileText,
   User,
 } from "lucide-react";
@@ -48,7 +47,6 @@ export const adminNavItems: NavItem[] = [
 export const talentNavItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/talent/dashboard" },
   { icon: Search, label: "Find Jobs", path: "/talent/jobs" },
-  { icon: Heart, label: "Saved Jobs", path: "/talent/saved" },
   { icon: FileText, label: "Applications", path: "/talent/applications" },
   { icon: Calendar, label: "Interviews", path: "/talent/interviews" },
 ];

@@ -51,7 +51,7 @@ const TalentDashboard = () => {
   const handleSave = (job: typeof availableJobs[0]) => {
     saveJob(job);
     toast.success(`Saved ${job.title}`);
-    navigate("/talent/saved");
+    navigate("/talent/jobs");
   };
 
   const handleViewJob = (job: typeof availableJobs[0]) => {

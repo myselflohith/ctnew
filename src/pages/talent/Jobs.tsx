@@ -29,6 +29,7 @@ const TalentJobs = () => {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [appliedLocation, setAppliedLocation] = useState("");
   const [filterType, setFilterType] = useState<"remote" | "hybrid" | "onsite" | null>(null);
+  const [filterSavedOnly, setFilterSavedOnly] = useState(false);
   const [filterMinSalary, setFilterMinSalary] = useState<number | null>(null);
   const [filterMinMatch, setFilterMinMatch] = useState<number | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
@@ -43,9 +44,12 @@ const TalentJobs = () => {
     fetchJobsWithMatch,
     removeFromAvailable,
     saveJob,
+    removeFromSaved,
     applyToJob,
+    isJobSaved,
     refetch,
     loading,
+    savedJobs,
   } = useJobs();
 
   useEffect(() => {
@@ -69,12 +73,14 @@ const TalentJobs = () => {
     refetch();
   };
   const hasActiveFilters =
+    filterSavedOnly ||
     filterType !== null ||
     filterMinSalary !== null ||
     filterMinMatch !== null ||
     appliedSearch !== "" ||
     appliedLocation !== "";
   const clearAllFilters = () => {
+    setFilterSavedOnly(false);
     setFilterType(null);
     setFilterMinSalary(null);
     setFilterMinMatch(null);
@@ -139,7 +145,6 @@ const TalentJobs = () => {
 
   const handleSave = (job: typeof availableJobs[0]) => {
     saveJob(job);
-    toast.success(`Saved ${job.title} to your saved jobs`);
   };
 
   const handleViewJob = (job: typeof availableJobs[0]) => {
@@ -147,10 +152,23 @@ const TalentJobs = () => {
     setJobDescriptionOpen(true);
   };
 
-  const baseJobs = filterMinMatch != null ? (jobsWithMatch ?? []) : availableJobs;
+  const handleUnsave = (job: typeof availableJobs[0]) => {
+    removeFromSaved(job.id);
+  };
+
+  // Merge available jobs (or jobsWithMatch when 90%+ filter is on) with saved jobs so saved jobs appear in the list
+  const rawBaseJobs = filterMinMatch != null ? (jobsWithMatch ?? []) : availableJobs;
+  const savedJobIds = new Set(savedJobs.map((j) => j.id));
+  const baseJobs = (() => {
+    const byId = new Map(rawBaseJobs.map((j) => [j.id, j]));
+    savedJobs.forEach((j) => byId.set(j.id, j));
+    return Array.from(byId.values());
+  })();
 
   const filteredJobs = baseJobs
     .filter((job) => {
+      const matchesSavedOnly = !filterSavedOnly || savedJobIds.has(job.id);
+
       const matchesSearch = !appliedSearch ||
         (typeof job.title === "string" && job.title.toLowerCase().includes(appliedSearch.toLowerCase())) ||
         (typeof job.company === "string" && job.company.toLowerCase().includes(appliedSearch.toLowerCase())) ||
@@ -167,7 +185,7 @@ const TalentJobs = () => {
 
       const matchesMatch = filterMinMatch == null || (typeof job.matchScore === "number" && job.matchScore >= filterMinMatch);
 
-      return matchesSearch && matchesLocation && matchesType && matchesSalary && matchesMatch;
+      return matchesSavedOnly && matchesSearch && matchesLocation && matchesType && matchesSalary && matchesMatch;
     })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 
@@ -233,6 +251,18 @@ const TalentJobs = () => {
           </Button>
         </div>
         <div className="flex flex-wrap gap-2 mt-4 items-center">
+          <Badge
+            variant={filterSavedOnly ? "default" : "outline"}
+            className="cursor-pointer hover:bg-secondary"
+            onClick={() => {
+              setFilterSavedOnly((prev) => {
+                if (!prev) refetch(); // fetch latest saved jobs when switching to Saved Jobs view
+                return !prev;
+              });
+            }}
+          >
+            Saved Jobs
+          </Badge>
           <Badge
             variant={filterType === "remote" ? "default" : "outline"}
             className="cursor-pointer hover:bg-secondary"
@@ -317,9 +347,11 @@ const TalentJobs = () => {
               {...job}
               showRemove={true}
               isSelected={selectedJobs.includes(job.id)}
+              isSaved={isJobSaved(job.id)}
               onToggleSelect={(checked) => handleToggleSelect(job.id, checked)}
               onApply={() => handleApplyClick(job)}
               onSave={() => handleSave(job)}
+              onUnsave={() => handleUnsave(job)}
               onView={() => handleViewJob(job)}
             />
           ))}
