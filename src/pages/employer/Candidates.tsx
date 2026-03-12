@@ -16,6 +16,7 @@ import { apiClient } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import CandidateProfileModal from "@/components/employer/CandidateProfileModal";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -584,19 +585,29 @@ Best regards,
                         >
                           <Mail className="w-4 h-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            handleBulkStatusChange(
-                              candidate.status === "Rejected"
-                                ? "Under Review"
-                                : "Rejected"
-                            )
-                          }
-                        >
-                          <Calendar className="w-4 h-4" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedIds(new Set([candidate.id]));
+                                handleBulkStatusChange(
+                                  candidate.status === "Rejected"
+                                    ? "Under Review"
+                                    : "Rejected"
+                                );
+                              }}
+                            >
+                              <Calendar className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {candidate.status === "Rejected"
+                              ? "Cancel rejection"
+                              : "Reject candidate"}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>
