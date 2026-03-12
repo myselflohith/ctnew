@@ -11,7 +11,15 @@ BEGIN
     WHERE schemaname = 'public' AND tablename = 'users'
       AND ( indexdef ~ '\(invitation_token\)' OR indexdef ~ '\(reset_password_token\)' OR indexdef ~ '\(unlock_token\)' )
   LOOP
-    EXECUTE format('DROP INDEX IF EXISTS %I', r.indexname);
+    -- Some of these indexes may back constraints (e.g. users_invitation_token_key).
+    -- Dropping such an index directly raises 2BP01; instead, we rely on dropping
+    -- the constraint below. Swallow any errors here so the migration can proceed.
+    BEGIN
+      EXECUTE format('DROP INDEX IF EXISTS %I', r.indexname);
+    EXCEPTION
+      WHEN others THEN
+        NULL;
+    END;
   END LOOP;
 END $$;
 
