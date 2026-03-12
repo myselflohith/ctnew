@@ -16,6 +16,8 @@ interface Job {
   matchSummary?: string;
   skills: string[];
   description?: string;
+  /** Full structured match details (from detail_response JSON). */
+  detailResponse?: any;
 }
 
 interface Application {
@@ -78,6 +80,15 @@ const convertApiJobToJob = (apiJob: any): Job => {
         : undefined,
     skills: apiJob.skills || [],
     description: apiJob.description,
+    detailResponse: apiJob.detail_response
+      ? (() => {
+          try {
+            return JSON.parse(apiJob.detail_response);
+          } catch {
+            return apiJob.detail_response;
+          }
+        })()
+      : undefined,
   };
 };
 

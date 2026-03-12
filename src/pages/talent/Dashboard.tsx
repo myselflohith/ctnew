@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJobs } from "@/contexts/JobsContext";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const TalentDashboard = () => {
   const navigate = useNavigate();
@@ -28,6 +29,8 @@ const TalentDashboard = () => {
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
+  const [matchDetailsOpen, setMatchDetailsOpen] = useState(false);
+  const [selectedMatchDetails, setSelectedMatchDetails] = useState<any | null>(null);
 
   useEffect(() => {
     fetchJobsWithMatch();
@@ -136,6 +139,14 @@ const TalentDashboard = () => {
                 onApply={() => handleApplyClick(job)}
                 onSave={() => handleSave(job)}
                 onView={() => handleViewJob(job)}
+                onViewMatchDetails={
+                  job.detailResponse
+                    ? () => {
+                        setSelectedMatchDetails(job.detailResponse);
+                        setMatchDetailsOpen(true);
+                      }
+                    : undefined
+                }
               />
             ))
           ) : (
@@ -163,6 +174,81 @@ const TalentDashboard = () => {
         onOpenChange={setJobDescriptionOpen}
         job={selectedJobForView}
       />
+
+      {/* Match Details Dialog */}
+      <Dialog open={matchDetailsOpen} onOpenChange={setMatchDetailsOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Overall Match</DialogTitle>
+            <DialogDescription>
+              Detailed scoring and explanation for why this job was recommended.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedMatchDetails && (
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="font-semibold">
+                  Summary (Match Score: {selectedMatchDetails.score}%)
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {selectedMatchDetails.summary}
+                </p>
+              </div>
+
+              <div>
+                <p className="font-semibold">Overall Score</p>
+                <p className="text-muted-foreground">
+                  Final overall score: {selectedMatchDetails.score} / 100
+                </p>
+              </div>
+
+              {selectedMatchDetails.skills && selectedMatchDetails.skills.length > 0 && (
+                <div>
+                  <p className="font-semibold">Skills</p>
+                  <div className="mt-2 space-y-2">
+                    {selectedMatchDetails.skills.map((s: any) => (
+                      <div key={s.name}>
+                        <p className="font-medium">{s.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Match type: {s.match_type}, Experience: {s.years_experience}
+                        </p>
+                        {Array.isArray(s.evidence) && s.evidence.length > 0 && (
+                          <p className="text-xs">
+                            Evidence: {s.evidence.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedMatchDetails.notes_score_breakdown && (
+                <div>
+                  <p className="font-semibold">Score Breakdown</p>
+                  <div className="mt-2 space-y-2">
+                    {Object.values(
+                      selectedMatchDetails.notes_score_breakdown as Record<string, any>
+                    ).map((note: any, idx: number) => (
+                      <div key={idx}>
+                        <p className="text-xs font-medium">{note.note_text}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Score: {note.score} / {note.max_points} (weight {note.weight})
+                        </p>
+                        {note.match_summary && (
+                          <p className="text-xs text-muted-foreground">
+                            {note.match_summary}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
     </DashboardLayout>
   );

@@ -27,6 +27,8 @@ interface JobCardProps {
   isSelected?: boolean;
   /** When true, show "Saved Job" tag in red and allow unsave */
   isSaved?: boolean;
+  /** Called when user clicks the match info icon to view detailed explanation. */
+  onViewMatchDetails?: () => void;
 }
 
 const JobCard = ({
@@ -49,6 +51,7 @@ const JobCard = ({
   showRemove = false,
   isSelected = false,
   isSaved = false,
+  onViewMatchDetails,
 }: JobCardProps) => {
   const getMatchVariant = (score: number) => {
     if (score >= 85) return "excellent";
@@ -101,6 +104,7 @@ const JobCard = ({
                             type="button"
                             className="inline-flex items-center justify-center rounded-full p-0.5 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
                             aria-label="Why this job is recommended"
+                            onClick={onViewMatchDetails}
                           >
                             <Info className="w-4 h-4" />
                           </button>
