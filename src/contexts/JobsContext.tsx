@@ -315,9 +315,9 @@ export const JobsProvider = ({ children }: { children: ReactNode }) => {
       }
 
       await apiClient.saveJob(job.id);
-      
-      // Remove from available and add to saved
-      setAvailableJobs((prev) => prev.filter((j) => j.id !== job.id));
+
+      // Mark as saved without changing the available list order,
+      // so the job stays in the same place in the Find Jobs view.
       setSavedJobs((prev) => {
         if (!prev.find((j) => j.id === job.id)) {
           return [...prev, job];
