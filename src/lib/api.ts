@@ -429,6 +429,13 @@ class ApiClient {
     });
   }
 
+  async rejectJobs(jobIds: string[]) {
+    return this.request('/jobs/reject-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ jobIds }),
+    });
+  }
+
   async getSavedJobs() {
     return this.request('/jobs/saved/list');
   }

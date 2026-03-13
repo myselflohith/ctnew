@@ -179,13 +179,17 @@ const TalentJobs = () => {
   };
 
   const handleBulkActionExecute = async () => {
-    if (!bulkAction || selectedJobs.length === 0) return;
+    const selectedVisibleJobIds = filteredJobs
+      .filter((job) => selectedJobs.includes(job.id))
+      .map((job) => job.id);
+
+    if (!bulkAction || selectedVisibleJobIds.length === 0) return;
 
     if (bulkAction === "save") {
-      await apiClient.saveJobs(selectedJobs);
+      await apiClient.saveJobs(selectedVisibleJobIds);
       await refetch();
       setSelectedJobs([]);
-      toast.success(`Saved ${selectedJobs.length} job(s)`);
+      toast.success(`Saved ${selectedVisibleJobIds.length} job(s)`);
       return;
     }
 
@@ -193,7 +197,7 @@ const TalentJobs = () => {
       const jobsById = new Map(
         filteredJobs.map((job) => [job.id, job])
       );
-      const firstJob = jobsById.get(selectedJobs[0]);
+      const firstJob = jobsById.get(selectedVisibleJobIds[0]);
       if (!firstJob) return;
       setBulkApplyMode(true);
       setSelectedJobForApply(firstJob);
@@ -202,10 +206,13 @@ const TalentJobs = () => {
     }
 
     if (bulkAction === "remove") {
-      selectedJobs.forEach((jobId) => {
+      await apiClient.rejectJobs(selectedVisibleJobIds);
+      // Optimistically hide from current list
+      selectedVisibleJobIds.forEach((jobId) => {
         removeFromAvailable(jobId);
       });
-      toast.info(`Removed ${selectedJobs.length} job(s) from list`);
+      await refetch();
+      toast.info(`Removed ${selectedVisibleJobIds.length} job(s) from list`);
       setSelectedJobs([]);
     }
   };

@@ -103,6 +103,14 @@ export async function getAvailableJobs(userId: string): Promise<Job[]> {
      AND j.id NOT IN (
        SELECT job_id FROM ct_job_applications WHERE user_id = $1
      )
+     AND NOT EXISTS (
+       SELECT 1
+       FROM employer_auto_matched_candidates e
+       WHERE e.job_id = j.id
+         AND e.source_type = 'talent'
+         AND e.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
+         AND COALESCE(e.person_reject_job, 0) = 1
+     )
      AND j.discarded_at IS NULL
      ORDER BY j.created_at DESC`,
     [userId]
@@ -121,6 +129,14 @@ export async function getAvailableJobsForMatching(userId: string): Promise<
      FROM jobs j
      WHERE j.id NOT IN (SELECT job_id FROM ct_jobs_saved WHERE user_id = $1)
      AND j.id NOT IN (SELECT job_id FROM ct_job_applications WHERE user_id = $1)
+     AND NOT EXISTS (
+       SELECT 1
+       FROM employer_auto_matched_candidates e
+       WHERE e.job_id = j.id
+         AND e.source_type = 'talent'
+         AND e.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
+         AND COALESCE(e.person_reject_job, 0) = 1
+     )
      AND j.discarded_at IS NULL
      ORDER BY j.created_at DESC
      LIMIT 200`,
@@ -156,12 +172,19 @@ export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> 
        j.created_at,
        j.updated_at
      FROM jobs j
-     LEFT JOIN employer_auto_matched_candidates m ON m.job_id = j.id
-       AND m.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
-       AND m.source_type = 'talent'
+     LEFT JOIN LATERAL (
+       SELECT m.*
+       FROM employer_auto_matched_candidates m
+       WHERE m.job_id = j.id
+         AND m.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
+         AND m.source_type = 'talent'
+       ORDER BY m.created_at DESC
+       LIMIT 1
+     ) m ON TRUE
      WHERE j.id NOT IN (SELECT job_id FROM ct_jobs_saved WHERE user_id = $1)
      AND j.id NOT IN (SELECT job_id FROM ct_job_applications WHERE user_id = $1)
      AND j.discarded_at IS NULL
+     AND COALESCE(m.person_reject_job, 0) = 0
      ORDER BY m.match_score DESC NULLS LAST, j.created_at DESC
      LIMIT $2`,
     [userId, AVAILABLE_JOBS_WITH_MATCH_LIMIT]
@@ -459,7 +482,19 @@ export async function getSavedJobs(userId: string): Promise<SavedJob[]> {
        j.updated_at as job_updated_at
      FROM ct_jobs_saved js
      JOIN jobs j ON js.job_id = j.id
-     WHERE js.user_id = $1 AND j.discarded_at IS NULL
+     JOIN users u ON js.user_id = u.id
+     LEFT JOIN LATERAL (
+       SELECT e.*
+       FROM employer_auto_matched_candidates e
+       WHERE e.job_id = j.id
+         AND e.person_id = COALESCE(u.person_id, u.id)
+         AND e.source_type = 'talent'
+       ORDER BY e.created_at DESC
+       LIMIT 1
+     ) m ON TRUE
+     WHERE js.user_id = $1 
+       AND j.discarded_at IS NULL
+       AND COALESCE(m.person_reject_job, 0) = 0
      ORDER BY js.created_at DESC`,
     [userId]
   );

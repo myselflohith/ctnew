@@ -82,12 +82,6 @@ export function startTalentJobMatchingWorker() {
       console.log('[talent-job-matching] available jobs count', jobs.length);
       if (jobs.length === 0) return { computed: 0 };
 
-      // Delete previous matches for this person
-      await query(
-        'DELETE FROM employer_auto_matched_candidates WHERE person_id = $1 AND source_type = $2',
-        [personId, 'talent']
-      );
-
       let computed = 0;
 
       for (const job of jobs) {
@@ -106,12 +100,7 @@ export function startTalentJobMatchingWorker() {
           await query(
             `INSERT INTO employer_auto_matched_candidates 
                (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET
-               match_score = EXCLUDED.match_score,
-               score_summary = EXCLUDED.score_summary,
-               detail_response = EXCLUDED.detail_response,
-               updated_at = CURRENT_TIMESTAMP`,
+             VALUES ($1, $2, $3, $4, $5, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
             [personId, job.id, score, scoreSummary, detailResponse]
           );
 
@@ -121,12 +110,7 @@ export function startTalentJobMatchingWorker() {
           await query(
             `INSERT INTO employer_auto_matched_candidates
                (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
-             VALUES ($1, $2, NULL, NULL, NULL, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON CONFLICT (person_id, job_id, source_type) DO UPDATE SET
-               match_score = NULL,
-               score_summary = NULL,
-               detail_response = NULL,
-               updated_at = CURRENT_TIMESTAMP`,
+             VALUES ($1, $2, NULL, NULL, NULL, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
             [personId, job.id]
           );
         }
