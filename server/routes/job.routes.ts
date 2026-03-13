@@ -307,6 +307,23 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       addNotes,
       autopilot_sourcing,
       target_count,
+
+      // Extended employer fields (parity with legacy Rails wizard)
+      distance,
+      days_in_office,
+      linkedin_url,
+      rate,
+      is_original_job,
+      is_automation,
+      automation_limit,
+
+      in_mail_message,
+      in_mail_message_2,
+      in_mail_message_3,
+      in_mail_message_day_2,
+      in_mail_message_day_3,
+
+      company_names,
     } = req.body;
 
     if (!title || !company || !location || !type) {
@@ -330,6 +347,19 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           target_count === undefined || target_count === null || target_count === ''
             ? null
             : Number(target_count),
+        distance,
+        days_in_office,
+        linkedin_url,
+        rate,
+        is_original_job,
+        is_automation,
+        automation_limit,
+        in_mail_message,
+        in_mail_message_2,
+        in_mail_message_3,
+        in_mail_message_day_2,
+        in_mail_message_day_3,
+        company_names,
       },
       req.user?.id
     );

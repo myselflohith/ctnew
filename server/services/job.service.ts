@@ -299,6 +299,23 @@ export async function createJob(
     addNotes?: string | null;
     autopilot_sourcing?: boolean;
     target_count?: number | null;
+
+    // Extended employer fields (parity with legacy Rails wizard)
+    distance?: string | null;
+    days_in_office?: number | string | null;
+    linkedin_url?: string | null;
+    rate?: string | null;
+    is_original_job?: number | boolean | null;
+    is_automation?: number | boolean | null;
+    automation_limit?: number | null;
+
+    in_mail_message?: string | null;
+    in_mail_message_2?: string | null;
+    in_mail_message_3?: string | null;
+    in_mail_message_day_2?: number | null;
+    in_mail_message_day_3?: number | null;
+
+    company_names?: string[] | string | null;
   },
   creatorId?: string
 ): Promise<Job> {
@@ -311,9 +328,105 @@ export async function createJob(
       ? null
       : Number((jobData as any)?.target_count);
 
+  const distanceVal =
+    jobData.distance != null && String(jobData.distance).trim() !== ''
+      ? String(jobData.distance).trim()
+      : null;
+  const daysInOfficeValRaw =
+    jobData.days_in_office != null && String(jobData.days_in_office).trim() !== ''
+      ? Number(jobData.days_in_office)
+      : null;
+  const daysInOfficeVal =
+    daysInOfficeValRaw != null && Number.isFinite(daysInOfficeValRaw) ? daysInOfficeValRaw : null;
+  const linkedinUrlVal =
+    jobData.linkedin_url != null && String(jobData.linkedin_url).trim() !== ''
+      ? String(jobData.linkedin_url).trim()
+      : null;
+  const rateVal =
+    jobData.rate != null && String(jobData.rate).trim() !== ''
+      ? String(jobData.rate).trim()
+      : null;
+  const isOriginalJobVal =
+    typeof jobData.is_original_job === 'boolean'
+      ? (jobData.is_original_job ? 1 : 0)
+      : jobData.is_original_job != null
+        ? Number(jobData.is_original_job)
+        : 0;
+  const isAutomationVal =
+    typeof jobData.is_automation === 'boolean'
+      ? (jobData.is_automation ? 1 : 0)
+      : jobData.is_automation != null
+        ? Number(jobData.is_automation)
+        : 0;
+  const automationLimitVal =
+    jobData.automation_limit != null && Number.isFinite(jobData.automation_limit as any)
+      ? Number(jobData.automation_limit)
+      : null;
+
+  const inMailMessageVal =
+    jobData.in_mail_message != null && String(jobData.in_mail_message).trim() !== ''
+      ? String(jobData.in_mail_message)
+      : null;
+  const inMailMessage2Val =
+    jobData.in_mail_message_2 != null && String(jobData.in_mail_message_2).trim() !== ''
+      ? String(jobData.in_mail_message_2)
+      : null;
+  const inMailMessage3Val =
+    jobData.in_mail_message_3 != null && String(jobData.in_mail_message_3).trim() !== ''
+      ? String(jobData.in_mail_message_3)
+      : null;
+  const inMailDay2Val =
+    jobData.in_mail_message_day_2 != null && Number.isFinite(jobData.in_mail_message_day_2 as any)
+      ? Number(jobData.in_mail_message_day_2)
+      : null;
+  const inMailDay3Val =
+    jobData.in_mail_message_day_3 != null && Number.isFinite(jobData.in_mail_message_day_3 as any)
+      ? Number(jobData.in_mail_message_day_3)
+      : null;
+
+  const companyNamesVal = Array.isArray(jobData.company_names)
+    ? jobData.company_names.join(', ')
+    : (jobData.company_names ?? '') || null;
+
   const result = await query(
-    `INSERT INTO jobs (name, company_name, location, work_type, job_salary, skills, description, add_notes, active, status, creator_id, autopilot_sourcing, target_count)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 0, $9, $10, $11)
+    `INSERT INTO jobs (
+       name,
+       company_name,
+       location,
+       work_type,
+       job_salary,
+       skills,
+       description,
+       add_notes,
+       active,
+       status,
+       creator_id,
+       autopilot_sourcing,
+       target_count,
+       distance,
+       days_in_office,
+       linkedin_url,
+       rate,
+       is_original_job,
+       is_automation,
+       automation_limit,
+       in_mail_message,
+       in_mail_message_2,
+       in_mail_message_3,
+       in_mail_message_day_2,
+       in_mail_message_day_3,
+       company_names
+     )
+     VALUES (
+       $1, $2, $3, $4, $5,
+       $6, $7, $8,
+       true, 0, $9,
+       $10, $11,
+       $12, $13, $14, $15,
+       $16, $17, $18,
+       $19, $20, $21, $22, $23,
+       $24
+     )
      RETURNING id`,
     [
       jobData.title,
@@ -327,6 +440,19 @@ export async function createJob(
       creatorId ? parseInt(creatorId, 10) : null,
       autopilot,
       Number.isFinite(targetCount as any) ? targetCount : null,
+      distanceVal,
+      daysInOfficeVal,
+      linkedinUrlVal,
+      rateVal,
+      isOriginalJobVal,
+      isAutomationVal,
+      automationLimitVal,
+      inMailMessageVal,
+      inMailMessage2Val,
+      inMailMessage3Val,
+      inMailDay2Val,
+      inMailDay3Val,
+      companyNamesVal,
     ]
   );
 

@@ -492,6 +492,23 @@ class ApiClient {
     skills?: string[];
     description?: string;
     addNotes?: string;
+
+    // Extended employer fields (parity with legacy Rails wizard)
+    distance?: string | null;
+    days_in_office?: number | string | null;
+    linkedin_url?: string | null;
+    rate?: string | null;
+    is_original_job?: number | boolean | null;
+    is_automation?: number | boolean | null;
+    automation_limit?: number | null;
+
+    in_mail_message?: string | null;
+    in_mail_message_2?: string | null;
+    in_mail_message_3?: string | null;
+    in_mail_message_day_2?: number | null;
+    in_mail_message_day_3?: number | null;
+
+    company_names?: string[] | string | null;
   }) {
     return this.request('/jobs', {
       method: 'POST',
