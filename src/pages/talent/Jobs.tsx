@@ -12,7 +12,6 @@ import {
   FileText,
   Heart,
   Settings,
-  Filter,
   MapPin,
   Trash2,
   Calendar,
@@ -257,14 +256,6 @@ const TalentJobs = () => {
           </div>
           <Button variant="hero" size="lg" onClick={handleSearchClick}>
             Search
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={() => hasActiveFilters && clearAllFilters()}
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            {hasActiveFilters ? "Clear filters" : "Filters"}
           </Button>
         </div>
         <div className="flex flex-wrap gap-2 mt-4 items-center">
