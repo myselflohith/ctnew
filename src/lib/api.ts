@@ -328,6 +328,7 @@ class ApiClient {
     skills?: string[] | null;
     job_type?: string | null;
     work_type?: string | null;
+    days_in_office?: number | string | null;
   }) {
     return this.request('/profile', {
       method: 'PUT',

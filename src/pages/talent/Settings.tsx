@@ -77,6 +77,7 @@ const TalentSettings = () => {
 
   const [jobType, setJobType] = useState<"full_time" | "contract" | "">("");
   const [workType, setWorkType] = useState<"all_types" | "remote" | "hybrid" | "onsite" | "">("");
+  const [daysInOfficePerWeek, setDaysInOfficePerWeek] = useState<string>("");
 
   const [pictureUrl, setPictureUrl] = useState<string>("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +106,10 @@ const TalentSettings = () => {
     );
     const jt = (currentUser as any)?.job_type;
     setJobType(jt === "full_time" || jt === "contract" ? jt : "");
+    const dio = (currentUser as any)?.days_in_office;
+    setDaysInOfficePerWeek(
+      dio != null && dio !== "" ? String(dio) : ""
+    );
     setRemoteInterest(
       (currentUser as any)?.remote_interest === "remote" ||
         (currentUser as any)?.remote_interest === true ||
@@ -299,6 +304,10 @@ const TalentSettings = () => {
         skills,
         job_type: jobType || null,
         work_type: workType || null,
+        days_in_office:
+          workType === "hybrid" && daysInOfficePerWeek
+            ? parseInt(daysInOfficePerWeek, 10)
+            : null,
       });
 
       // Refresh caches so navbar + form reflect latest values everywhere
@@ -431,6 +440,7 @@ const TalentSettings = () => {
                     const val = (v || "") as "all_types" | "remote" | "hybrid" | "onsite";
                     setWorkType(val);
                     setRemoteInterest(val === "remote" ? "remote" : "any");
+                    if (val !== "hybrid") setDaysInOfficePerWeek("");
                   }}
                 >
                   <SelectTrigger id="workType">
@@ -446,30 +456,85 @@ const TalentSettings = () => {
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  value={location}
-                  placeholder="(optional)"
-                  onChange={(e) => setLocation(e.target.value)}
-                />
+            {workType === "hybrid" && (
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="daysInOffice">Days in office per week</Label>
+                  <Select
+                    value={daysInOfficePerWeek || undefined}
+                    onValueChange={(v) => setDaysInOfficePerWeek(v || "")}
+                  >
+                    <SelectTrigger id="daysInOffice">
+                      <SelectValue placeholder="Select days" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n} {n === 1 ? "day" : "days"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location-hybrid">Office location</Label>
+                  <Input
+                    id="location-hybrid"
+                    value={location}
+                    placeholder="e.g. San Francisco, CA"
+                    onChange={(e) => setLocation(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Where you’d go in for hybrid work
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="salaryExpectations">Minimum Salary Expectations</Label>
-                <Input
-                  id="salaryExpectations"
-                  type="text"
-                  placeholder="e.g. $120,000"
-                  value={salaryExpectations}
-                  onChange={(e) => setSalaryExpectations(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Used for job matching / auto-apply thresholds
-                </p>
+            )}
+
+            {workType !== "hybrid" && (
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={location}
+                    placeholder="(optional)"
+                    onChange={(e) => setLocation(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="salaryExpectations">Minimum Salary Expectations</Label>
+                  <Input
+                    id="salaryExpectations"
+                    type="text"
+                    placeholder="e.g. $120,000"
+                    value={salaryExpectations}
+                    onChange={(e) => setSalaryExpectations(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used for job matching / auto-apply thresholds
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
+
+            {workType === "hybrid" && (
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="salaryExpectations">Minimum Salary Expectations</Label>
+                  <Input
+                    id="salaryExpectations"
+                    type="text"
+                    placeholder="e.g. $120,000"
+                    value={salaryExpectations}
+                    onChange={(e) => setSalaryExpectations(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used for job matching / auto-apply thresholds
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="linkedin" className="flex items-center gap-2">

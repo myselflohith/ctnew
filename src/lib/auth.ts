@@ -21,6 +21,7 @@ export interface User {
   skills?: string[];
   job_type?: string | null;
   work_type?: string | null;
+  days_in_office?: number | null;
 
   created_at: string;
   updated_at: string;

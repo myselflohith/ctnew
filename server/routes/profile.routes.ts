@@ -12,7 +12,7 @@ const router = Router();
 
 const USER_SELECT = `u.id, u.email, u.first_name, u.last_name, u.company_name, u.organization_id, u.role, u.email_verified,
                      u.phone_number, u.location, u.linkedin_profile_url, u.picture_url, u.remote_interest, u.salary_expectations, u.skills,
-                     p.job_type, p.work_types,
+                     p.job_type, p.work_types, p.days_in_office,
                      u.created_at, u.updated_at`;
 
 const toUserResponse = (row: any) => ({
@@ -38,6 +38,7 @@ const toUserResponse = (row: any) => ({
   skills: Array.isArray(row.skills) ? row.skills : [],
   job_type: row.job_type ?? null,
   work_type: row.work_types ?? null,
+  days_in_office: row.days_in_office ?? null,
   created_at: row.created_at,
   updated_at: row.updated_at,
 });
@@ -77,6 +78,7 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
       skills,
       job_type,
       work_type,
+      days_in_office,
     } = req.body ?? {};
 
     // `users.picture_url` is JSON in this DB. Store URL as JSON string.
@@ -100,6 +102,7 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
 
     const hasJobType = job_type !== undefined;
     const hasWorkType = work_type !== undefined;
+    const hasDaysInOffice = days_in_office !== undefined;
 
     // IMPORTANT:
     // If a field is omitted (undefined) we must keep existing.
@@ -178,11 +181,19 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
     );
 
     let userRow = updated.rows[0];
-    if (userRow && (hasJobType || hasWorkType) && userRow.person_id) {
+    if (userRow && (hasJobType || hasWorkType || hasDaysInOffice) && userRow.person_id) {
+      const daysVal = hasDaysInOffice && days_in_office !== null && days_in_office !== ''
+        ? parseInt(String(days_in_office), 10)
+        : null;
+      const daysFinal = (daysVal !== null && !Number.isNaN(daysVal) && daysVal >= 1 && daysVal <= 5) ? daysVal : null;
+      // When work type is set to non-hybrid, clear days_in_office
+      const setDays = (hasWorkType && work_type !== 'hybrid') || hasDaysInOffice;
+      const effectiveDays = (hasWorkType && work_type !== 'hybrid') ? null : (hasDaysInOffice ? daysFinal : null);
       await query(
         `UPDATE people SET
            job_type = CASE WHEN $2::boolean IS FALSE THEN job_type ELSE $3 END,
            work_types = CASE WHEN $4::boolean IS FALSE THEN work_types ELSE $5 END,
+           days_in_office = CASE WHEN $6::boolean IS FALSE THEN days_in_office ELSE $7 END,
            updated_at = NOW()
          WHERE id = $1`,
         [
@@ -191,15 +202,17 @@ router.put('/', authenticateToken, async (req: Request, res: Response) => {
           hasJobType ? (job_type ?? null) : null,
           hasWorkType,
           hasWorkType ? (work_type ?? null) : null,
+          setDays,
+          setDays ? (effectiveDays ?? null) : null,
         ]
       );
       const peopleResult = await query(
-        `SELECT p.job_type, p.work_types FROM people p WHERE p.id = $1`,
+        `SELECT p.job_type, p.work_types, p.days_in_office FROM people p WHERE p.id = $1`,
         [userRow.person_id]
       );
       const pr = peopleResult.rows[0];
       if (pr) {
-        userRow = { ...userRow, job_type: pr.job_type, work_types: pr.work_types };
+        userRow = { ...userRow, job_type: pr.job_type, work_types: pr.work_types, days_in_office: pr.days_in_office };
       }
     }
     return res.json({ success: true, user: toUserResponse(userRow) });
