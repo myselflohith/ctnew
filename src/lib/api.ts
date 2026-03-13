@@ -214,7 +214,7 @@ class ApiClient {
     return this.request('/resumes');
   }
 
-  async uploadResume(file: File) {
+  async uploadResume(file: File, options?: { skipMatchAllJobs?: boolean }) {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -223,7 +223,8 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}/resumes/upload`, {
+    const search = options?.skipMatchAllJobs ? '?skipMatch=1' : '';
+    const response = await fetch(`${API_BASE_URL}/resumes/upload${search}`, {
       method: 'POST',
       headers,
       body: formData,

@@ -23,6 +23,7 @@ import {
   getResumeTextForUser,
   callResumeMatchApi,
   runParseRankAndMatchForResume,
+  runParseAndRankForResume,
 } from '../services/resume.service.js';
 import { talentJobMatchingQueue } from '../queues/talent-job-matching.queue.js';
 import { uploadResumeBufferToS3 } from '../services/s3-resume-upload.service.js';
@@ -591,13 +592,30 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Req
       console.warn('Resume profile extraction failed (ignored):', e);
     }
 
-    // Kick off parse + rank + match for this newly uploaded resume (non-blocking)
-    runParseRankAndMatchForResume(String(req.user.id), req.file.filename).catch((e: any) => {
-      console.warn(
-        '[resumes/upload] runParseRankAndMatchForResume failed:',
-        e?.message || e
-      );
-    });
+    // Kick off parse + rank for this newly uploaded resume.
+    // Optionally enqueue job-resume matching, unless client explicitly skips it.
+    const skipMatchAllJobs =
+      String(req.query.skipMatch ?? '')
+        .trim()
+        .toLowerCase() === '1';
+
+    const userIdStr = String(req.user.id);
+
+    if (skipMatchAllJobs) {
+      runParseAndRankForResume(userIdStr, req.file.filename).catch((e: any) => {
+        console.warn(
+          '[resumes/upload] runParseAndRankForResume failed:',
+          e?.message || e
+        );
+      });
+    } else {
+      runParseRankAndMatchForResume(userIdStr, req.file.filename).catch((e: any) => {
+        console.warn(
+          '[resumes/upload] runParseRankAndMatchForResume failed:',
+          e?.message || e
+        );
+      });
+    }
 
     res.status(201).json({
       success: true,

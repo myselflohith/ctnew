@@ -42,7 +42,7 @@ export const useResumes = () => {
     }
   };
 
-  const uploadResume = async (file: File): Promise<Resume | null> => {
+  const uploadResume = async (file: File, options?: { skipMatchAllJobs?: boolean }): Promise<Resume | null> => {
     try {
       const token = apiClient.getToken();
       if (!token) {
@@ -50,7 +50,7 @@ export const useResumes = () => {
         return null;
       }
 
-      const response = await apiClient.uploadResume(file);
+      const response = await apiClient.uploadResume(file, options);
 
       if (response.success) {
         toast.success("Resume uploaded successfully");

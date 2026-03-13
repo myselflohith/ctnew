@@ -937,11 +937,11 @@ export async function runParseRankAndMatchForUser(userId: string): Promise<void>
 }
 
 /**
- * Run parse (RESUME_PARSER_API), rank (RESUME_SCORE_API), and enqueue job-resume match for a resume
- * already saved to disk (local filename). Use when you have the file on disk, e.g. right after upload.
- * For verified users, prefer runParseRankAndMatchForUser(userId) which loads resume from DB.
+ * Run parse (RESUME_PARSER_API) and rank (RESUME_SCORE_API) for a resume
+ * already saved to disk (local filename), updating the people table.
+ * Does NOT enqueue job-resume matching; callers can decide whether to enqueue.
  */
-export async function runParseRankAndMatchForResume(userId: string, resumeFileName: string): Promise<void> {
+export async function runParseAndRankForResume(userId: string, resumeFileName: string): Promise<void> {
   const fullPath = path.join(UPLOAD_DIR, path.basename(resumeFileName));
   let parseResult: Record<string, unknown>;
   try {
@@ -971,6 +971,15 @@ export async function runParseRankAndMatchForResume(userId: string, resumeFileNa
       console.warn('[runParseRankAndMatchForResume] Rank API failed:', rankErr?.message);
     }
   }
+}
+
+/**
+ * Run parse (RESUME_PARSER_API), rank (RESUME_SCORE_API), and enqueue job-resume match for a resume
+ * already saved to disk (local filename). Use when you have the file on disk, e.g. right after upload.
+ * For verified users, prefer runParseRankAndMatchForUser(userId) which loads resume from DB.
+ */
+export async function runParseRankAndMatchForResume(userId: string, resumeFileName: string): Promise<void> {
+  await runParseAndRankForResume(userId, resumeFileName);
 
   try {
     await talentJobMatchingQueue.add('computeMatchScores', { userId: Number(userId) });

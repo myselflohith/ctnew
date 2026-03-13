@@ -50,7 +50,7 @@ const ApplyModal = ({
     }
 
     setUploading(true);
-    const newResume = await uploadResume(file);
+    const newResume = await uploadResume(file, { skipMatchAllJobs: true });
     if (newResume) {
       setSelectedResumeId(newResume.id);
     }
