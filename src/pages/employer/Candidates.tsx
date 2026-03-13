@@ -588,6 +588,11 @@ Best regards,
                             <Button
                               variant="ghost"
                               size="icon"
+                              title={
+                                candidate.status === "Rejected"
+                                  ? "Cancel rejection"
+                                  : "Reject candidate"
+                              }
                               onClick={() => {
                                 setSelectedIds(new Set([candidate.id]));
                                 handleBulkStatusChange(

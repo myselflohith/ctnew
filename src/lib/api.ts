@@ -422,6 +422,13 @@ class ApiClient {
     });
   }
 
+  async saveJobs(jobIds: string[]) {
+    return this.request('/jobs/save-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ jobIds }),
+    });
+  }
+
   async getSavedJobs() {
     return this.request('/jobs/saved/list');
   }
@@ -436,6 +443,13 @@ class ApiClient {
     return this.request(`/jobs/${jobId}/apply`, {
       method: 'POST',
       body: JSON.stringify({ resumeId }),
+    });
+  }
+
+  async applyToJobs(jobIds: string[], resumeId: string) {
+    return this.request('/jobs/apply-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ jobIds, resumeId }),
     });
   }
 

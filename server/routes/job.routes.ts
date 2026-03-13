@@ -365,6 +365,36 @@ router.post('/:id/save', authenticateToken, async (req: Request, res: Response) 
   }
 });
 
+// Save multiple jobs for the current user
+router.post('/save-bulk', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { jobIds } = req.body as { jobIds?: string[] };
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      res.status(400).json({ error: 'jobIds array is required' });
+      return;
+    }
+
+    const uniqueJobIds = Array.from(new Set(jobIds.map((id) => String(id))));
+    const savedResults = [];
+    for (const jobId of uniqueJobIds) {
+      // Reuse single save logic for consistency
+      // eslint-disable-next-line no-await-in-loop
+      const saved = await saveJobForUser(req.user.id, jobId);
+      savedResults.push(saved);
+    }
+
+    res.json({ success: true, data: savedResults });
+  } catch (error: any) {
+    console.error('Save jobs (bulk) error:', error);
+    res.status(500).json({ error: error.message || 'Failed to save jobs' });
+  }
+});
+
 // Get saved jobs
 router.get('/saved/list', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -417,6 +447,42 @@ router.post('/:id/apply', authenticateToken, async (req: Request, res: Response)
   } catch (error: any) {
     console.error('Apply to job error:', error);
     res.status(500).json({ error: error.message || 'Failed to apply to job' });
+  }
+});
+
+// Apply to multiple jobs in one request
+router.post('/apply-bulk', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { jobIds, resumeId } = req.body as { jobIds?: string[]; resumeId?: string };
+
+    if (!resumeId) {
+      res.status(400).json({ error: 'Resume ID is required' });
+      return;
+    }
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      res.status(400).json({ error: 'jobIds array is required' });
+      return;
+    }
+
+    const uniqueJobIds = Array.from(new Set(jobIds.map((id) => String(id))));
+
+    const applications = [];
+    for (const jobId of uniqueJobIds) {
+      // Reuse single-apply logic server-side so we keep DB behaviour consistent
+      // eslint-disable-next-line no-await-in-loop
+      const app = await applyToJob(req.user.id, jobId, resumeId);
+      applications.push(app);
+    }
+
+    res.json({ success: true, data: applications });
+  } catch (error: any) {
+    console.error('Apply to jobs (bulk) error:', error);
+    res.status(500).json({ error: error.message || 'Failed to apply to jobs' });
   }
 });
 

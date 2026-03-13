@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { apiClient } from "@/lib/api";
 import {
   LayoutDashboard,
   Search,
@@ -32,8 +33,10 @@ const TalentJobs = () => {
   const [filterMinSalary, setFilterMinSalary] = useState<number | null>(null);
   const [filterMinMatch, setFilterMinMatch] = useState<number | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState<"" | "save" | "apply" | "remove">("");
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
+  const [bulkApplyMode, setBulkApplyMode] = useState(false);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
   const {
@@ -127,11 +130,31 @@ const TalentJobs = () => {
   };
 
   const handleApplyClick = (job: typeof availableJobs[0]) => {
+    setBulkApplyMode(false);
     setSelectedJobForApply(job);
     setApplyModalOpen(true);
   };
 
   const handleApplyWithResume = async (resumeId: string) => {
+    if (bulkApplyMode) {
+      const jobIds = filteredJobs
+        .filter((job) => selectedJobs.includes(job.id))
+        .map((job) => job.id);
+      if (jobIds.length === 0) {
+        setBulkApplyMode(false);
+        setSelectedJobForApply(null);
+        return;
+      }
+
+      await apiClient.applyToJobs(jobIds, resumeId);
+      await refetch();
+
+      setSelectedJobs([]);
+      setBulkApplyMode(false);
+      setSelectedJobForApply(null);
+      return;
+    }
+
     if (selectedJobForApply) {
       await applyToJob(selectedJobForApply, resumeId);
       setSelectedJobs((prev) => prev.filter((id) => id !== selectedJobForApply.id));
@@ -155,12 +178,36 @@ const TalentJobs = () => {
     }
   };
 
-  const handleRemoveSelected = () => {
-    selectedJobs.forEach((jobId) => {
-      removeFromAvailable(jobId);
-    });
-    toast.info(`Removed ${selectedJobs.length} job(s) from list`);
-    setSelectedJobs([]);
+  const handleBulkActionExecute = async () => {
+    if (!bulkAction || selectedJobs.length === 0) return;
+
+    if (bulkAction === "save") {
+      await apiClient.saveJobs(selectedJobs);
+      await refetch();
+      setSelectedJobs([]);
+      toast.success(`Saved ${selectedJobs.length} job(s)`);
+      return;
+    }
+
+    if (bulkAction === "apply") {
+      const jobsById = new Map(
+        filteredJobs.map((job) => [job.id, job])
+      );
+      const firstJob = jobsById.get(selectedJobs[0]);
+      if (!firstJob) return;
+      setBulkApplyMode(true);
+      setSelectedJobForApply(firstJob);
+      setApplyModalOpen(true);
+      return;
+    }
+
+    if (bulkAction === "remove") {
+      selectedJobs.forEach((jobId) => {
+        removeFromAvailable(jobId);
+      });
+      toast.info(`Removed ${selectedJobs.length} job(s) from list`);
+      setSelectedJobs([]);
+    }
   };
 
   const handleSave = (job: typeof availableJobs[0]) => {
@@ -334,10 +381,31 @@ const TalentJobs = () => {
           </p>
         </div>
         {someSelected && (
-          <Button variant="outline" size="sm" onClick={handleRemoveSelected}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            Remove Selected ({selectedJobs.length})
-          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Actions:</span>
+            <select
+              className="border rounded-md px-2 py-1 text-xs bg-background"
+              value={bulkAction}
+              onChange={(e) =>
+                setBulkAction(
+                  e.target.value as "" | "save" | "apply" | "remove"
+                )
+              }
+            >
+              <option value="">Select action</option>
+              <option value="save">Save job(s)</option>
+              <option value="apply">Apply to job(s)</option>
+              <option value="remove">Remove job(s)</option>
+            </select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!bulkAction}
+              onClick={handleBulkActionExecute}
+            >
+              Apply
+            </Button>
+          </div>
         )}
       </div>
 
