@@ -1,6 +1,6 @@
 import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 
-const EMAIL_FROM = 'cardin@cardinaltalent.ai';
+const EMAIL_FROM = (process.env.EMAIL_FROM || 'cardin@cardinaltalent.ai').trim();
 
 /**
  * Base URL for the frontend (reset password, verify email links).

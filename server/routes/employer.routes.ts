@@ -97,9 +97,14 @@ router.post('/candidates/email', authenticateToken, async (req: Request, res: Re
 
     const html = out.join("");
 
-    await sendEmailViaSES(toEmail, subj, html, 'cardin@cardinaltalent.ai', {
+    // NOTE:
+    // SES requires a verified sender address; we keep the technical "from" as EMAIL_FROM
+    // but make the email appear as coming from the employer via From display name + Reply-To.
+    const employerEmail = String(userRow.rows?.[0]?.email || '').trim();
+
+    await sendEmailViaSES(toEmail, subj, html, process.env.EMAIL_FROM || 'cardin@cardinaltalent.ai', {
       fromDisplayName: employerName,
-      replyTo: String(userRow.rows?.[0]?.email || '').trim() || undefined,
+      replyTo: employerEmail || undefined,
     });
 
     res.json({ success: true });

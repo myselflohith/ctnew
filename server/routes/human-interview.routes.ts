@@ -120,27 +120,10 @@ router.post('/request', authenticateToken, async (req: Request, res: Response) =
     const scheduleUrl = `${PUBLIC_BASE_URL}/human-interview/schedule/${jobId}/${personId}`;
     const manageUrl = `${PUBLIC_BASE_URL}/human-interview/manage/${jobId}/${personId}`;
 
-    // Email candidate the booking link (this is what "Send booking link" expects).
-    // Best-effort: never fail the API response if SES is misconfigured; but log loudly.
-    try {
-      const safeCandidateName =
-        candidateName || `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim() || candidateEmail;
-
-      const subject = `Interview availability needed`;
-      const html = `
-        <div style="font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 16px; line-height: 1.6; color:#111;">
-          <p>Hi ${escapeHtml(safeCandidateName)},</p>
-          <p>Please choose up to 3 availability slots for your interview:</p>
-          ${button(scheduleUrl, 'Book your slot')}
-          <p style="font-size: 13px; color:#555;">If the button doesn't work, copy/paste this URL:</p>
-          <p style="font-size: 13px; color:#555;">${escapeHtml(scheduleUrl)}</p>
-          <p style="margin-top: 24px;">— CardinalTalent</p>
-        </div>
-      `;
-      await sendEmailViaSES(candidateEmail, subject, html, EMAIL_FROM);
-    } catch (emailErr) {
-      console.error('Candidate booking link email failed (non-fatal):', emailErr);
-    }
+    // IMPORTANT:
+    // Do NOT email the candidate from this endpoint.
+    // The initial invite email (with employer-selected 3 slots and a prefilled booking link)
+    // is sent via POST /api/employer/candidates/email from the employer UI.
 
     res.json({
       success: true,
