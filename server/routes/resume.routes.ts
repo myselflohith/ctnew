@@ -39,7 +39,11 @@ await ensureUploadDir();
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads/resumes'));
+    // Keep in sync with resume.service.ts UPLOAD_DIR resolution (supports RESUME_UPLOAD_DIR for prod)
+    const uploadDir = process.env.RESUME_UPLOAD_DIR
+      ? path.resolve(process.env.RESUME_UPLOAD_DIR)
+      : path.join(__dirname, '../../uploads/resumes');
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
@@ -725,9 +729,27 @@ router.post('/extract-skills', authenticateToken, async (req: Request, res: Resp
     res.json({ success: true, data: { skills } });
   } catch (error: any) {
     console.error('Error extracting skills:', error);
+
     const msg = String(error?.message || 'Failed to extract skills');
-    const status = msg.includes('DATASORT_API / DATASORT_API_TOKEN') ? 400 : 500;
-    res.status(status).json({ error: msg });
+    const combined = `${msg} ${String(error?.cause?.message || '')} ${String(error?.code || '')}`.toLowerCase();
+
+    // Return a clearer message when the resume file is missing on disk in production.
+    // This often indicates a misconfigured upload dir (RESUME_UPLOAD_DIR) or a legacy DB row whose
+    // file_path points to a local filename that doesn't exist on the current server.
+    const isMissingFile =
+      combined.includes('enoent') || combined.includes('no such file or directory');
+
+    const status = msg.includes('DATASORT_API / DATASORT_API_TOKEN')
+      ? 400
+      : isMissingFile
+        ? 404
+        : 500;
+
+    res.status(status).json({
+      error: isMissingFile
+        ? 'Resume file not found on server. Please re-upload your resume, or contact support to fix RESUME_UPLOAD_DIR / resume storage.'
+        : msg,
+    });
   }
 });
 

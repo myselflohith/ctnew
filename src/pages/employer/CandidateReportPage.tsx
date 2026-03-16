@@ -325,7 +325,7 @@ const EmployerCandidateReportPage = () => {
 
   if (!report) {
     return (
-      <DashboardLayout navItems={navItems} role="employer">
+      <DashboardLayout role="employer">
         <div className="flex items-center justify-center min-h-screen">
           <Card className="p-8 text-center">
             <p className="text-muted-foreground">No report found</p>
@@ -348,7 +348,7 @@ const EmployerCandidateReportPage = () => {
   // Employer can still see the candidate in the list, but the detailed AI report is gated.
   if (completionPercentage < 80) {
     return (
-      <DashboardLayout navItems={navItems} role="employer">
+      <DashboardLayout role="employer">
         <div className="max-w-4xl mx-auto p-6">
           <Button
             variant="ghost"

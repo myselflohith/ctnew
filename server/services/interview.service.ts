@@ -265,8 +265,18 @@ export async function inviteCandidate(
     }
 
     const interviewTitle = interviewResult.rows[0].interview_title || `Interview #${interviewId}`;
-    const appUrl = process.env.APP_URL || 'http://172.17.252.184:5173';
-    const interviewLink = `${appUrl}/interview/${uniqueLink}`;
+
+    // Public interview links must use the FRONTEND base URL (production), not localhost/dev IP.
+    // Prefer FRONTEND_URL / PUBLIC_APP_URL / APP_URL / SITE_URL / CLIENT_URL with a safe prod fallback.
+    const appUrl =
+      (process.env.FRONTEND_URL || "").trim() ||
+      (process.env.PUBLIC_APP_URL || "").trim() ||
+      (process.env.APP_URL || "").trim() ||
+      (process.env.SITE_URL || "").trim() ||
+      (process.env.CLIENT_URL || "").trim() ||
+      "https://ctnew.cardinaltalent.ai";
+
+    const interviewLink = `${appUrl.replace(/\/$/, "")}/interview/${uniqueLink}`;
 
     // Try to find the user by email to link person_id
     let personId = null;

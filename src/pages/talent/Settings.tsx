@@ -86,7 +86,55 @@ const TalentSettings = () => {
   const [remoteInterest, setRemoteInterest] = useState<"any" | "remote">("any");
 
   const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
   const [extractingSkills, setExtractingSkills] = useState(false);
+
+  const MAX_SKILLS = 100;
+
+  const normalizeSkill = (s: string) => s.trim().replace(/\s+/g, " ");
+  const uniqueSkills = (list: string[]) =>
+    Array.from(
+      new Map(
+        list
+          .map((s) => normalizeSkill(String(s)))
+          .filter(Boolean)
+          .map((s) => [s.toLowerCase(), s] as const)
+      ).values()
+    ).slice(0, MAX_SKILLS);
+  const addSkillsFromInput = async () => {
+    const raw = skillInput.trim();
+    if (!raw) return;
+
+    const parts = raw
+      .split(/[,;\n]/g)
+      .map(normalizeSkill)
+      .filter(Boolean);
+
+    if (!parts.length) return;
+
+    const merged = uniqueSkills([...skills, ...parts]);
+
+    setSkills(merged);
+    setSkillInput("");
+    await persistSkills(merged);
+  };
+
+  const removeSkill = async (skill: string) => {
+    const next = skills.filter((s) => s !== skill);
+    setSkills(next);
+    await persistSkills(next);
+  };
+
+  const persistSkills = async (nextSkills: string[]) => {
+    try {
+      const saved = await apiClient.updateTalentProfile({ skills: nextSkills });
+      setCurrentUser(saved.user as User);
+      await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save skills");
+    }
+  };
 
   useEffect(() => {
     setFirstName(currentUser?.first_name ?? "");
@@ -250,11 +298,13 @@ const TalentSettings = () => {
         return;
       }
 
-      setSkills(extractedSkills);
+      const mergedSkills = uniqueSkills([...skills, ...(extractedSkills as string[])]);
+
+      setSkills(mergedSkills);
 
       // Persist skills only. Backend `PUT /api/profile` was fixed to not blank other fields
       // when only `skills` is provided.
-      const saved = await apiClient.updateTalentProfile({ skills: extractedSkills });
+      const saved = await apiClient.updateTalentProfile({ skills: mergedSkills });
       setCurrentUser(saved.user as User);
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
 
@@ -670,23 +720,67 @@ const TalentSettings = () => {
             </Button>
           </div>
 
-          {skills.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {skills.map((s) => (
-                <span
-                  key={s}
-                  className="px-3 py-1 rounded-full text-sm bg-secondary/40 border border-border"
-                >
-                  {s}
-                </span>
-              ))}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={skillInput}
+                placeholder="Add a skill (press Enter or use commas)..."
+                onChange={(e) => setSkillInput(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    await addSkillsFromInput();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  const raw = skillInput.trim();
+                  if (!raw) return;
+                  const parts = raw
+                    .split(/[,;\n]/g)
+                    .map(normalizeSkill)
+                    .filter(Boolean);
+
+                  const merged = uniqueSkills([...skills, ...parts]);
+                  setSkills(merged);
+                  setSkillInput("");
+                  await persistSkills(merged);
+                }}
+                disabled={!skillInput.trim()}
+              >
+                Add
+              </Button>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No skills yet. Click “Extract from Resume” to parse your uploaded
-              resume.
-            </p>
-          )}
+
+            {skills.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {skills.map((s) => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-secondary/40 border border-border"
+                  >
+                    {s}
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => removeSkill(s)}
+                      aria-label={`Remove ${s}`}
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No skills yet. Click “Extract Skills from Resume” or add skills manually.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Auto Apply */}

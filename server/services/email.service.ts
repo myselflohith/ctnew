@@ -10,6 +10,7 @@ function getFrontendBaseUrl(): string {
   return (
     process.env.FRONTEND_URL ||
     process.env.PUBLIC_APP_URL ||
+    process.env.PUBLIC_BASE_URL ||
     process.env.APP_URL ||
     process.env.SITE_URL ||
     process.env.CLIENT_URL ||
@@ -36,7 +37,7 @@ const sesClient =
     : null;
 
 /** Send an email via AWS SES using raw MIME. Requires AWS SES credentials in .env. */
-async function sendEmailViaSES(
+export async function sendEmailViaSES(
   to: string,
   subject: string,
   html: string,
@@ -146,7 +147,7 @@ function generateEmailHtml(
             .button {
                 display: inline-block;
                 background-color: hsl(38 92% 50%); /* Amber DEFAULT */
-                color: #ffffff;
+                color: #000000; /* Black button text */
                 padding: 15px 30px; /* Larger padding */
                 border-radius: 8px; /* More rounded button */
                 text-decoration: none;
