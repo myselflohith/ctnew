@@ -11,8 +11,10 @@ import { talentJobMatchingQueue } from '../queues/talent-job-matching.queue.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Upload directory for resumes
-const UPLOAD_DIR = path.join(__dirname, '../../uploads/resumes');
+
+const UPLOAD_DIR = process.env.RESUME_UPLOAD_DIR
+  ? path.resolve(process.env.RESUME_UPLOAD_DIR)
+  : path.join(__dirname, '../../uploads/resumes');
 const execFileAsync = promisify(execFile);
 
 // Ensure upload directory exists
@@ -236,7 +238,123 @@ function normalizeLinkedIn(url: any): string | null {
 }
 
 export async function extractProfileFromResumeFilePath(filePath: string): Promise<ResumeExtractedProfile> {
-  const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
+  const trimmed = (filePath || '').trim();
+
+  // If DB stores an http(s) URL (e.g. S3), fetch to a temp file for parsing.
+  const isUrl = /^https?:\/\//i.test(trimmed);
+  if (isUrl) {
+    const response = await fetch(trimmed);
+    if (!response.ok) {
+      throw new Error(`Fetch resume failed: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buf = Buffer.from(arrayBuffer);
+
+    const ext = path.extname(new URL(trimmed).pathname) || '.pdf';
+    const tmpPath = path.join(os.tmpdir(), `ct-resume-${Date.now()}${ext}`);
+    await fs.writeFile(tmpPath, buf);
+
+    try {
+      // Prefer DATASORT when configured
+      try {
+        const datasortApi = (process.env.DATASORT_API || '').trim().replace(/\/$/, '');
+        const token = (process.env.DATASORT_API_TOKEN || '').trim();
+
+        if (datasortApi && token) {
+          const form = new FormData();
+          const fileName = path.basename(new URL(trimmed).pathname) || 'resume.pdf';
+          const bytes = new Uint8Array(buf);
+          form.append('pdf', new Blob([bytes]), fileName);
+
+          const response = await fetch(`${datasortApi}/upload_resume`, {
+            method: 'POST',
+            headers: { Authorization: `Token ${token}` },
+            body: form as any,
+          });
+
+          if (response.ok) {
+            const data: any = await response.json().catch(() => ({}));
+            return {
+              phone_number:
+                typeof data?.phone_number === 'string'
+                  ? data.phone_number.trim()
+                  : typeof data?.phone_number === 'string'
+                    ? data.phone_number.trim()
+                    : typeof data?.contact_num === 'string'
+                      ? data.contact_num.trim()
+                      : null,
+              location: await normalizeLocation(data?.city, data?.state, data?.location),
+              linkedin_profile_url: normalizeLinkedIn(
+                data?.linkedin_profile_url ?? data?.linkedin ?? data?.linkedin_url
+              ),
+            };
+          }
+        }
+      } catch {
+        // ignore and fall back to OpenAI
+      }
+
+      // Fallback: OpenAI (use extracted text/snippet logic already present)
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      if (!apiKey) return {};
+
+      const extractedText = await extractTextFromResume(tmpPath);
+      let resumeContent = extractedText.trim();
+      if (!resumeContent) {
+        resumeContent = buf.toString('latin1', 0, Math.min(buf.length, 200_000));
+      }
+
+      const prompt = `Extract the candidate's phone_number, location, and LinkedIn from this resume.
+Return ONLY valid JSON in this exact shape:
+{ "phone_number": "string" | null, "location": "City, ST" | null, "linkedin_profile_url": "https://linkedin.com/in/..." | null }
+
+Rules:
+- phone_number must be a single string like "+1 (555) 555-5555" if found; else null.
+- location must be a single string like "San Francisco, CA" if found; else null.
+- linkedin_profile_url must be a full URL if found; else null.
+
+Resume content:
+${resumeContent}`;
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          temperature: 0.1,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'You extract structured fields from resumes and respond with JSON only.' },
+            { role: 'user', content: prompt },
+          ],
+        }),
+      });
+
+      if (!response.ok) return {};
+
+      const data: any = await response.json().catch(() => ({}));
+      const content = data?.choices?.[0]?.message?.content;
+      let parsed: any = null;
+      try {
+        parsed = content ? JSON.parse(content) : null;
+      } catch {
+        parsed = null;
+      }
+
+      return {
+        phone_number: typeof parsed?.phone_number === 'string' ? parsed.phone_number.trim() : null,
+        location: typeof parsed?.location === 'string' ? parsed.location.trim() : null,
+        linkedin_profile_url: normalizeLinkedIn(parsed?.linkedin_profile_url),
+      };
+    } finally {
+      await fs.unlink(tmpPath).catch(() => undefined);
+    }
+  }
+
+  const fullPath = path.join(UPLOAD_DIR, path.basename(trimmed));
 
   // Prefer DATASORT when configured
   try {
@@ -337,7 +455,55 @@ ${resumeContent}`;
 }
 
 export async function extractSkillsFromResumeFilePath(filePath: string): Promise<string[]> {
-  const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
+  const trimmed = (filePath || '').trim();
+
+  // If DB stores an http(s) URL (e.g. S3), fetch to a temp file for parsing.
+  const isUrl = /^https?:\/\//i.test(trimmed);
+  if (isUrl) {
+    const response = await fetch(trimmed);
+    if (!response.ok) {
+      throw new Error(`Fetch resume failed: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buf = Buffer.from(arrayBuffer);
+
+    const ext = path.extname(new URL(trimmed).pathname) || '.pdf';
+    const tmpPath = path.join(os.tmpdir(), `ct-resume-${Date.now()}${ext}`);
+    await fs.writeFile(tmpPath, buf);
+
+    try {
+      // Prefer DATASORT when configured.
+      // If DATASORT is not configured OR is unreachable/times out, fall back to OpenAI (best-effort)
+      // so local/dev environments can still use "Extract Skills".
+      try {
+        return await extractSkillsViaDatasort(tmpPath);
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        const causeMsg = String(err?.cause?.message || err?.cause || '');
+        const causeCode = String(err?.cause?.code || '');
+        const isConfigMissing = msg.includes('DATASORT_API / DATASORT_API_TOKEN not configured');
+
+        const combined = `${msg} ${causeMsg} ${causeCode}`.toLowerCase();
+        const isTimeout =
+          combined.includes('und_err_connect_timeout') ||
+          combined.includes('connect timeout') ||
+          combined.includes('timed out') ||
+          combined.includes('timeout') ||
+          combined.includes('aborted');
+
+        if (isConfigMissing || isTimeout) {
+          return await extractSkillsViaOpenAI(tmpPath);
+        }
+
+        throw err;
+      }
+    } finally {
+      await fs.unlink(tmpPath).catch(() => undefined);
+    }
+  }
+
+  // Otherwise it's a local filename/path: resolve under UPLOAD_DIR.
+  const fullPath = path.join(UPLOAD_DIR, path.basename(trimmed));
 
   // Prefer DATASORT when configured.
   // If DATASORT is not configured OR is unreachable/times out, fall back to OpenAI (best-effort)
@@ -358,7 +524,12 @@ export async function extractSkillsFromResumeFilePath(filePath: string): Promise
       combined.includes('timeout') ||
       combined.includes('aborted');
 
-    if (isConfigMissing || isTimeout) {
+    // Also fall back when the file is missing on disk (common in prod when file_path is a legacy local name
+    // but the built server is running from dist/ and uploads live elsewhere).
+    const isMissingFile =
+      combined.includes('enoent') || combined.includes('no such file or directory');
+
+    if (isConfigMissing || isTimeout || isMissingFile) {
       return await extractSkillsViaOpenAI(fullPath);
     }
 
@@ -417,10 +588,16 @@ export async function createResume(
   const isFirst = parseInt(existingResumes.rows[0].count) === 0;
 
   // If we were given a local file name/path (like "uuid.pdf"), upload it to S3 and store the public URL.
-  // This makes resumes reachable by external services like RESUME_MATCH_API.
+  // This makes resumes reachable by external services (and avoids relying on the server filesystem in prod).
   let storedPath = filePath;
+
+  const looksLikeUrl = /^https?:\/\//i.test(filePath);
+
+  // In production we *require* storing resumes in S3 (or another URL-backed store).
+  // Otherwise the next deploy / new server instance won't have the local file and extract-skills will fail.
+  const requireS3 = (process.env.REQUIRE_S3_RESUMES || '').trim() === '1';
+
   try {
-    const looksLikeUrl = /^https?:\/\//i.test(filePath);
     if (!looksLikeUrl) {
       const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
       const uploaded = await uploadResumeFileToS3({
@@ -433,8 +610,13 @@ export async function createResume(
       console.log('[RESUME_UPLOAD] S3 bucket/key:', uploaded.bucket, uploaded.key);
     }
   } catch (e: any) {
-    // Keep backward compatibility: if S3 isn't configured or upload fails, fall back to local file_path.
-    // Autopilot matching may not work in that case.
+    if (requireS3) {
+      // Fail fast if the deploy expects S3 (prod-like).
+      throw new Error(`Resume upload to S3 failed. Configure S3 env vars. Details: ${e?.message || e}`);
+    }
+
+    // Backward compatibility: if S3 isn't configured or upload fails, fall back to local file_path.
+    // NOTE: this will not be reliable across prod deploys unless RESUME_UPLOAD_DIR is persistent.
     console.warn('⚠️ S3 resume upload failed; storing local file_path instead:', e?.message || e);
   }
 
@@ -993,41 +1175,57 @@ export async function runParseRankAndMatchForResume(userId: string, resumeFileNa
  * Prefers people.resume_text if user has a linked person; else parses default resume once to get summary + skills.
  */
 export async function getResumeTextForUser(userId: string): Promise<string> {
-  const userRow = await query(
-    'SELECT person_id FROM users WHERE id = $1',
-    [userId]
-  );
+  const userRow = await query('SELECT person_id FROM users WHERE id = $1', [userId]);
   const personId = userRow.rows?.[0]?.person_id;
   if (personId != null) {
-    const personRow = await query(
-      'SELECT resume_text FROM people WHERE id = $1',
-      [Number(personId)]
-    );
+    const personRow = await query('SELECT resume_text FROM people WHERE id = $1', [Number(personId)]);
     const text = personRow.rows?.[0]?.resume_text;
     if (text != null && String(text).trim() !== '') return String(text).trim();
   }
 
   const resumesResult = await query(
-    'SELECT id, file_path FROM resumes WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1',
+    'SELECT id, file_path, name FROM resumes WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1',
     [userId]
   );
   const resume = resumesResult.rows?.[0];
   if (!resume?.file_path) return '';
 
-  const fullPath = path.join(UPLOAD_DIR, path.basename(resume.file_path));
-  let buf: Buffer;
-  try {
-    buf = await fs.readFile(fullPath);
-  } catch {
-    return '';
-  }
+  const filePathRaw = String(resume.file_path).trim();
   const parserUrl = (process.env.RESUME_PARSER_API || '').trim().replace(/\/$/, '');
   if (!parserUrl) return '';
 
+  // Support production where resumes are stored as S3 URLs in DB.
+  const isUrl = /^https?:\/\//i.test(filePathRaw);
+
+  let buf: Buffer;
+  let uploadName: string;
+
+  if (isUrl) {
+    try {
+      const response = await fetch(filePathRaw);
+      if (!response.ok) return '';
+      const arrayBuffer = await response.arrayBuffer();
+      buf = Buffer.from(arrayBuffer);
+      uploadName = (String(resume.name || '').trim() || path.basename(new URL(filePathRaw).pathname) || 'resume.pdf') as string;
+    } catch {
+      return '';
+    }
+  } else {
+    const fullPath = path.join(UPLOAD_DIR, path.basename(filePathRaw));
+    try {
+      buf = await fs.readFile(fullPath);
+    } catch {
+      return '';
+    }
+    uploadName = path.basename(filePathRaw);
+  }
+
   const form = new FormData();
-  form.append('pdf', new Blob([new Uint8Array(buf)]), path.basename(resume.file_path));
+  form.append('pdf', new Blob([new Uint8Array(buf)]), uploadName);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
+
   let response: Response;
   try {
     response = await fetch(`${parserUrl}/upload_resume`, {

@@ -30,6 +30,10 @@ import TalentInterviewSession from "./pages/talent/InterviewSession";
 import InterviewAccessGate from "./pages/talent/InterviewAccessGate";
 import InterviewThankYou from "./pages/talent/InterviewThankYou";
 
+// Human interview (public links)
+import CandidateSchedule from "./pages/human-interview/CandidateSchedule";
+import EmployerManage from "./pages/human-interview/EmployerManage";
+
 // Public/Interview pages
 
 // Employer pages
@@ -92,6 +96,10 @@ const App = () => (
             <Route path="/interview/:token" element={<InterviewScreeningPage />} />
             <Route path="/interview/:token/access" element={<InterviewAccessGate />} />
             <Route path="/interview/:token/session" element={<TalentInterviewSession />} />
+
+            {/* Human interview public links */}
+            <Route path="/human-interview/schedule/:jobId/:personId" element={<CandidateSchedule />} />
+            <Route path="/human-interview/manage/:jobId/:personId" element={<EmployerManage />} />
             
             {/* Talent routes */}
             <Route path="/talent/dashboard" element={<TalentDashboard />} />

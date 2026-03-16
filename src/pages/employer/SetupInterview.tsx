@@ -12,8 +12,8 @@ import {
   Zap,
   Users2,
 } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AIInterviewSetup from "@/components/employer/AIInterviewSetup";
 import HumanInterviewSetup from "@/components/employer/HumanInterviewSetup";
 
@@ -31,7 +31,26 @@ type InterviewType = "ai" | "human" | null;
 
 const SetupInterview = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [selectedType, setSelectedType] = useState<InterviewType>(null);
+
+  // If coming from Candidates -> Invite -> AI -> Create New
+  // we force AI selection and prefill candidates via localStorage.
+  useEffect(() => {
+    const type = (searchParams.get("type") || "").toLowerCase();
+    const prefill = searchParams.get("prefill");
+
+    if (type === "ai") {
+      setSelectedType("ai");
+    } else if (type === "human") {
+      setSelectedType("human");
+    }
+
+    if (prefill === "1") {
+      // no-op: AIInterviewSetup / CandidateInvite will read from localStorage
+      // key: prefillInterviewCandidates
+    }
+  }, [searchParams]);
 
   const handleBackClick = () => {
     if (selectedType) {
@@ -182,7 +201,19 @@ const SetupInterview = () => {
           </div>
         </div>
       ) : selectedType === "ai" ? (
-        <AIInterviewSetup onBack={() => navigate("/employer/interviews")} />
+        <AIInterviewSetup
+          onBack={() => navigate("/employer/interviews")}
+          onCreated={(interviewId) => {
+            // If this AI interview was created as part of "Invite from Candidates",
+            // immediately route to the invite screen.
+            const hasPrefill = !!localStorage.getItem("prefillInterviewCandidates");
+            if (hasPrefill) {
+              navigate(`/employer/interviews/${interviewId}/invite`);
+              return;
+            }
+            navigate("/employer/interviews");
+          }}
+        />
       ) : (
         <HumanInterviewSetup onBack={() => navigate("/employer/interviews")} />
       )}

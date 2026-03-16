@@ -30,9 +30,10 @@ interface AIInterviewQuestion {
 
 interface AIInterviewSetupProps {
   onBack: () => void;
+  onCreated?: (interviewId: string) => void;
 }
 
-const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
+const AIInterviewSetup = ({ onBack, onCreated }: AIInterviewSetupProps) => {
   // If AI Generate is used, we create the interview first (to get interviewId),
   // then call `/interviews/:interviewId/generate_questions`.
   // Store that interviewId here so the final "Create Interview" step does NOT create a duplicate.
@@ -373,9 +374,14 @@ const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
     if (existingInterviewId) {
       toast.success("AI Interview created successfully!");
       localStorage.setItem("lastInterviewId", existingInterviewId);
-      setTimeout(() => {
-        onBack();
-      }, 800);
+
+      if (onCreated) {
+        onCreated(existingInterviewId);
+      } else {
+        setTimeout(() => {
+          onBack();
+        }, 800);
+      }
       return;
     }
 
@@ -410,15 +416,16 @@ const AIInterviewSetup = ({ onBack }: AIInterviewSetupProps) => {
         const interviewId = response.interview.id;
         toast.success("AI Interview created successfully!");
 
-        // Store interview ID and redirect to invite candidates page
+        // Store interview ID
         localStorage.setItem("lastInterviewId", interviewId.toString());
 
-        // Navigate to invite candidates page
-        setTimeout(() => {
-          onBack();
-          // You can also navigate to invite page if needed
-          // navigate(`/employer/interviews/${interviewId}/invite`);
-        }, 1500);
+        if (onCreated) {
+          onCreated(interviewId.toString());
+        } else {
+          setTimeout(() => {
+            onBack();
+          }, 1500);
+        }
       } else {
         toast.error("Failed to create interview");
       }

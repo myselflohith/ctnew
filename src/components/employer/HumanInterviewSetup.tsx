@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { apiClient } from "@/lib/api";
 import {
   Select,
   SelectContent,
@@ -9,8 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, Plus, Clock, Users } from "lucide-react";
+import { X } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 interface Interviewer {
@@ -26,7 +28,10 @@ interface HumanInterviewSetupProps {
 }
 
 const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
-  const [step, setStep] = useState<"details" | "schedule" | "reviewers" | "review">("details");
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const shouldPrefill = searchParams.get("prefill") === "1";
+  const [step, setStep] = useState<"details" | "review">("details");
   const [formData, setFormData] = useState({
     title: "",
     jobId: "",
@@ -35,47 +40,136 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
     location: "",
   });
 
-  const [schedule, setSchedule] = useState({
-    date: "",
-    time: "",
-    duration: "60",
-    timeZone: "UTC",
-  });
-
   const [selectedInterviewers, setSelectedInterviewers] = useState<Interviewer[]>([]);
   const [interviewers, setInterviewers] = useState<Interviewer[]>([]);
   const [jobs, setJobs] = useState<Array<{ id: string; title: string }>>([]);
-  const [candidates, setCandidates] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Candidates should be independent of job position (per requirement).
+  // We allow selecting existing candidates OR manually adding new ones via text fields.
+  const [candidates, setCandidates] = useState<Array<{ id: string; name: string; email?: string }>>([]);
+  const [candidatesLoaded, setCandidatesLoaded] = useState(false);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [prefilledFromBulk, setPrefilledFromBulk] = useState(false);
+  const isMultiSelect = selectedCandidateIds.length > 1;
+
+  const [manualCandidates, setManualCandidates] = useState<Array<{ name: string; email: string }>>([
+    { name: "", email: "" },
+  ]);
+
   const [loading, setLoading] = useState(false);
 
-  // Mock data
   useEffect(() => {
-    setJobs([
-      { id: "1", title: "Senior Software Engineer" },
-      { id: "2", title: "Product Manager" },
-      { id: "3", title: "Frontend Developer" },
-    ]);
-    setCandidates([
-      { id: "1", name: "John Doe" },
-      { id: "2", name: "Jane Smith" },
-      { id: "3", name: "Alex Johnson" },
-    ]);
-    setInterviewers([
-      { id: "1", name: "Sarah Williams", email: "sarah@company.com", role: "Hiring Manager" },
-      { id: "2", name: "Mike Chen", email: "mike@company.com", role: "Tech Lead" },
-      { id: "3", name: "Emily Brown", email: "emily@company.com", role: "Recruiter" },
-      { id: "4", name: "David Lee", email: "david@company.com", role: "Senior Engineer" },
-    ]);
+    const fetchJobsAndCandidates = async () => {
+      const token = apiClient.getToken();
+      if (!token) return;
+
+      try {
+        // Jobs: best-effort load for dropdown (use existing ApiClient method)
+        const jobsResp: any = await apiClient.getAllJobs().catch(() => ({ success: false, data: [] }));
+        const jobsList = Array.isArray(jobsResp?.data) ? jobsResp.data : [];
+        setJobs(
+          jobsList.map((j: any) => ({
+            id: String(j.id),
+            title: String(j.title || `Job #${j.id}`),
+          }))
+        );
+
+        // Candidates: use employer applications list, same source as EmployerCandidates page
+        // but DO NOT tie candidate selection to jobId.
+        const appsResp: any = await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
+        const apps = Array.isArray(appsResp?.data) ? appsResp.data : Array.isArray(appsResp) ? appsResp : [];
+
+        const mappedCandidates = apps
+          .map((app: any, idx: number) => ({
+            id: String(app.id || app.application_id || idx + 1),
+            name: String(app.candidate_name || app.candidate_email || `Candidate ${idx + 1}`),
+            email: app.candidate_email ?? undefined,
+          }))
+          .filter((c: any) => !!String(c.email || "").trim()); // only candidates with emails are actionable here
+
+        setCandidates(mappedCandidates);
+        setCandidatesLoaded(true);
+      } catch (e) {
+        console.error("Failed to load jobs/candidates", e);
+        setCandidates([]);
+        setJobs([]);
+        setCandidatesLoaded(true);
+      }
+    };
+
+    fetchJobsAndCandidates();
   }, []);
+
+  // Prefill candidates from Candidates page “Create New”
+  useEffect(() => {
+    if (!shouldPrefill) return;
+
+    try {
+      const raw = localStorage.getItem("prefillHumanInterviewCandidates");
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : [];
+      if (!list.length) return;
+
+      // For now this setup UI only supports selecting 1 candidate.
+      // Choose the first selected candidate from the list.
+      const first = list[0];
+      const name = String(first?.name || "").trim();
+      if (!name) return;
+
+      // Replace mock candidates list with the prefilled ones so the dropdown matches
+      const prefillCandidates = list.map((c: any, idx: number) => ({
+        id: String(idx + 1),
+        name: String(c?.name || c?.email || `Candidate ${idx + 1}`),
+        email: String(c?.email || "").trim(),
+      }));
+
+      // Merge with existing candidates (avoid duplicates by email)
+      setCandidates((prev) => {
+        const byEmail = new Map<string, any>();
+        prev.forEach((p) => {
+          const em = String(p.email || "").trim().toLowerCase();
+          if (em) byEmail.set(em, p);
+        });
+        prefillCandidates.forEach((p, i) => {
+          const em = String(p.email || "").trim().toLowerCase();
+          if (!em) return;
+          if (!byEmail.has(em)) {
+            byEmail.set(em, { ...p, id: `${Date.now()}_${i}_${em}` });
+          }
+        });
+        return Array.from(byEmail.values());
+      });
+
+      // Also prefill into manual candidate fields so user can edit/add more easily
+      setManualCandidates((prev) => {
+        const next = prefillCandidates.map((c) => ({ name: c.name, email: c.email || "" }));
+        return next.length ? next : prev;
+      });
+
+      // Preselect all prefilled (after merge, selection is based on email match)
+      setSelectedCandidateIds([]);
+      setPrefilledFromBulk(prefillCandidates.length > 1);
+
+      setFormData((prev) => ({
+        ...prev,
+        candidateId: "",
+      }));
+
+      // Clear after consuming so it doesn't affect future runs
+      localStorage.removeItem("prefillHumanInterviewCandidates");
+    } catch (e) {
+      console.error("Failed to prefill human interview candidates", e);
+    } finally {
+      // Remove query param so refresh doesn't keep trying
+      navigate("/employer/interviews/setup?type=human", { replace: true });
+    }
+  }, [navigate, shouldPrefill]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleScheduleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setSchedule((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleAddInterviewer = (interviewer: Interviewer) => {
@@ -90,24 +184,46 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
     setSelectedInterviewers((prev) => prev.filter((i) => i.id !== id));
   };
 
+  const normalizeEmail = (email: string) => String(email || "").trim().toLowerCase();
+
+  const getSelectedCandidates = () => {
+    // Combine selected from dropdown + manual candidate rows
+    const selectedFromList = (selectedCandidateIds.length ? selectedCandidateIds : [formData.candidateId])
+      .filter(Boolean)
+      .map((id) => candidates.find((c) => c.id === id))
+      .filter(Boolean) as Array<{ id: string; name: string; email?: string }>;
+
+    const manual = manualCandidates
+      .map((c) => ({ name: String(c.name || "").trim(), email: normalizeEmail(c.email) }))
+      .filter((c) => c.email);
+
+    // Merge by email (manual overrides name if provided)
+    const byEmail = new Map<string, { name: string; email: string }>();
+    selectedFromList.forEach((c) => {
+      const email = normalizeEmail(c.email || "");
+      if (!email) return;
+      byEmail.set(email, { name: String(c.name || "").trim() || email, email });
+    });
+    manual.forEach((c) => {
+      const existing = byEmail.get(c.email);
+      byEmail.set(c.email, {
+        name: c.name || existing?.name || c.email,
+        email: c.email,
+      });
+    });
+
+    return Array.from(byEmail.values());
+  };
+
   const handleNextStep = () => {
     if (step === "details") {
-      if (!formData.title || !formData.jobId || !formData.candidateId) {
+      const selected = getSelectedCandidates();
+
+      if (!formData.title || !formData.jobId || selected.length === 0) {
         toast.error("Please fill in all required fields");
         return;
       }
-      setStep("schedule");
-    } else if (step === "schedule") {
-      if (!schedule.date || !schedule.time) {
-        toast.error("Please select date and time");
-        return;
-      }
-      setStep("reviewers");
-    } else if (step === "reviewers") {
-      if (selectedInterviewers.length === 0) {
-        toast.error("Please add at least one interviewer");
-        return;
-      }
+
       setStep("review");
     }
   };
@@ -115,19 +231,68 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // In production, send to API
-      console.log("Submitting Human Interview:", {
-        ...formData,
-        schedule,
-        interviewers: selectedInterviewers,
-      });
+      const selected = getSelectedCandidates();
 
-      toast.success("Interview scheduled successfully!");
-      setTimeout(() => {
-        onBack();
-      }, 1500);
-    } catch (error) {
-      toast.error("Failed to schedule interview");
+      if (!selected.length) {
+        toast.error("Please add at least 1 candidate (email is required).");
+        return;
+      }
+
+      const jobTitle = jobs.find((j) => j.id === formData.jobId)?.title || "your role";
+      const messageSubject = `Interview availability for ${jobTitle}`;
+
+      // Leave body empty so backend default includes booking link.
+      const messageBody = "";
+
+      await Promise.all(
+        selected.map(async (candidate) => {
+          const payload = {
+            candidateName: candidate.name,
+            candidateEmail: candidate.email,
+            candidateUserId: undefined,
+            jobId: formData.jobId ? Number(formData.jobId) : undefined,
+            messageSubject,
+            messageBody,
+          };
+
+          const res = await apiClient.request<{
+            success: boolean;
+            data?: { request: any; links?: any; scheduleUrl?: string; manageUrl?: string; match?: any };
+            error?: string;
+          }>("/human-interview/request", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+
+          // New backend returns { data: { scheduleUrl, manageUrl } } where scheduleUrl is
+          // /human-interview/schedule/:jobId/:personId (NOT hir_cand_* token).
+          const scheduleUrl: string | undefined =
+            (res as any)?.data?.scheduleUrl ||
+            (res as any)?.data?.links?.scheduleUrl ||
+            (res as any)?.data?.links?.candidateUrl;
+
+          // Hard fail if backend didn't return the new-style URL, because token URLs 404.
+          if (!scheduleUrl || scheduleUrl.includes("hir_cand_") || scheduleUrl.includes("hir_emp_")) {
+            throw new Error("Booking link generation returned an invalid URL (legacy token link).");
+          }
+
+          if (scheduleUrl) {
+            toast.success(`Booking link created: ${scheduleUrl}`);
+          }
+
+          if (!res?.success) {
+            throw new Error(res?.error || `Failed to create request for ${candidate.name}`);
+          }
+        })
+      );
+
+      toast.success(
+        `Availability request emailed to ${selected.length} candidate${selected.length === 1 ? "" : "s"}`
+      );
+      setTimeout(() => onBack(), 1500);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message || "Failed to create request");
     } finally {
       setLoading(false);
     }
@@ -141,10 +306,7 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
           <div className="flex items-center gap-2">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                step === "details" ||
-                step === "schedule" ||
-                step === "reviewers" ||
-                step === "review"
+                step === "details" || step === "review"
                   ? "bg-emerald-500 text-white"
                   : "bg-gray-200 text-gray-600"
               }`}
@@ -153,42 +315,16 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
             </div>
             <div className="text-sm font-medium">Details</div>
           </div>
+
           <div className="flex-1 h-1 mx-4 bg-gray-200" />
+
           <div className="flex items-center gap-2">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                step === "schedule" || step === "reviewers" || step === "review"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-gray-200 text-gray-600"
+                step === "review" ? "bg-emerald-500 text-white" : "bg-gray-200 text-gray-600"
               }`}
             >
               2
-            </div>
-            <div className="text-sm font-medium">Schedule</div>
-          </div>
-          <div className="flex-1 h-1 mx-4 bg-gray-200" />
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                step === "reviewers" || step === "review"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-gray-200 text-gray-600"
-              }`}
-            >
-              3
-            </div>
-            <div className="text-sm font-medium">Reviewers</div>
-          </div>
-          <div className="flex-1 h-1 mx-4 bg-gray-200" />
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                step === "review"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-gray-200 text-gray-600"
-              }`}
-            >
-              4
             </div>
             <div className="text-sm font-medium">Review</div>
           </div>
@@ -216,9 +352,16 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
               <label className="block text-sm font-semibold text-foreground mb-2">
                 Job Position *
               </label>
-              <Select value={formData.jobId} onValueChange={(value) => 
-                setFormData(prev => ({ ...prev, jobId: value }))
-              }>
+              <Select
+                value={formData.jobId}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    jobId: value,
+                    candidateId: "", // reset candidate when job changes
+                  }))
+                }
+              >
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select job" />
                 </SelectTrigger>
@@ -236,20 +379,127 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
               <label className="block text-sm font-semibold text-foreground mb-2">
                 Candidate *
               </label>
-              <Select value={formData.candidateId} onValueChange={(value) =>
-                setFormData(prev => ({ ...prev, candidateId: value }))
-              }>
-                <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select candidate" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates.map((candidate) => (
-                    <SelectItem key={candidate.id} value={candidate.id}>
-                      {candidate.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {(prefilledFromBulk || isMultiSelect) && (
+                <div className="text-xs text-muted-foreground mb-2">
+                  {getSelectedCandidates().length} candidates will receive the booking link.
+                </div>
+              )}
+
+              {/* Manual candidates (no job dependency) */}
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Add candidate(s) manually</div>
+                {manualCandidates.map((c, idx) => (
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <Input
+                      value={c.name}
+                      placeholder="Candidate name (optional)"
+                      onChange={(e) =>
+                        setManualCandidates((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x))
+                        )
+                      }
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={c.email}
+                        placeholder="Candidate email *"
+                        onChange={(e) =>
+                          setManualCandidates((prev) =>
+                            prev.map((x, i) => (i === idx ? { ...x, email: e.target.value } : x))
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setManualCandidates((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        disabled={manualCandidates.length === 1}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setManualCandidates((prev) => [...prev, { name: "", email: "" }])}
+                  >
+                    Add another candidate
+                  </Button>
+                </div>
+              </div>
+
+              {/* Existing candidates (optional) */}
+              <div className="space-y-2 pt-3">
+                <div className="text-xs text-muted-foreground">Or select from existing candidates</div>
+
+                {selectedCandidateIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {selectedCandidateIds.map((id) => {
+                      const c = candidates.find((x) => x.id === id);
+                      if (!c) return null;
+                      return (
+                        <Badge key={id} variant="secondary" className="flex items-center gap-2">
+                          {c.name}
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              setSelectedCandidateIds((prev) => prev.filter((x) => x !== id));
+                              if (formData.candidateId === id) {
+                                const remaining = selectedCandidateIds.filter((x) => x !== id);
+                                setFormData((p) => ({ ...p, candidateId: remaining[0] || "" }));
+                              }
+                            }}
+                            aria-label={`Remove ${c.name}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <Select
+                  value={formData.candidateId}
+                  onValueChange={(value) => {
+                    setFormData((prev) => ({ ...prev, candidateId: value }));
+                    if (!value) return;
+
+                    setSelectedCandidateIds((prev) => {
+                      const exists = prev.includes(value);
+                      if (exists) return prev.filter((x) => x !== value);
+                      return [...prev, value];
+                    });
+                  }}
+                  disabled={!candidatesLoaded}
+                >
+                  <SelectTrigger className="h-12">
+                    <SelectValue placeholder={candidatesLoaded ? "Select candidate(s)" : "Loading..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {candidates.map((candidate) => {
+                      const selected = selectedCandidateIds.includes(candidate.id);
+                      return (
+                        <SelectItem key={candidate.id} value={candidate.id}>
+                          {selected ? "✓ " : ""}
+                          {candidate.name}
+                          {candidate.email ? ` (${candidate.email})` : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+
+                <div className="text-[11px] text-muted-foreground">
+                  You can combine manual entries + selected candidates. Duplicates are merged by email.
+                </div>
+              </div>
             </div>
           </div>
 
@@ -295,210 +545,12 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
               Cancel
             </Button>
             <Button onClick={handleNextStep}>
-              Next: Schedule
+              Next
             </Button>
           </div>
         </div>
       )}
 
-      {/* Step: Schedule */}
-      {step === "schedule" && (
-        <div className="glass rounded-2xl p-8 space-y-6">
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex gap-3">
-            <Clock className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-foreground">
-              Select the date and time when you'd like to conduct this interview. Invitations will be
-              sent to all reviewers.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Interview Date *
-              </label>
-              <Input
-                type="date"
-                name="date"
-                value={schedule.date}
-                onChange={handleScheduleChange}
-                className="h-12"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Interview Time *
-              </label>
-              <Input
-                type="time"
-                name="time"
-                value={schedule.time}
-                onChange={handleScheduleChange}
-                className="h-12"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Duration (Minutes)
-              </label>
-              <Select value={schedule.duration} onValueChange={(value) =>
-                setSchedule(prev => ({ ...prev, duration: value }))
-              }>
-                <SelectTrigger className="h-12">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30 minutes</SelectItem>
-                  <SelectItem value="45">45 minutes</SelectItem>
-                  <SelectItem value="60">60 minutes</SelectItem>
-                  <SelectItem value="90">90 minutes</SelectItem>
-                  <SelectItem value="120">120 minutes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Time Zone
-              </label>
-              <Select value={schedule.timeZone} onValueChange={(value) =>
-                setSchedule(prev => ({ ...prev, timeZone: value }))
-              }>
-                <SelectTrigger className="h-12">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="EST">EST (Eastern)</SelectItem>
-                  <SelectItem value="CST">CST (Central)</SelectItem>
-                  <SelectItem value="MST">MST (Mountain)</SelectItem>
-                  <SelectItem value="PST">PST (Pacific)</SelectItem>
-                  <SelectItem value="UTC">UTC</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex gap-4 justify-end">
-            <Button variant="outline" onClick={() => setStep("details")}>
-              Back
-            </Button>
-            <Button onClick={handleNextStep}>
-              Next: Add Reviewers
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Step: Reviewers */}
-      {step === "reviewers" && (
-        <div className="glass rounded-2xl p-8 space-y-6">
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex gap-3">
-            <Users className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-foreground">
-              Select team members who will participate in this interview. Interview invitations will be
-              sent to all selected reviewers.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-foreground mb-4">
-              Select Reviewers
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {interviewers.map((interviewer) => {
-                const isSelected = selectedInterviewers.some((i) => i.id === interviewer.id);
-                return (
-                  <Card
-                    key={interviewer.id}
-                    className={`p-4 cursor-pointer transition-all ${
-                      isSelected
-                        ? "bg-emerald-500/20 border-emerald-500 border-2"
-                        : "bg-secondary/30 hover:bg-secondary/50"
-                    }`}
-                    onClick={() =>
-                      isSelected
-                        ? handleRemoveInterviewer(interviewer.id)
-                        : handleAddInterviewer(interviewer)
-                    }
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium text-foreground">{interviewer.name}</p>
-                        <p className="text-sm text-muted-foreground">{interviewer.role}</p>
-                        <p className="text-xs text-muted-foreground">{interviewer.email}</p>
-                      </div>
-                      <div
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${
-                          isSelected
-                            ? "bg-emerald-500 border-emerald-500"
-                            : "border-gray-300"
-                        }`}
-                      >
-                        {isSelected && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={3}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-
-          {selectedInterviewers.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-foreground">
-                Selected Reviewers ({selectedInterviewers.length})
-              </h3>
-              <div className="space-y-2">
-                {selectedInterviewers.map((interviewer) => (
-                  <div
-                    key={interviewer.id}
-                    className="flex items-center justify-between bg-secondary/30 rounded-xl p-3"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{interviewer.name}</p>
-                      <p className="text-xs text-muted-foreground">{interviewer.email}</p>
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleRemoveInterviewer(interviewer.id)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-4 justify-end">
-            <Button variant="outline" onClick={() => setStep("schedule")}>
-              Back
-            </Button>
-            <Button onClick={handleNextStep} disabled={selectedInterviewers.length === 0}>
-              Review & Schedule
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Step: Review */}
       {step === "review" && (
@@ -517,9 +569,9 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-muted-foreground">Candidate</p>
+                <p className="text-xs font-semibold text-muted-foreground">Candidates</p>
                 <p className="text-foreground">
-                  {candidates.find((c) => c.id === formData.candidateId)?.name}
+                  {getSelectedCandidates().map((c) => c.email).join(", ")}
                 </p>
               </div>
               <div>
@@ -529,61 +581,21 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="text-lg font-bold text-foreground">Schedule</h3>
-            <div className="grid grid-cols-3 gap-4 bg-secondary/30 rounded-xl p-4">
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground">Date</p>
-                <p className="text-foreground">{schedule.date}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground">Time</p>
-                <p className="text-foreground">{schedule.time}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground">Duration</p>
-                <p className="text-foreground">{schedule.duration} minutes</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-lg font-bold text-foreground">
-              Reviewers ({selectedInterviewers.length})
-            </h3>
-            <div className="space-y-2">
-              {selectedInterviewers.map((interviewer) => (
-                <div key={interviewer.id} className="flex items-start gap-3 bg-secondary/30 rounded-xl p-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <span className="text-sm font-semibold text-emerald-600">
-                      {interviewer.name.charAt(0)}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{interviewer.name}</p>
-                    <p className="text-xs text-muted-foreground">{interviewer.role}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
             <p className="text-sm text-foreground">
-              <strong>Ready to proceed:</strong> Interview invitations will be sent to all
-              reviewers. Candidate will receive a confirmation with the interview details.
+              <strong>Ready to proceed:</strong> We’ll email the candidate a link where they can provide availability and book a slot.
             </p>
           </div>
 
           <div className="flex gap-4 justify-end">
-            <Button variant="outline" onClick={() => setStep("reviewers")}>
+            <Button variant="outline" onClick={() => setStep("details")}>
               Back
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={loading}
             >
-              Schedule Interview
+              Send Booking Link
             </Button>
           </div>
         </div>

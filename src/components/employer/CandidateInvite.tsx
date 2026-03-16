@@ -18,9 +18,10 @@ interface CandidateInviteProps {
   interviewTitle: string;
   onBack: () => void;
   onSuccess?: () => void;
+  prefillCandidates?: Array<Pick<Candidate, "name" | "email" | "phone_number">>;
 }
 
-const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: CandidateInviteProps) => {
+const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess, prefillCandidates }: CandidateInviteProps) => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [newCandidate, setNewCandidate] = useState<Candidate>({
     name: "",
@@ -29,6 +30,45 @@ const CandidateInvite = ({ interviewId, interviewTitle, onBack, onSuccess }: Can
   });
   const [loading, setLoading] = useState(false);
   const [invitingSingle, setInvitingSingle] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Highest priority: explicit prop
+    if (prefillCandidates && prefillCandidates.length) {
+      setCandidates(
+        prefillCandidates.map((c, idx) => ({
+          id: `prefill-${Date.now()}-${idx}`,
+          name: c.name,
+          email: c.email,
+          phone_number: c.phone_number,
+        }))
+      );
+      return;
+    }
+
+    // Fallback: localStorage from Candidates -> Invite -> Create New
+    try {
+      const raw = localStorage.getItem("prefillInterviewCandidates");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || !parsed.length) return;
+
+      setCandidates(
+        parsed
+          .filter((c: any) => c && typeof c.email === "string" && typeof c.name === "string")
+          .map((c: any, idx: number) => ({
+            id: `prefill-${Date.now()}-${idx}`,
+            name: c.name,
+            email: c.email,
+            phone_number: c.phone_number,
+          }))
+      );
+
+      // Clear once consumed
+      localStorage.removeItem("prefillInterviewCandidates");
+    } catch {
+      // ignore
+    }
+  }, [prefillCandidates]);
 
   const addCandidate = () => {
     if (!newCandidate.name || !newCandidate.email) {

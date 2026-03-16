@@ -2,16 +2,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  Building2,
-  Settings,
-  Calendar,
-  Search,
-  Mail,
-} from "lucide-react";
+import { Calendar, Search, Mail } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/api";
@@ -35,11 +26,13 @@ const EmployerInterviews = () => {
 
       try {
         setLoading(true);
+
         const response = await apiClient.getInterviews();
 
-        if (response.success && response.data && Array.isArray(response.data)) {
+        const r: any = response;
+        if (r.success && r.data && Array.isArray(r.data)) {
           setInterviews(
-            response.data.map((interview: any) => ({
+            r.data.map((interview: any) => ({
               id: interview.id,
               title: interview.interview_title || `Interview #${interview.id}`,
               description: interview.interview_description || "",
@@ -48,21 +41,12 @@ const EmployerInterviews = () => {
               category: interview.interview_category || "General",
               questionType: interview.question_type || "",
               status: interview.status || "Pending",
-              candidateCount:
-                Number(interview.total_invites ?? interview.candidate_count ?? 0) || 0,
-              completedCount:
-                Number(
-                  interview.completed_count_compat ??
-                    interview.completed_count ??
-                    0
-                ) || 0,
+              candidateCount: Number(interview.total_invites ?? interview.candidate_count ?? 0) || 0,
+              completedCount: Number(interview.completed_count_compat ?? interview.completed_count ?? 0) || 0,
               pendingCount: Number(interview.pending_count ?? 0) || 0,
               inProgressCount: Number(interview.in_progress_count ?? 0) || 0,
-              partiallyCompletedCount:
-                Number(interview.partially_completed_count ?? 0) || 0,
-              createdAt: interview.created_at
-                ? new Date(interview.created_at).toLocaleDateString()
-                : "TBD",
+              partiallyCompletedCount: Number(interview.partially_completed_count ?? 0) || 0,
+              createdAt: interview.created_at ? new Date(interview.created_at).toLocaleDateString() : "TBD",
             }))
           );
         } else {
@@ -76,11 +60,7 @@ const EmployerInterviews = () => {
       }
     };
 
-    if (apiClient.getToken()) {
-      fetchInterviews();
-    } else {
-      setLoading(false);
-    }
+    fetchInterviews();
   }, []);
 
 
@@ -95,6 +75,7 @@ const EmployerInterviews = () => {
       interview.category.toLowerCase().includes(query)
     );
   });
+
 
   const getStatusVariant = (status: string) => {
     switch ((status || "").toLowerCase()) {
@@ -152,13 +133,13 @@ const EmployerInterviews = () => {
         </div>
       </div>
 
-      {/* Interviews List */}
+      {/* AI Interviews List */}
       {loading ? (
         <div className="glass rounded-2xl p-12 text-center">
           <p className="text-muted-foreground">Loading interviews...</p>
         </div>
       ) : filteredInterviews.length > 0 ? (
-        <div className="glass rounded-2xl p-6">
+        <div className="glass rounded-2xl p-6 mb-8">
           <div className="space-y-4">
             {filteredInterviews.map((interview) => (
               <div
@@ -212,22 +193,22 @@ const EmployerInterviews = () => {
             ))}
           </div>
         </div>
-      ) : (
+      ) : null}
+
+      {/* Empty state when no AI interviews */}
+      {!loading && filteredInterviews.length === 0 && (
         <div className="glass rounded-2xl p-12 text-center">
           <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-display text-xl font-semibold text-foreground mb-2">
             {searchQuery ? "No interviews found" : "No interviews scheduled yet"}
           </h3>
           <p className="text-muted-foreground mb-6">
-            {searchQuery 
+            {searchQuery
               ? "Try adjusting your search criteria."
               : "Interviews will appear here once you schedule them with candidates."}
           </p>
           {searchQuery ? (
-            <Button 
-              variant="outline" 
-              onClick={() => setSearchQuery("")}
-            >
+            <Button variant="outline" onClick={() => setSearchQuery("")}>
               Clear Search
             </Button>
           ) : (

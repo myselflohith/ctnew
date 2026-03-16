@@ -9,7 +9,9 @@ import {
   Mail,
   Calendar,
   Users,
+  MoreHorizontal,
 } from "lucide-react";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { useMemo, useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/api";
@@ -17,6 +19,8 @@ import { formatDistanceToNow } from "date-fns";
 import CandidateProfileModal from "@/components/employer/CandidateProfileModal";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { interviewsAPI } from "@/lib/api/interviews";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +29,14 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { employerNavItems } from "@/components/layout/navItems";
+import { TimeSlotCalendar } from "@/components/human-interview/TimeSlotCalendar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 interface Candidate {
   id: string;              // application id
@@ -77,6 +89,35 @@ const EmployerCandidates = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [contactOpen, setContactOpen] = useState(false);
   const [contactBody, setContactBody] = useState("");
+  const [contactSubject, setContactSubject] = useState("Regarding your application");
+  const [contactMode, setContactMode] = useState<"single" | "bulk">("bulk");
+  const [contactHint, setContactHint] = useState<string | null>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteStep, setInviteStep] = useState<"type" | "ai" | "human">("type");
+  const [inviteType, setInviteType] = useState<"ai" | "human" | null>(null);
+
+  const [inviteInterviews, setInviteInterviews] = useState<any[]>([]);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteSending, setInviteSending] = useState(false);
+  const [selectedInterviewId, setSelectedInterviewId] = useState<string>("");
+
+  // Human interview calendar slots (ch-job-marketplace style: pick 3)
+  const [humanSelectedSlots, setHumanSelectedSlots] = useState<any[]>([]);
+
+  const employerDisplayName = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("auth_user");
+      const u = raw ? JSON.parse(raw) : null;
+      const first = (u?.first_name || u?.firstName || "").trim();
+      const last = (u?.last_name || u?.lastName || "").trim();
+      const full = `${first} ${last}`.trim();
+      return full || (u?.name || u?.email || "Employer");
+    } catch {
+      return "Employer";
+    }
+  }, []);
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -284,27 +325,302 @@ const EmployerCandidates = () => {
     }
   };
 
-  const handleOpenContact = () => {
-    const selected = candidates.filter((c) => selectedIds.has(c.id));
-    if (!selected.length) return;
-    const first = selected[0];
-    const body = `Dear ${first.name},
+  const buildEmailBody = (mode: "single" | "bulk", candidate: Candidate) => {
+    const dear = mode === "bulk" ? "Dear [Candidate Name]," : `Dear ${candidate.name},`;
+    const job = mode === "bulk" ? "[Job Position]" : (candidate.jobTitle || "[Job Position]");
+    return `${dear}
 
-After reviewing your profile, I believe your background aligns well with the ${first.jobTitle} position.
+Thank you for applying to the ${job} position. After reviewing your profile, I believe your background aligns well with what we are looking for and would love to connect for a brief conversation.
 
 Best regards,
-[Your Name]`;
-    setContactBody(body);
+${employerDisplayName}`;
+  };
+
+  const handleOpenContact = (mode: "single" | "bulk") => {
+    const selected = candidates.filter((c) => selectedIds.has(c.id));
+    if (!selected.length) return;
+
+    const first = selected[0];
+    setContactMode(mode);
+    setContactSubject(
+      mode === "bulk"
+        ? "Regarding your application to [Job Position]"
+        : `Regarding your application to ${first.jobTitle}`
+    );
+    setContactBody(buildEmailBody(mode, first));
+
+    if (mode === "bulk") {
+      setContactHint('Do not replace the text "[Candidate Name]" or "[Job Position]".');
+    } else {
+      setContactHint(null);
+    }
+
     setContactOpen(true);
   };
 
-  const handleSendContact = () => {
-    const selected = candidates.filter((c) => selectedIds.has(c.id));
-    console.log("[EmployerCandidates] Contact email payload", {
-      to: selected.map((c) => c.email).filter(Boolean),
-      body: contactBody,
+  const substitutePlaceholders = (body: string, candidateName: string, jobTitle: string) => {
+    // Replace even if user edited it partially (best-effort).
+    const safeName = candidateName || "Candidate";
+    const safeJob = jobTitle || "the role";
+    let out = body;
+
+    // Preferred placeholders
+    out = out.replace(/\[Candidate Name\]/g, safeName);
+    out = out.replace(/\[Job Position\]/g, safeJob);
+
+    // Backwards-compat: older placeholder
+    out = out.replace(/\[Job Name\]/g, safeJob);
+
+    // If they removed brackets, still try to detect common variants
+    out = out.replace(/Candidate Name/g, safeName);
+    out = out.replace(/Job Position/g, safeJob);
+
+    // Backwards-compat: older placeholder
+    out = out.replace(/Job Name/g, safeJob);
+
+    return out;
+  };
+
+  const handleSendContact = async () => {
+    const selected = candidates.filter((c) => selectedIds.has(c.id)).filter((c) => !!c.email);
+    if (!selected.length) {
+      setContactOpen(false);
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      if (contactMode === "single") {
+        const c = selected[0];
+        const finalBody = contactBody;
+        await apiClient.request("/employer/candidates/email", {
+          method: "POST",
+          body: JSON.stringify({
+            to: c.email,
+            subject: contactSubject,
+            body: finalBody,
+            candidateName: c.name,
+            jobTitle: c.jobTitle,
+          }),
+        });
+      } else {
+        await Promise.all(
+          selected.map((c) => {
+            const finalBody = substitutePlaceholders(contactBody, c.name, c.jobTitle);
+            const finalSubject = substitutePlaceholders(contactSubject, c.name, c.jobTitle);
+            return apiClient.request("/employer/candidates/email", {
+              method: "POST",
+              body: JSON.stringify({
+                to: c.email,
+                subject: finalSubject,
+                body: finalBody,
+                candidateName: c.name,
+                jobTitle: c.jobTitle,
+              }),
+            });
+          })
+        );
+      }
+
+      toast.success("Email sent");
+      setContactOpen(false);
+    } catch (e) {
+      console.error("Failed to send email", e);
+      toast.error("Failed to send email");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const loadInterviewsForInvite = async () => {
+    // AI interview list (existing interviews)
+    try {
+      setInviteLoading(true);
+      const resp: any = await apiClient.getInterviews().catch(() => ({ success: false, data: [] }));
+      const list = Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : [];
+      const mapped = list.map((it: any) => ({
+        id: String(it.id),
+        title: it.interview_title || `Interview #${it.id}`,
+        jobId: String(it.job_id || ""),
+      }));
+      setInviteInterviews(mapped);
+      // Default: pick first interview if not selected yet
+      if (!selectedInterviewId && mapped.length) {
+        setSelectedInterviewId(mapped[0].id);
+      }
+    } catch (e) {
+      console.error("Failed to load interviews", e);
+      setInviteInterviews([]);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+
+  const handleOpenInvite = async () => {
+    const selected = candidates.filter((c) => selectedIds.has(c.id)).filter((c) => !!c.email);
+    if (!selected.length) return;
+
+    // reset invite flow state
+    setInviteStep("type");
+    setInviteType(null);
+    setHumanSelectedSlots([]);
+    setSelectedInterviewId("");
+    setInviteOpen(true);
+  };
+
+  const formatSlot = (iso: string) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+
+    // Include weekday + timezone so the email is understandable.
+    return d.toLocaleString(undefined, {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZoneName: "short",
     });
-    setContactOpen(false);
+  };
+
+  const buildHumanInterviewEmailBody = (
+    candidate: Candidate,
+    slots: Array<{ startISO: string; endISO: string }>,
+    scheduleUrl: string
+  ) => {
+    const jobTitle = candidate.jobTitle || "the role";
+
+    const slotLines = (slots || [])
+      .filter((s) => !!s?.startISO)
+      .slice(0, 3)
+      .map((s, idx) => {
+        const startText = formatSlot(s.startISO);
+        const endText = formatSlot(s.endISO);
+        return `Slot ${idx + 1}: ${startText} - ${endText}`;
+      })
+      .join("\n");
+
+    const slotParams = encodeURIComponent(
+      JSON.stringify(
+        (slots || [])
+          .filter((s) => !!s?.startISO && !!s?.endISO)
+          .slice(0, 3)
+          .map((s) => ({ start: s.startISO, end: s.endISO }))
+      )
+    );
+
+    const scheduleUrlWithPrefill = scheduleUrl
+      ? `${scheduleUrl}${scheduleUrl.includes("?") ? "&" : "?"}prefillSlots=${slotParams}`
+      : scheduleUrl;
+
+    return `Dear ${candidate.name},
+
+We'd like to schedule an interview for the ${jobTitle} position. Here are 3 proposed time slots:
+
+${slotLines}
+
+[button] Review and Book Slot
+${scheduleUrlWithPrefill}
+
+If you'd like a different time, you can adjust the timing in the calendar after opening the link (or request a different time).
+
+Best regards,
+${employerDisplayName}`;
+  };
+
+  const handleSendInvite = async () => {
+    const selected = candidates.filter((c) => selectedIds.has(c.id)).filter((c) => !!c.email);
+    if (!selected.length) {
+      setInviteOpen(false);
+      return;
+    }
+
+    if (inviteType === "ai") {
+      const interviewIdNum = Number(selectedInterviewId);
+      if (!interviewIdNum || Number.isNaN(interviewIdNum)) {
+        toast.error("Please select an AI interview");
+        return;
+      }
+
+      setInviteSending(true);
+      try {
+        await Promise.all(
+          selected.map((c) =>
+            interviewsAPI.inviteCandidate(interviewIdNum, c.name, c.email || "")
+          )
+        );
+        toast.success("AI interview invite sent");
+        setInviteOpen(false);
+      } catch (e) {
+        console.error("Failed to send AI invite", e);
+        toast.error("Failed to send AI interview invite");
+      } finally {
+        setInviteSending(false);
+      }
+      return;
+    }
+
+    if (inviteType === "human") {
+      const filled = (humanSelectedSlots || []).filter((s: any) => !!s?.startISO).slice(0, 3);
+      if (filled.length < 3) {
+        toast.error("Please select 3 availability slots");
+        return;
+      }
+
+      setInviteSending(true);
+      try {
+        const results = await Promise.allSettled(
+          selected.map(async (c) => {
+            // Create/ensure a scheduling record and get the public scheduling URL.
+            const reqResp: any = await apiClient.request("/human-interview/request", {
+              method: "POST",
+              body: JSON.stringify({
+                candidateName: c.name,
+                candidateEmail: c.email,
+                jobId: Number(c.jobId),
+              }),
+            });
+
+            const scheduleUrl =
+              (reqResp as any)?.data?.scheduleUrl ||
+              (reqResp as any)?.scheduleUrl ||
+              (reqResp as any)?.data?.data?.scheduleUrl ||
+              "";
+
+            const body = buildHumanInterviewEmailBody(c, filled, scheduleUrl || "");
+            return apiClient.request("/employer/candidates/email", {
+              method: "POST",
+              body: JSON.stringify({
+                to: c.email,
+                subject: `Interview availability for ${c.jobTitle}`,
+                body,
+              }),
+            });
+          })
+        );
+
+        const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+        if (failed.length) {
+          console.error("Some human interview emails failed", failed);
+          toast.error(`Failed to send ${failed.length} email(s). Check console for details.`);
+          return;
+        }
+
+        toast.success("Human interview availability sent");
+        setInviteOpen(false);
+      } catch (e) {
+        console.error("Failed to send human interview email", e);
+        toast.error("Failed to send human interview availability");
+      } finally {
+        setInviteSending(false);
+      }
+      return;
+    }
+
+    toast.error("Please select AI or Human interview");
   };
 
   return (
@@ -416,36 +732,35 @@ Best regards,
             ? `${selectedIds.size} candidate${selectedIds.size === 1 ? "" : "s"} selected`
             : `${filteredCandidates.length} candidate${filteredCandidates.length === 1 ? "" : "s"} found`}
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!selectedIds.size}
-            onClick={() => handleBulkStatusChange("Rejected")}
-          >
-            Reject
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={
-              !candidates.some(
-                (c) => selectedIds.has(c.id) && c.status === "Rejected"
-              )
-            }
-            onClick={() => handleBulkStatusChange("Under Review")}
-          >
-            Cancel Rejection
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            disabled={!selectedIds.size}
-            onClick={handleOpenContact}
-          >
-            Contact
-          </Button>
-        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={!selectedIds.size}>
+              Actions
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem title="Reject" onClick={() => handleBulkStatusChange("Rejected")}>
+              Reject
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              title="Cancel Rejection"
+              disabled={
+                !candidates.some((c) => selectedIds.has(c.id) && c.status === "Rejected")
+              }
+              onClick={() => handleBulkStatusChange("Under Review")}
+            >
+              Cancel Rejection
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem title="Email Candidate" onClick={() => handleOpenContact("bulk")}>
+              Email Candidate
+            </DropdownMenuItem>
+            <DropdownMenuItem title="Invite for Interview" onClick={handleOpenInvite}>
+              Invite for Interview
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Candidates List */}
@@ -573,44 +888,45 @@ Best regards,
                     </td>
                     <td className="px-4 py-2 align-top text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedIds(new Set([candidate.id]));
-                            handleOpenContact();
-                          }}
-                        >
-                          <Mail className="w-4 h-4" />
-                        </Button>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title={
-                                candidate.status === "Rejected"
-                                  ? "Cancel rejection"
-                                  : "Reject candidate"
-                              }
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" title="Actions">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              title={candidate.status === "Rejected" ? "Cancel Rejection" : "Reject"}
                               onClick={() => {
                                 setSelectedIds(new Set([candidate.id]));
                                 handleBulkStatusChange(
-                                  candidate.status === "Rejected"
-                                    ? "Under Review"
-                                    : "Rejected"
+                                  candidate.status === "Rejected" ? "Under Review" : "Rejected"
                                 );
                               }}
                             >
-                              <Calendar className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {candidate.status === "Rejected"
-                              ? "Cancel rejection"
-                              : "Reject candidate"}
-                          </TooltipContent>
-                        </Tooltip>
+                              {candidate.status === "Rejected" ? "Cancel Rejection" : "Reject"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              title="Email Candidate"
+                              onClick={() => {
+                                setSelectedIds(new Set([candidate.id]));
+                                handleOpenContact("single");
+                              }}
+                            >
+                              Email Candidate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              title="Invite for Interview"
+                              onClick={async () => {
+                                setSelectedIds(new Set([candidate.id]));
+                                await handleOpenInvite();
+                              }}
+                            >
+                              Invite for Interview
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -655,29 +971,202 @@ Best regards,
         onEditJob={handleEditJobFromDescription}
       />
 
-      {/* Contact modal */}
+      {/* Email modal */}
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[650px]">
           <DialogHeader>
-            <DialogTitle>Contact candidates</DialogTitle>
+            <DialogTitle>Email Candidate</DialogTitle>
             <DialogDescription>
-              This email will be sent (individually) to the selected candidates. You can edit the text before sending.
+              {contactMode === "bulk"
+                ? "This email will be sent to the selected candidates."
+                : "This email will be sent to the selected candidate."}
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            className="min-h-[180px]"
-            value={contactBody}
-            onChange={(e) => setContactBody(e.target.value)}
-          />
+
+          {contactHint && (
+            <div className="text-xs text-muted-foreground">{contactHint}</div>
+          )}
+
+          <div className="space-y-2">
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Subject</div>
+              <Input
+                value={contactSubject}
+                onChange={(e) => setContactSubject(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Message</div>
+              <Textarea
+                className="min-h-[220px]"
+                value={contactBody}
+                onChange={(e) => setContactBody(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setContactOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setContactOpen(false)} disabled={sendingEmail}>
               Cancel
             </Button>
-            <Button onClick={handleSendContact}>Send</Button>
+            <Button onClick={handleSendContact} disabled={sendingEmail}>
+              {sendingEmail ? "Sending..." : "Send"}
+            </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite for interview modal */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="sm:max-w-[650px]">
+          <DialogHeader>
+            <DialogTitle>Invite for Interview</DialogTitle>
+            <DialogDescription>
+              {inviteStep === "type"
+                ? "Choose AI interview or Human interview."
+                : inviteStep === "ai"
+                ? "Select an existing AI interview, or create a new one."
+                : "Select 3 availability slots to email the candidate(s)."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {inviteStep === "type" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setInviteType("human");
+                    setInviteStep("human");
+                    setHumanSelectedSlots([]);
+                  }}
+                  disabled={inviteSending}
+                >
+                  Human Interview
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setInviteType("ai");
+                    setInviteStep("ai");
+                    await loadInterviewsForInvite();
+                  }}
+                  disabled={inviteSending}
+                >
+                  AI Interview
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {inviteStep === "ai" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground mb-1">AI Interview</div>
+                <select
+                  className="border rounded-md px-2 py-2 text-sm bg-background w-full"
+                  value={selectedInterviewId}
+                  onChange={(e) => setSelectedInterviewId(e.target.value)}
+                  disabled={inviteLoading || inviteSending}
+                >
+                  {inviteInterviews.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.title}
+                    </option>
+                  ))}
+                </select>
+
+                {!inviteInterviews.length && !inviteLoading && (
+                  <div className="text-xs text-muted-foreground">
+                    No AI interviews found.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const selected = candidates
+                      .filter((c) => selectedIds.has(c.id))
+                      .filter((c) => !!c.email)
+                      .map((c) => ({
+                        name: c.name,
+                        email: c.email || "",
+                      }));
+
+                    localStorage.setItem("prefillInterviewCandidates", JSON.stringify(selected));
+                    navigate("/employer/interviews/setup?type=ai&prefill=1");
+                  }}
+                  disabled={inviteSending}
+                >
+                  Create New
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setInviteStep("type")}
+                    disabled={inviteSending}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleSendInvite}
+                    disabled={
+                      inviteSending ||
+                      inviteLoading ||
+                      !inviteInterviews.length ||
+                      !selectedInterviewId
+                    }
+                  >
+                    {inviteSending ? "Sending..." : "Send Invite"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+          {inviteStep === "human" && (
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                Select 3 availability slots. These will be emailed to each selected candidate (their own job title will be used).
+              </div>
+
+              {/* Calendar widget (same component used in other human interview flows) */}
+              <div className="border rounded-xl overflow-hidden">
+                {/* TimeSlotCalendar is heavy; keep it inside the modal only */}
+                {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+                {/* @ts-ignore */}
+                <TimeSlotCalendar
+                  maxSlots={3}
+                  onSlotsSelected={(slots: any[]) => setHumanSelectedSlots(slots)}
+                  disabled={inviteSending}
+                />
+              </div>
+
+              <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t pt-3 flex items-center justify-end gap-2">
+                <Button variant="outline" onClick={() => setInviteStep("type")} disabled={inviteSending}>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleSendInvite}
+                  disabled={inviteSending || (humanSelectedSlots || []).filter((s: any) => !!s?.startISO).length < 3}
+                >
+                  {inviteSending ? "Sending..." : "Send"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {inviteStep === "type" && (
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setInviteOpen(false)} disabled={inviteSending}>
+                Cancel
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>
