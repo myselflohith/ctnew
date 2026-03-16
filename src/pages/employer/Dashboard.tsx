@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow, format } from "date-fns";
@@ -302,7 +302,14 @@ const EmployerDashboard = () => {
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-medium text-foreground">{job.title}</h3>
+                    <h3 className="font-medium text-foreground">
+                      <Link
+                        to={`/employer/jobs/${job.id}`}
+                        className="hover:underline"
+                      >
+                        {job.title}
+                      </Link>
+                    </h3>
                     <Badge variant={job.status === "active" ? "active" : "closed"}>
                       {job.status}
                     </Badge>

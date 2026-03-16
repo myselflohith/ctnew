@@ -98,7 +98,6 @@ const DashboardLayout = ({
   // falling back to any explicit props only if provided (for non-auth contexts).
   const computedName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
   const displayName = computedName || userNameProp || "";
-  const displayEmail = user?.email ?? "";
   const displayCompany = user?.company_name ?? companyNameProp ?? undefined;
 
   const handleLogout = async () => {
@@ -174,9 +173,6 @@ const DashboardLayout = ({
                   <p className="text-sm font-medium text-sidebar-foreground">
                     {displayName || " "}
                   </p>
-                  {displayEmail && (
-                    <p className="text-xs text-muted-foreground">{displayEmail}</p>
-                  )}
                   {displayCompany && (
                     <p className="text-xs text-muted-foreground">{displayCompany}</p>
                   )}
