@@ -8,10 +8,13 @@
 --   - We use BOOLEAN + INTEGER in Postgres.
 --   - Defaults chosen to be safe and backward compatible.
 
-ALTER TABLE jobs
-  ADD COLUMN IF NOT EXISTS autopilot_sourcing BOOLEAN NOT NULL DEFAULT false;
-
-ALTER TABLE jobs
-  ADD COLUMN IF NOT EXISTS target_count INTEGER NULL;
-
-CREATE INDEX IF NOT EXISTS idx_jobs_autopilot_sourcing ON jobs(autopilot_sourcing);
+-- NOTE:
+-- Production schema already uses:
+--   is_automation INTEGER NULL DEFAULT 0,
+--   automation_limit INTEGER NULL DEFAULT 0,
+--   last_automation_at TIMESTAMP NULL
+-- So we should NOT add duplicate autopilot_sourcing / target_count columns.
+--
+-- Keep this migration as a no-op for environments that already have the automation columns.
+-- (Safe to run multiple times.)
+SELECT 1;
