@@ -3,6 +3,13 @@ import pool from '../database/connection.js';
 import { sendEmailViaSES } from './email.service.js';
 import { query } from '../database/connection.js';
 
+// This service is legacy for the initial invite flow.
+// We keep some functions for backwards compatibility, but DO NOT want it to send
+// the initial "Interview availability needed" email when the new UI invite flow is used.
+// That email is now sent exclusively via POST /api/employer/candidates/email.
+const SEND_LEGACY_CANDIDATE_INVITE_EMAIL =
+  String(process.env.HUMAN_INTERVIEW_SEND_LEGACY_CANDIDATE_INVITE_EMAIL || '').trim() === '1';
+
 export type HumanInterviewStatus =
   | 'requested'
   | 'candidate_submitted'
@@ -61,13 +68,13 @@ export async function createHumanInterviewRequest(input: CreateHumanInterviewReq
   const candidateToken = randomToken('hir_cand');
   const employerToken = randomToken('hir_emp');
 
-  // Guard against FK violations (human_interview_requests.job_id -> ct_job.id).
+  // Guard against FK violations (human_interview_requests.job_id -> jobs.id).
   // If caller passes an invalid jobId, treat it as "no job selected" instead of failing the whole request.
   let safeJobId: number | null = input.jobId ? Number(input.jobId) : null;
   if (!safeJobId || Number.isNaN(safeJobId)) {
     safeJobId = null;
   } else {
-    const jobExists = await pool.query(`SELECT 1 FROM ct_job WHERE id = $1`, [safeJobId]);
+    const jobExists = await pool.query(`SELECT 1 FROM jobs WHERE id = $1`, [safeJobId]);
     if (!jobExists.rows?.length) safeJobId = null;
   }
 
@@ -407,12 +414,22 @@ export async function sendHumanInterviewRequestEmails(params: {
   employerName: string;
   employerReplyTo?: string;
 }) {
+  // Disabled by default to prevent duplicate candidate emails.
+  // Enable only if you are using the legacy token-based flow and want the backend to send the candidate invite.
+  if (!SEND_LEGACY_CANDIDATE_INVITE_EMAIL) {
+    return {
+      scheduleUrl: `${PUBLIC_BASE_URL}/human-interview/schedule/0/0`,
+      employerManageUrl: `${PUBLIC_BASE_URL}/human-interview/manage/0/0`,
+      subject: 'Interview availability request',
+      skippedEmail: true,
+    };
+  }
   const reqRes = await pool.query(
     `SELECT hir.*,
             j.title as job_title,
             j.company as job_company
      FROM human_interview_requests hir
-     LEFT JOIN ct_job j ON hir.job_id = j.id
+     LEFT JOIN jobs j ON hir.job_id = j.id
      WHERE hir.id = $1`,
     [params.requestId]
   );
