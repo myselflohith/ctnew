@@ -55,14 +55,13 @@ export async function createAIInterview(
             );
           }
 
-          // Also store into ai_interview_questions so real interviews can always load from one place.
-          // IMPORTANT: schema.sql defines ai_interview_questions as JOB-level canonical questions:
-          //   (job_id, category, question, question_weight, created_by, ...)
-          // There is NO ai_interview_id column in ctnew schema.
+          // Also store into ai_interview_questions so interviews can load from one place.
+          // NOTE: In production, ai_interview_questions.ai_interview_id has an FK to ai_interviews(id),
+          // so we MUST insert with the created interview.id (omitting it may default to 0 and violate FK).
           await client.query(
-            `INSERT INTO ai_interview_questions (job_id, category, question, question_weight, created_by, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-            [jobId, interviewCategory || 'general', questionText, weight, userId]
+            `INSERT INTO ai_interview_questions (job_id, ai_interview_id, category, question, question_weight, created_by, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+            [jobId, interview.id, interviewCategory || 'general', questionText, weight, userId]
           );
         }
         
@@ -99,11 +98,11 @@ export async function getInterviewsForEmployer(
     // NOTE:
     // - "Active" means discarded_at IS NULL
     // - "Archived" means discarded_at IS NOT NULL (Rails uses unscoped + where.not(discarded_at: nil))
-    // - Search parity: interview_title, type_of_interview, and job title (ct_job.title)
+    // - Search parity: interview_title, type_of_interview, and job title (job.title)
     const result = await pool.query(
       `SELECT 
         ai.*,
-        cj.title as job_title,
+        cj.name as job_title,
         (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND discarded_at IS NULL) as candidate_count,
         (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) = 'completed' AND discarded_at IS NULL) as completed_count,
         (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) IN ('completed','complete') AND discarded_at IS NULL) as completed_count_compat,
@@ -112,7 +111,7 @@ export async function getInterviewsForEmployer(
         (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND LOWER(status) IN ('pending') AND discarded_at IS NULL) as pending_count,
         (SELECT COUNT(*) FROM ai_interview_invites WHERE interview_id = ai.id AND discarded_at IS NULL) as total_invites
        FROM ai_interviews ai
-       LEFT JOIN ct_job cj ON ai.job_id = cj.id
+       LEFT JOIN jobs cj ON ai.job_id = cj.id
        WHERE ai.person_id = $1
          AND (
            ($2::boolean = true AND ai.discarded_at IS NOT NULL)
@@ -123,7 +122,7 @@ export async function getInterviewsForEmployer(
            $3 = ''
            OR LOWER(COALESCE(ai.interview_title, '')) LIKE ('%' || $3 || '%')
            OR LOWER(COALESCE(ai.type_of_interview, '')) LIKE ('%' || $3 || '%')
-           OR LOWER(COALESCE(cj.title, '')) LIKE ('%' || $3 || '%')
+           OR LOWER(COALESCE(cj.name, '')) LIKE ('%' || $3 || '%')
          )
        ORDER BY ai.created_at DESC`,
       [userId, isArchived, search]
@@ -335,11 +334,11 @@ export async function generateQuestions(
          ai.type_of_interview,
          ai.addition_skill,
          ai.job_id as job_id,
-         cj.title as job_title,
+         cj.name as job_title,
          cj.description as job_description,
          cj.skills as job_skills
        FROM ai_interviews ai
-       LEFT JOIN ct_job cj ON ai.job_id = cj.id
+       LEFT JOIN jobs cj ON ai.job_id = cj.id
        WHERE ai.id = $1 AND ai.discarded_at IS NULL`,
       [interviewId]
     );
@@ -435,13 +434,13 @@ Ensure that you generate exactly ${numQuestions} questions and that they are dis
         // 2) canonical job/interview questions (used by fallback flows)
         // Avoid duplicates if user clicks "Generate" multiple times.
         await client.query(
-          `INSERT INTO ai_interview_questions (job_id, category, question, question_weight, created_by, created_at, updated_at)
-           SELECT $1, $2, $3, $4, NULL, NOW(), NOW()
+          `INSERT INTO ai_interview_questions (job_id, ai_interview_id, category, question, question_weight, created_by, created_at, updated_at)
+           SELECT $1, $2, $3, $4, $5, NULL, NOW(), NOW()
            WHERE NOT EXISTS (
              SELECT 1 FROM ai_interview_questions
-             WHERE job_id = $1 AND question = $3 AND discarded_at IS NULL
+             WHERE job_id = $1 AND ai_interview_id = $2 AND question = $4 AND discarded_at IS NULL
            )`,
-          [jobId, 'general', trimmed, 1]
+          [jobId, interviewId, 'general', trimmed, 1]
         );
 
         savedQuestions.push(gen.rows[0]);
@@ -1466,11 +1465,11 @@ export async function getInterviewByUniqueLink(uniqueLink: string) {
           ai.interview_category,
           ai.addition_skill,
           ai.job_id,
-          cj.title as job_name,
+          cj.name as job_name,
           cj.description as job_description
          FROM ai_interview_invites aiv
          JOIN ai_interviews ai ON aiv.interview_id = ai.id
-         LEFT JOIN ct_job cj ON ai.job_id = cj.id
+         LEFT JOIN jobs cj ON ai.job_id = cj.id
          WHERE aiv.unique_interview_link = $1
            AND aiv.discarded_at IS NULL
            AND LOWER(aiv.status) = 'pending'`,
