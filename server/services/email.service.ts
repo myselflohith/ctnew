@@ -359,6 +359,12 @@ export async function sendCompanyApprovalRequestEmail(
   userEmail: string,
   companyName: string
 ): Promise<void> {
+  // For internal admin actions, prefer SITE_URL so links go to the admin host,
+  // falling back to the regular frontend URL if SITE_URL is not configured.
+  const adminBase =
+    (process.env.SITE_URL && process.env.SITE_URL.trim().replace(/\/$/, '')) ||
+    getFrontendBaseUrl();
+  const adminOrgsUrl = `${adminBase}/admin/organizations`;
   const headerContent = `
     <h1>CardinalTalent</h1>
   `;
@@ -369,7 +375,13 @@ export async function sendCompanyApprovalRequestEmail(
     <p><strong>Requester name:</strong> ${displayName}</p>
     <p><strong>Requester email:</strong> ${userEmail}</p>
     <p><strong>Company entered:</strong> ${companyName}</p>
-    <p>Please add this company as an approved organization in Cardinal Talent if appropriate.</p>
+    <p>Please review and, if appropriate, approve this company in the Cardinal Talent admin panel.</p>
+    <p style="text-align: center; margin: 30px 0;">
+      <a href="${adminOrgsUrl}" class="button">Open Admin Organizations</a>
+    </p>
+    <p>If the button does not work, open this URL in your browser:<br/>
+      <a href="${adminOrgsUrl}">${adminOrgsUrl}</a>
+    </p>
     <p>Best regards,<br>CardinalTalent</p>
   `;
 
