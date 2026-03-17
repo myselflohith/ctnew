@@ -88,6 +88,7 @@ const TalentSettings = () => {
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
   const [extractingSkills, setExtractingSkills] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const MAX_SKILLS = 100;
 
@@ -259,12 +260,30 @@ const TalentSettings = () => {
       return;
     }
 
+    // Enforce max size 1MB on client
+    const maxBytes = 1 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error("Profile picture is too large. Please upload an image under 1 MB.");
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+      return;
+    }
+
     try {
+      setUploadingAvatar(true);
       const res = await apiClient.uploadTalentPhoto(file);
 
       setPictureUrl(res.url);
       setCurrentUser(res.user as User);
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+
+      // Notify other parts of the app (e.g. sidebar) that currentUser has changed
+      try {
+        const event = new CustomEvent("ct.currentUser.updated", { detail: res.user });
+        window.dispatchEvent(event);
+        sessionStorage.setItem("ct.currentUser", JSON.stringify(res.user));
+      } catch {
+        // ignore cross-environment issues
+      }
 
       toast.success("Profile photo uploaded");
     } catch (err) {
@@ -272,6 +291,7 @@ const TalentSettings = () => {
       toast.error("Failed to upload photo");
     } finally {
       if (avatarInputRef.current) avatarInputRef.current.value = "";
+      setUploadingAvatar(false);
     }
   };
 
@@ -397,7 +417,7 @@ const TalentSettings = () => {
 
           {/* Avatar */}
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-full bg-secondary/40 overflow-hidden flex items-center justify-center">
+            <div className="relative w-16 h-16 rounded-full bg-secondary/40 overflow-hidden flex items-center justify-center">
               {pictureUrl ? (
                 <img
                   src={pictureUrl}
@@ -408,6 +428,11 @@ const TalentSettings = () => {
                 <span className="text-lg font-semibold text-muted-foreground">
                   {displayName.charAt(0)}
                 </span>
+              )}
+              {uploadingAvatar && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
               )}
             </div>
 

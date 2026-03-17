@@ -354,7 +354,7 @@ class ApiClient {
 
     // If proxy rejects large files (e.g. 413), show a clear message.
     if (response.status === 413) {
-      throw new Error('That image is too large. Please upload a picture under 2 MB.');
+      throw new Error('That image is too large. Please upload a picture under 1 MB.');
     }
 
     let data: any = null;
