@@ -17,7 +17,10 @@ const JOB_SELECT = `
   j.created_at,
   j.updated_at,
   COALESCE(j.autopilot_sourcing, 0) AS autopilot_sourcing,
-  j.target_count
+  j.target_count,
+  j.distance,
+  j.days_in_office,
+  j.add_notes
 `;
 // Same as JOB_SELECT but with j.id AS job_id for use in application/saved joins
 const JOB_SELECT_AS_JOB = `
@@ -54,6 +57,13 @@ export interface Job {
   // Autosourcing (autopilot)
   autopilot_sourcing?: boolean;
   target_count?: number | null;
+
+  // Location / office details
+  distance?: string | null;
+  days_in_office?: number | null;
+
+  // Raw requirements text (for parsing back into requirements UI)
+  add_notes?: string | null;
 }
 
 export interface SavedJob {
@@ -322,7 +332,14 @@ export async function createJob(
   const skillsStr = Array.isArray(jobData.skills) ? jobData.skills.join(', ') : (jobData.skills ?? '') || null;
   const addNotesVal = typeof jobData.addNotes === 'string' ? jobData.addNotes : null;
 
-  const autopilot = Boolean((jobData as any)?.autopilot_sourcing);
+  // DB column is INTEGER (0/1). Accept boolean/number/string inputs safely.
+  const autopilotRaw = (jobData as any)?.autopilot_sourcing;
+  const autopilot =
+    typeof autopilotRaw === 'boolean'
+      ? (autopilotRaw ? 1 : 0)
+      : autopilotRaw == null || autopilotRaw === ''
+        ? 0
+        : Number(autopilotRaw) ? 1 : 0;
   const targetCount =
     (jobData as any)?.target_count === undefined || (jobData as any)?.target_count === null || (jobData as any)?.target_count === ''
       ? null
@@ -497,6 +514,85 @@ export async function updateJob(
   if (jobData.description !== undefined) {
     updates.push(`description = $${paramCount++}`);
     values.push(jobData.description);
+  }
+
+  // Keep schema parity: jobs.autopilot_sourcing is INTEGER (0/1)
+  if ((jobData as any).autopilot_sourcing !== undefined) {
+    const raw = (jobData as any).autopilot_sourcing;
+    const val =
+      typeof raw === 'boolean'
+        ? (raw ? 1 : 0)
+        : raw == null || raw === ''
+          ? 0
+          : Number(raw) ? 1 : 0;
+    updates.push(`autopilot_sourcing = $${paramCount++}`);
+    values.push(val);
+  }
+
+  if ((jobData as any).target_count !== undefined) {
+    const raw = (jobData as any).target_count;
+    const val = raw == null || raw === '' ? null : Number(raw);
+    updates.push(`target_count = $${paramCount++}`);
+    values.push(Number.isFinite(val as any) ? val : null);
+  }
+
+  if ((jobData as any).distance !== undefined) {
+    const raw = (jobData as any).distance;
+    updates.push(`distance = $${paramCount++}`);
+    values.push(raw != null && String(raw).trim() !== '' ? String(raw).trim() : null);
+  }
+
+  if ((jobData as any).days_in_office !== undefined) {
+    const raw = (jobData as any).days_in_office;
+    const num = raw == null || raw === '' ? null : Number(raw);
+    updates.push(`days_in_office = $${paramCount++}`);
+    values.push(num != null && Number.isFinite(num) ? num : null);
+  }
+
+  if ((jobData as any).linkedin_url !== undefined) {
+    const raw = (jobData as any).linkedin_url;
+    updates.push(`linkedin_url = $${paramCount++}`);
+    values.push(raw != null && String(raw).trim() !== '' ? String(raw).trim() : null);
+  }
+
+  if ((jobData as any).rate !== undefined) {
+    const raw = (jobData as any).rate;
+    updates.push(`rate = $${paramCount++}`);
+    values.push(raw != null && String(raw).trim() !== '' ? String(raw).trim() : null);
+  }
+
+  if ((jobData as any).addNotes !== undefined) {
+    const raw = (jobData as any).addNotes;
+    updates.push(`add_notes = $${paramCount++}`);
+    values.push(typeof raw === 'string' && raw.trim() !== '' ? raw : null);
+  }
+
+  if ((jobData as any).in_mail_message !== undefined) {
+    const raw = (jobData as any).in_mail_message;
+    updates.push(`in_mail_message = $${paramCount++}`);
+    values.push(raw != null && String(raw).trim() !== '' ? String(raw) : null);
+  }
+  if ((jobData as any).in_mail_message_2 !== undefined) {
+    const raw = (jobData as any).in_mail_message_2;
+    updates.push(`in_mail_message_2 = $${paramCount++}`);
+    values.push(raw != null && String(raw).trim() !== '' ? String(raw) : null);
+  }
+  if ((jobData as any).in_mail_message_3 !== undefined) {
+    const raw = (jobData as any).in_mail_message_3;
+    updates.push(`in_mail_message_3 = $${paramCount++}`);
+    values.push(raw != null && String(raw).trim() !== '' ? String(raw) : null);
+  }
+  if ((jobData as any).in_mail_message_day_2 !== undefined) {
+    const raw = (jobData as any).in_mail_message_day_2;
+    const num = raw == null || raw === '' ? null : Number(raw);
+    updates.push(`in_mail_message_day_2 = $${paramCount++}`);
+    values.push(num != null && Number.isFinite(num) ? num : null);
+  }
+  if ((jobData as any).in_mail_message_day_3 !== undefined) {
+    const raw = (jobData as any).in_mail_message_day_3;
+    const num = raw == null || raw === '' ? null : Number(raw);
+    updates.push(`in_mail_message_day_3 = $${paramCount++}`);
+    values.push(num != null && Number.isFinite(num) ? num : null);
   }
 
   if (updates.length === 0) {

@@ -59,6 +59,9 @@ type JobDetails = {
   description: string;
   autopilot_sourcing?: boolean;
   target_count?: number | null;
+  distance?: string | null;
+  days_in_office?: number | null;
+   add_notes?: string | null;
 };
 
 const EmployerJobs = () => {
@@ -232,6 +235,9 @@ const EmployerJobs = () => {
           description: fullJob.description || "",
           autopilot_sourcing: fullJob.autopilot_sourcing,
           target_count: fullJob.target_count,
+          distance: fullJob.distance ?? null,
+          days_in_office: fullJob.days_in_office ?? null,
+          add_notes: fullJob.add_notes ?? null,
         });
         setEditModalOpen(true);
       } else {

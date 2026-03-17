@@ -650,7 +650,30 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       return;
     }
 
-    const { title, company, location, type, salary, match_score, skills, description } = req.body;
+    const {
+      title,
+      company,
+      location,
+      type,
+      salary,
+      match_score,
+      skills,
+      description,
+      addNotes,
+      autopilot_sourcing,
+      target_count,
+      distance,
+      days_in_office,
+      linkedin_url,
+      rate,
+      in_mail_message,
+      in_mail_message_2,
+      in_mail_message_3,
+      in_mail_message_day_2,
+      in_mail_message_day_3,
+      company_names,
+    } = req.body;
+
     const job = await updateJob(req.params.id, {
       title,
       company,
@@ -660,7 +683,21 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       match_score,
       skills,
       description,
-    });
+      // extended fields (mirror createJob mapping)
+      addNotes,
+      autopilot_sourcing,
+      target_count,
+      distance,
+      days_in_office,
+      linkedin_url,
+      rate,
+      in_mail_message,
+      in_mail_message_2,
+      in_mail_message_3,
+      in_mail_message_day_2,
+      in_mail_message_day_3,
+      company_names,
+    } as any);
 
     res.json({ success: true, data: job });
   } catch (error: any) {
