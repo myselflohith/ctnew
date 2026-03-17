@@ -352,9 +352,24 @@ class ApiClient {
       credentials: 'include',
     });
 
-    const data = await response.json();
+    // If proxy rejects large files (e.g. 413), show a clear message.
+    if (response.status === 413) {
+      throw new Error('That image is too large. Please upload a picture under 2 MB.');
+    }
+
+    let data: any = null;
+    try {
+      data = await response.json();
+    } catch {
+      // Non-JSON error (like HTML 413 page)
+      if (!response.ok) {
+        throw new Error('Unable to upload profile picture. Please try a smaller image.');
+      }
+      throw new Error('Unexpected response from server while uploading photo.');
+    }
+
     if (!response.ok) {
-      throw new Error(data.error || 'Upload failed');
+      throw new Error(data?.error || 'Upload failed');
     }
     return data as { success: boolean; url: string; user: any };
   }
