@@ -351,7 +351,7 @@ export async function sendInterviewInviteEmail(
   }
 }
 
-const COMPANY_APPROVAL_REQUEST_TO = process.env.COMPANY_APPROVAL_REQUEST_EMAIL || 'talent@yopmail.com';
+const COMPANY_APPROVAL_REQUEST_TO = process.env.COMPANY_APPROVAL_REQUEST_EMAIL;
 
 /** Send company approval request to internal team (AWS SES). Used when employer enters an unapproved company. */
 export async function sendCompanyApprovalRequestEmail(

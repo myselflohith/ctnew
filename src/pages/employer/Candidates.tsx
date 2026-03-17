@@ -49,6 +49,13 @@ interface Candidate {
   jobTitle: string;
   matchScore: number | null;
   rankScore: number | null;
+  scoreEdu?: number | null;
+  scoreCompany?: number | null;
+  latestCompany?: string | null;
+  latestSchool?: string | null;
+  matchSummary?: string | null;
+  /** Full JSON payload from employer_auto_matched_candidates.detail_response */
+  detailResponse?: any;
   status: string;
   appliedAt: string | null;
   appliedAtRaw: string | null;
@@ -118,6 +125,10 @@ const EmployerCandidates = () => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSending, setInviteSending] = useState(false);
   const [selectedInterviewId, setSelectedInterviewId] = useState<string>("");
+
+  const [scoreExplainOpen, setScoreExplainOpen] = useState(false);
+  const [scoreExplainCandidate, setScoreExplainCandidate] = useState<Candidate | null>(null);
+  const [scoreExplainMode, setScoreExplainMode] = useState<"match" | "rank">("match");
 
   // Human interview calendar slots (ch-job-marketplace style: pick 3)
   const [humanSelectedSlots, setHumanSelectedSlots] = useState<any[]>([]);
@@ -195,6 +206,43 @@ const EmployerCandidates = () => {
                   : app.rank_score != null
                   ? Number(app.rank_score)
                   : null,
+              scoreEdu:
+                typeof app.score_edu === "number"
+                  ? app.score_edu
+                  : app.score_edu != null
+                  ? Number(app.score_edu)
+                  : null,
+              scoreCompany:
+                typeof app.score_company === "number"
+                  ? app.score_company
+                  : app.score_company != null
+                  ? Number(app.score_company)
+                  : null,
+              latestCompany:
+                app.latest_company != null && String(app.latest_company).trim() !== ""
+                  ? String(app.latest_company).trim()
+                  : null,
+              latestSchool:
+                app.latest_school != null && String(app.latest_school).trim() !== ""
+                  ? String(app.latest_school).trim()
+                  : null,
+              matchSummary:
+                typeof (app.job as any)?.match_summary === "string"
+                  ? (app.job as any).match_summary
+                  : null,
+              detailResponse: (() => {
+                const raw = (app.job as any)?.detail_response;
+                if (raw == null) return undefined;
+                if (typeof raw === "string") {
+                  try {
+                    return JSON.parse(raw);
+                  } catch {
+                    return raw;
+                  }
+                }
+                // If backend already sends JSON (driver/jsonb), keep it as-is.
+                return raw;
+              })(),
               status: app.status || "Application Sent",
               appliedAt: appliedAtFormatted,
               appliedAtRaw: appliedAtRaw,
@@ -918,34 +966,56 @@ ${employerDisplayName}`;
                     </td>
                     <td className="px-4 py-2 align-top">
                       {candidate.matchScore != null ? (
-                        <Badge
-                          variant={
-                            candidate.matchScore >= 90
-                              ? "excellent"
-                              : candidate.matchScore >= 80
-                              ? "good"
-                              : "fair"
-                          }
+                        <button
+                          type="button"
+                          className="focus:outline-none"
+                          onClick={() => {
+                            setScoreExplainCandidate(candidate);
+                            setScoreExplainMode("match");
+                            setScoreExplainOpen(true);
+                          }}
+                          title="Click to see how this match score was calculated"
                         >
-                          {Math.round(candidate.matchScore)}%
-                        </Badge>
+                          <Badge
+                            variant={
+                              candidate.matchScore >= 90
+                                ? "excellent"
+                                : candidate.matchScore >= 80
+                                ? "good"
+                                : "fair"
+                            }
+                          >
+                            {Math.round(candidate.matchScore)}%
+                          </Badge>
+                        </button>
                       ) : (
                         <span className="text-xs text-muted-foreground">N/A</span>
                       )}
                     </td>
                     <td className="px-4 py-2 align-top">
                       {candidate.rankScore != null ? (
-                        <Badge
-                          variant={
-                            candidate.rankScore >= 90
-                              ? "excellent"
-                              : candidate.rankScore >= 80
-                              ? "good"
-                              : "secondary"
-                          }
+                        <button
+                          type="button"
+                          className="focus:outline-none"
+                          onClick={() => {
+                            setScoreExplainCandidate(candidate);
+                            setScoreExplainMode("rank");
+                            setScoreExplainOpen(true);
+                          }}
+                          title="Click to see how this rank score was calculated"
                         >
-                          {Math.round(candidate.rankScore)}%
-                        </Badge>
+                          <Badge
+                            variant={
+                              candidate.rankScore >= 90
+                                ? "excellent"
+                                : candidate.rankScore >= 80
+                                ? "good"
+                                : "secondary"
+                            }
+                          >
+                            {Math.round(candidate.rankScore)}%
+                          </Badge>
+                        </button>
                       ) : (
                         <span className="text-xs text-muted-foreground">N/A</span>
                       )}
@@ -1247,6 +1317,169 @@ ${employerDisplayName}`;
               <Button variant="outline" onClick={() => setInviteOpen(false)} disabled={inviteSending}>
                 Cancel
               </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Score explanation dialog */}
+      <Dialog open={scoreExplainOpen} onOpenChange={setScoreExplainOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>How this score was calculated</DialogTitle>
+            <DialogDescription>
+              High scores indicate strong alignment between the candidate and your open roles.
+            </DialogDescription>
+          </DialogHeader>
+          {scoreExplainCandidate && (
+            <div className="space-y-4 text-sm">
+              {/* Header: who + job */}
+              <div>
+                <p className="font-medium text-foreground">{scoreExplainCandidate.name}</p>
+                {scoreExplainCandidate.email && (
+                  <p className="text-xs text-muted-foreground">
+                    {scoreExplainCandidate.email}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  Job: {scoreExplainCandidate.jobTitle}
+                </p>
+              </div>
+
+              {/* Rank + basic match score (rank mode only) */}
+              {scoreExplainMode === "rank" && (
+                <div className="space-y-1">
+                  {scoreExplainCandidate.rankScore != null && (
+                    <p>
+                      <span className="font-semibold">Rank Score:</span>{" "}
+                      {Math.round(scoreExplainCandidate.rankScore)}% — combines{" "}
+                      <span className="font-semibold">education quality</span> and{" "}
+                      <span className="font-semibold">company quality</span>.
+                    </p>
+                  )}
+                  {scoreExplainCandidate.scoreEdu != null && (
+                    <p>
+                      <span className="font-semibold">Education score:</span>{" "}
+                      {Math.round(scoreExplainCandidate.scoreEdu)}% — based on the ranking of{" "}
+                      {scoreExplainCandidate.latestSchool
+                        ? `schools such as ${scoreExplainCandidate.latestSchool}.`
+                        : "the candidate's universities."}
+                    </p>
+                  )}
+                  {scoreExplainCandidate.scoreCompany != null && (
+                    <p>
+                      <span className="font-semibold">Company score:</span>{" "}
+                      {Math.round(scoreExplainCandidate.scoreCompany)}% — based on the strength of{" "}
+                      {scoreExplainCandidate.latestCompany
+                        ? `companies like ${scoreExplainCandidate.latestCompany}.`
+                        : "the candidate's past employers."}
+                    </p>
+                  )}
+                  {scoreExplainCandidate.matchScore != null && (
+                    <p>
+                      <span className="font-semibold">Match score:</span>{" "}
+                      {Math.round(scoreExplainCandidate.matchScore)}%
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Overall match details from detailResponse (match mode only) */}
+              {scoreExplainMode === "match" && (() => {
+                const d = scoreExplainCandidate.detailResponse;
+                if (!d) {
+                  return scoreExplainCandidate.matchSummary ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {scoreExplainCandidate.matchSummary}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No match details available.</p>
+                  );
+                }
+
+                const details =
+                  typeof d === "string"
+                    ? (() => {
+                        try {
+                          return JSON.parse(d);
+                        } catch {
+                          return null;
+                        }
+                      })()
+                    : d;
+
+                if (!details || typeof details !== "object") {
+                  return (
+                    <pre className="max-h-[260px] overflow-auto rounded-md border bg-background/50 p-2 text-xs leading-relaxed">
+                      {String(d)}
+                    </pre>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="font-semibold">
+                        Summary (Match Score: {details.score ?? scoreExplainCandidate.matchScore ?? "N/A"}%)
+                      </p>
+                      {details.summary && (
+                        <p className="mt-1 text-muted-foreground">{details.summary}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="font-semibold">Overall Score</p>
+                      <p className="text-muted-foreground">
+                        Final overall score: {details.score ?? scoreExplainCandidate.matchScore ?? "N/A"} / 100
+                      </p>
+                    </div>
+
+                    {Array.isArray(details.skills) && details.skills.length > 0 && (
+                      <div>
+                        <p className="font-semibold">Skills</p>
+                        <div className="mt-2 space-y-2">
+                          {details.skills.map((s: any) => (
+                            <div key={s.name}>
+                              <p className="font-medium">{s.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Match type: {s.match_type}, Experience: {s.years_experience}
+                              </p>
+                              {Array.isArray(s.evidence) && s.evidence.length > 0 && (
+                                <p className="text-xs">
+                                  Evidence: {s.evidence.join(", ")}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {details.notes_score_breakdown && (
+                      <div>
+                        <p className="font-semibold">Score Breakdown</p>
+                        <div className="mt-2 space-y-2">
+                          {Object.values(
+                            details.notes_score_breakdown as Record<string, any>
+                          ).map((note: any, idx: number) => (
+                            <div key={idx}>
+                              <p className="text-xs font-medium">{note.note_text}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Score: {note.score} / {note.max_points} (weight {note.weight})
+                              </p>
+                              {note.match_summary && (
+                                <p className="text-xs text-muted-foreground">
+                                  {note.match_summary}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </DialogContent>

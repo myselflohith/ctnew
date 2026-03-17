@@ -93,7 +93,12 @@ const JobCard = ({
                 <TooltipProvider>
                   <div className="flex items-center gap-2">
                     {matchScore && (
-                      <Badge variant={getMatchVariant(matchScore)}>
+                      <Badge
+                        variant={getMatchVariant(matchScore)}
+                        className={onViewMatchDetails ? "cursor-pointer" : undefined}
+                        onClick={onViewMatchDetails}
+                        title={onViewMatchDetails ? "Click to see how this match score was calculated" : undefined}
+                      >
                         {matchScore}% Match
                       </Badge>
                     )}

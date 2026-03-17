@@ -161,6 +161,18 @@ export async function verifyOrganization(organizationId: string): Promise<Organi
     `UPDATE organizations SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
     [organizationId]
   );
+
+  // After approval, ensure any linked users have their company_name set to the approved org name.
+  if (normalizedName) {
+    await query(
+      `UPDATE users
+         SET company_name = $2,
+             updated_at   = CURRENT_TIMESTAMP
+       WHERE organization_id = $1
+         AND (company_name IS NULL OR TRIM(company_name) = '')`,
+      [organizationId, normalizedName]
+    );
+  }
   const updated = await getOrganizationById(organizationId);
   if (!updated) throw new Error('Organization not found after update');
   return updated;

@@ -17,6 +17,13 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/recruiter/dashboard" },
@@ -57,6 +64,8 @@ const mockSearchResults = [
 const RecruiterDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
+  const [matchDialogOpen, setMatchDialogOpen] = useState(false);
+  const [selectedMatchScore, setSelectedMatchScore] = useState<number | null>(null);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,7 +143,17 @@ const RecruiterDashboard = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <Badge variant="excellent">{candidate.matchScore}% Match</Badge>
+                  <Badge
+                    variant="excellent"
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setSelectedMatchScore(candidate.matchScore);
+                      setMatchDialogOpen(true);
+                    }}
+                    title="Click to see how this match score was calculated"
+                  >
+                    {candidate.matchScore}% Match
+                  </Badge>
                   <Button variant="outline" size="sm">
                     View Profile
                   </Button>
@@ -219,6 +238,30 @@ const RecruiterDashboard = () => {
           ))}
         </div>
       </div>
+
+      {/* Match explanation dialog for AI search candidates */}
+      <Dialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Overall Match</DialogTitle>
+            <DialogDescription>
+              High scores indicate strong alignment between the candidate and your search criteria.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedMatchScore != null && (
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="font-semibold">Match score:</span>{" "}
+                {Math.round(selectedMatchScore)}%
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This mock match score is based on how well the candidate&apos;s skills, experience,
+                and education align with your AI search prompt.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

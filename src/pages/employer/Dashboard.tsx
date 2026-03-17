@@ -23,6 +23,13 @@ import { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow, format } from "date-fns";
 import { employerNavItems } from "@/components/layout/navItems";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Job {
   id: string;
@@ -77,6 +84,8 @@ const EmployerDashboard = () => {
   const [showAllJobs, setShowAllJobs] = useState(false);
   const [showAllCandidates, setShowAllCandidates] = useState(false);
   const [showAllInterviews, setShowAllInterviews] = useState(false);
+  const [candidateMatchDialogOpen, setCandidateMatchDialogOpen] = useState(false);
+  const [selectedCandidateForMatch, setSelectedCandidateForMatch] = useState<Candidate | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -395,6 +404,12 @@ const EmployerDashboard = () => {
                           ? "good"
                           : "fair"
                       }
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setSelectedCandidateForMatch(candidate);
+                        setCandidateMatchDialogOpen(true);
+                      }}
+                      title="Click to see how this match score was calculated"
                     >
                       {candidate.matchScore}% Match
                     </Badge>
@@ -412,6 +427,38 @@ const EmployerDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Match details dialog for top candidates */}
+      <Dialog open={candidateMatchDialogOpen} onOpenChange={setCandidateMatchDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Overall Match</DialogTitle>
+            <DialogDescription>
+              High scores indicate strong alignment between this candidate and your open roles.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCandidateForMatch && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="font-medium text-foreground">{selectedCandidateForMatch.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  Rank #{selectedCandidateForMatch.rank} • {selectedCandidateForMatch.role}
+                </p>
+              </div>
+              <p>
+                <span className="font-semibold">Match score:</span>{" "}
+                {Math.round(selectedCandidateForMatch.matchScore)}%
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This dashboard preview shows the candidate&apos;s overall match score. For full
+                scoring details and breakdown, open the candidate in the{" "}
+                <span className="font-semibold">Candidates</span> or{" "}
+                <span className="font-semibold">Resume Database</span> pages.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

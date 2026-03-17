@@ -1,6 +1,13 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   LayoutDashboard,
@@ -37,6 +44,7 @@ interface ResumeCandidate {
   latestCompany?: string | null;
   latestSchool?: string | null;
   matchScore?: number | null;
+  matchSummary?: string | null;
 }
 
 const EmployerResumeDatabase = () => {
@@ -44,6 +52,8 @@ const EmployerResumeDatabase = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [scoreExplainOpen, setScoreExplainOpen] = useState(false);
+  const [scoreExplainCandidate, setScoreExplainCandidate] = useState<ResumeCandidate | null>(null);
 
   const loadDefault = async () => {
     try {
@@ -207,30 +217,50 @@ const EmployerResumeDatabase = () => {
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
                   <div className="flex flex-wrap gap-2">
                     {candidate.matchScore != null && (
-                      <Badge
-                        variant={
-                          candidate.matchScore >= 90
-                            ? "excellent"
-                            : candidate.matchScore >= 80
-                            ? "good"
-                            : "secondary"
-                        }
+                      <button
+                        type="button"
+                        className="focus:outline-none"
+                        onClick={() => {
+                          setScoreExplainCandidate(candidate);
+                          setScoreExplainOpen(true);
+                        }}
+                        title="Click to see how this match score was calculated"
                       >
-                        Match {Math.round(candidate.matchScore)}%
-                      </Badge>
+                        <Badge
+                          variant={
+                            candidate.matchScore >= 90
+                              ? "excellent"
+                              : candidate.matchScore >= 80
+                              ? "good"
+                              : "secondary"
+                          }
+                        >
+                          Match {Math.round(candidate.matchScore)}%
+                        </Badge>
+                      </button>
                     )}
                     {candidate.rankScore != null && (
-                      <Badge
-                        variant={
-                          candidate.rankScore >= 90
-                            ? "excellent"
-                            : candidate.rankScore >= 80
-                            ? "good"
-                            : "secondary"
-                        }
+                      <button
+                        type="button"
+                        className="focus:outline-none"
+                        onClick={() => {
+                          setScoreExplainCandidate(candidate);
+                          setScoreExplainOpen(true);
+                        }}
+                        title="Click to see how this rank score was calculated"
                       >
-                        Rank {Math.round(candidate.rankScore)}%
-                      </Badge>
+                        <Badge
+                          variant={
+                            candidate.rankScore >= 90
+                              ? "excellent"
+                              : candidate.rankScore >= 80
+                              ? "good"
+                              : "secondary"
+                          }
+                        >
+                          Rank {Math.round(candidate.rankScore)}%
+                        </Badge>
+                      </button>
                     )}
                     {candidate.scoreEdu != null && (
                       <Badge variant="secondary">
@@ -249,6 +279,67 @@ const EmployerResumeDatabase = () => {
           </div>
         </div>
       )}
+
+      {/* Score explanation dialog */}
+      <Dialog open={scoreExplainOpen} onOpenChange={setScoreExplainOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>How this score was calculated</DialogTitle>
+            <DialogDescription>
+              High scores indicate strong alignment between the candidate and your open roles.
+            </DialogDescription>
+          </DialogHeader>
+          {scoreExplainCandidate && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="font-medium text-foreground">{scoreExplainCandidate.name}</p>
+                {scoreExplainCandidate.email && (
+                  <p className="text-xs text-muted-foreground">{scoreExplainCandidate.email}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                {scoreExplainCandidate.rankScore != null && (
+                  <p>
+                    <span className="font-semibold">Rank Score:</span>{" "}
+                    {Math.round(scoreExplainCandidate.rankScore)}% — combines{" "}
+                    <span className="font-semibold">education quality</span> and{" "}
+                    <span className="font-semibold">company quality</span>.
+                  </p>
+                )}
+                {scoreExplainCandidate.scoreEdu != null && (
+                  <p>
+                    <span className="font-semibold">Education score:</span>{" "}
+                    {Math.round(scoreExplainCandidate.scoreEdu)}% — based on the ranking of{" "}
+                    {scoreExplainCandidate.latestSchool
+                      ? `schools such as ${scoreExplainCandidate.latestSchool}.`
+                      : "the candidate's universities."}
+                  </p>
+                )}
+                {scoreExplainCandidate.scoreCompany != null && (
+                  <p>
+                    <span className="font-semibold">Company score:</span>{" "}
+                    {Math.round(scoreExplainCandidate.scoreCompany)}% — based on the strength of{" "}
+                    {scoreExplainCandidate.latestCompany
+                      ? `companies like ${scoreExplainCandidate.latestCompany}.`
+                      : "the candidate's past employers."}
+                  </p>
+                )}
+                {scoreExplainCandidate.matchScore != null && (
+                  <p>
+                    <span className="font-semibold">Match score:</span>{" "}
+                    {Math.round(scoreExplainCandidate.matchScore)}%
+                  </p>
+                )}
+                {scoreExplainCandidate.matchSummary && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {scoreExplainCandidate.matchSummary}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

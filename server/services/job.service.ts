@@ -46,6 +46,10 @@ export interface Job {
   salary?: string;
   posted_at: Date;
   match_score?: number;
+  /** Human-readable explanation (from detail_response.summary / score_summary) */
+  match_summary?: string | null;
+  /** Full structured match details (detail_response JSON) */
+  detail_response?: any | null;
   skills?: string[];
   description?: string;
   status?: 'active' | 'paused' | 'closed';
@@ -637,7 +641,24 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
        a.status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       ${JOB_SELECT_AS_JOB},
+       j.id AS job_id,
+       j.name AS title,
+       j.company_name AS company,
+       j.location,
+       j.work_type::varchar AS type,
+       j.job_salary AS salary,
+       j.created_at AS posted_at,
+       COALESCE(m.match_score, 0)::integer AS match_score,
+       m.detail_response AS detail_response,
+       (m.detail_response::jsonb ->> 'summary') AS match_summary,
+       m.detail_response AS detail_response,
+       m.detail_response AS detail_response,
+       CASE 
+         WHEN j.skills IS NOT NULL AND j.skills != '' 
+         THEN string_to_array(trim(j.skills), ',') 
+         ELSE ARRAY[]::text[] 
+       END AS skills,
+       j.description,
        j.created_at as job_created_at,
        j.updated_at as job_updated_at,
        u.first_name,
@@ -646,6 +667,10 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
      FROM ct_job_applications a
      JOIN jobs j ON a.job_id = j.id
      LEFT JOIN users u ON a.user_id = u.id
+     LEFT JOIN employer_auto_matched_candidates m
+       ON m.person_id = u.person_id
+      AND m.job_id    = j.id
+      AND m.source_type = 'talent'
      WHERE a.job_id = $1
      ORDER BY a.applied_at DESC`,
     [jobId]
@@ -667,6 +692,8 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
       salary: row.salary,
       posted_at: row.posted_at,
       match_score: row.match_score,
+      match_summary: row.match_summary ?? null,
+      detail_response: row.detail_response ?? null,
       skills: row.skills,
       description: row.description,
       created_at: row.job_created_at,
@@ -775,7 +802,7 @@ export async function applyToJob(
 }
 
 // Get applications for jobs created by an employer (by company name and/or creator_id so list is never empty for their jobs)
-export async function getApplicationsForEmployer(companyName: string | null, creatorId: number | null): Promise<(JobApplication & { candidate_name?: string; candidate_email?: string; rank_score?: number | null })[]> {
+export async function getApplicationsForEmployer(companyName: string | null, creatorId: number | null): Promise<(JobApplication & { candidate_name?: string; candidate_email?: string; rank_score?: number | null; score_edu?: number | null; score_company?: number | null; latest_company?: string | null; latest_school?: string | null })[]> {
   if (!companyName && !creatorId) return [];
   const result = await query(
     `SELECT 
@@ -786,17 +813,45 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
        a.status,
        a.applied_at,
        a.updated_at as application_updated_at,
-       ${JOB_SELECT_AS_JOB},
+       j.id AS job_id,
+       j.name AS title,
+       j.company_name AS company,
+       j.location,
+       j.work_type::varchar AS type,
+       j.job_salary AS salary,
+       j.created_at AS posted_at,
+       COALESCE(m.match_score, 0)::integer AS match_score,
+       (m.detail_response::jsonb ->> 'summary') AS match_summary,
+       m.detail_response AS detail_response,
+       CASE 
+         WHEN j.skills IS NOT NULL AND j.skills != '' 
+         THEN string_to_array(trim(j.skills), ',') 
+         ELSE ARRAY[]::text[] 
+       END AS skills,
+       j.description,
+       CASE 
+         WHEN j.active = false THEN 'closed' 
+         WHEN j.status = 1 THEN 'paused' 
+         ELSE 'active' 
+       END AS status,
        j.created_at as job_created_at,
        j.updated_at as job_updated_at,
-       u.first_name,
-       u.last_name,
-       u.email,
-       p.rank_score as candidate_rank_score
+      u.first_name,
+      u.last_name,
+      u.email,
+      p.rank_score as candidate_rank_score,
+      p.score_edu   as candidate_score_edu,
+      p.score_company as candidate_score_company,
+      p.latest_company as candidate_latest_company,
+      p.latest_school  as candidate_latest_school
      FROM ct_job_applications a
      JOIN jobs j ON a.job_id = j.id
      LEFT JOIN users u ON a.user_id = u.id
      LEFT JOIN people p ON u.person_id = p.id
+     LEFT JOIN employer_auto_matched_candidates m
+       ON m.person_id = u.person_id
+      AND m.job_id    = j.id
+      AND m.source_type = 'talent'
      WHERE (($1::text IS NOT NULL AND TRIM(j.company_name) = TRIM($1)) OR ($2::int IS NOT NULL AND j.creator_id = $2))
        AND j.discarded_at IS NULL
      ORDER BY a.applied_at DESC`,
@@ -817,6 +872,10 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
       candidate_name: candidateName || undefined,
       candidate_email: row.email ?? undefined,
       rank_score: row.candidate_rank_score != null ? Number(row.candidate_rank_score) : null,
+      score_edu: row.candidate_score_edu != null ? Number(row.candidate_score_edu) : null,
+      score_company: row.candidate_score_company != null ? Number(row.candidate_score_company) : null,
+      latest_company: row.candidate_latest_company != null ? String(row.candidate_latest_company) : null,
+      latest_school: row.candidate_latest_school != null ? String(row.candidate_latest_school) : null,
       job: {
         id: row.job_id,
         title: row.title,
@@ -826,6 +885,8 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
         salary: row.salary,
         posted_at: row.posted_at,
         match_score: row.match_score,
+        match_summary: row.match_summary ?? null,
+        detail_response: row.detail_response ?? null,
         skills: row.skills,
         description: row.description,
         created_at: row.job_created_at,
@@ -881,10 +942,12 @@ export async function getUserApplications(userId: string, keyword?: string): Pro
        j.company_name AS company,
        j.location,
        j.work_type::varchar AS type,
-       j.job_salary AS salary,
-       j.created_at AS posted_at,
-       COALESCE(m.match_score, 0)::integer AS match_score,
-       CASE 
+      j.job_salary AS salary,
+      j.created_at AS posted_at,
+      COALESCE(m.match_score, 0)::integer AS match_score,
+      (m.detail_response::jsonb ->> 'summary') AS match_summary,
+      m.detail_response AS detail_response,
+      CASE 
          WHEN j.skills IS NOT NULL AND j.skills != '' 
          THEN string_to_array(trim(j.skills), ',') 
          ELSE ARRAY[]::text[] 
@@ -932,6 +995,8 @@ export async function getUserApplications(userId: string, keyword?: string): Pro
       salary: row.salary,
       posted_at: row.posted_at,
       match_score: row.match_score,
+      match_summary: row.match_summary ?? null,
+      detail_response: row.detail_response ?? null,
       skills: row.skills,
       description: row.description,
       created_at: row.job_created_at,

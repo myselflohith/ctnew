@@ -139,14 +139,14 @@ const TalentDashboard = () => {
                 onApply={() => handleApplyClick(job)}
                 onSave={() => handleSave(job)}
                 onView={() => handleViewJob(job)}
-                onViewMatchDetails={
-                  job.detailResponse
-                    ? () => {
-                        setSelectedMatchDetails(job.detailResponse);
-                        setMatchDetailsOpen(true);
-                      }
-                    : undefined
-                }
+                onViewMatchDetails={() => {
+                  const basic = {
+                    score: job.matchScore ?? undefined,
+                    summary: job.matchSummary ?? undefined,
+                  };
+                  setSelectedMatchDetails(job.detailResponse ?? basic);
+                  setMatchDetailsOpen(true);
+                }}
               />
             ))
           ) : (

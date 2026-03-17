@@ -28,6 +28,8 @@ interface Application {
   appliedAt: string;
   status: string;
   matchScore: number;
+  matchSummary?: string;
+  detailResponse?: any;
   type?: "remote" | "hybrid" | "onsite";
   salary?: string;
   postedAt?: string;
@@ -105,6 +107,21 @@ const convertApiApplicationToApplication = (apiApp: any): Application => {
       : "Just now",
     status: apiApp.status || "Application Sent",
     matchScore: job.match_score || 0,
+    matchSummary:
+      typeof job.match_summary === "string"
+        ? job.match_summary
+        : undefined,
+    detailResponse: job.detail_response
+      ? (() => {
+          try {
+            return typeof job.detail_response === "string"
+              ? JSON.parse(job.detail_response)
+              : job.detail_response;
+          } catch {
+            return job.detail_response;
+          }
+        })()
+      : undefined,
     type: job.type,
     salary: job.salary,
     postedAt: job.posted_at
