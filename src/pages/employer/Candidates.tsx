@@ -18,6 +18,7 @@ import { apiClient } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import CandidateProfileModal from "@/components/employer/CandidateProfileModal";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
+import EditJobModal from "@/components/employer/EditJobModal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { interviewsAPI } from "@/lib/api/interviews";
 import { toast } from "sonner";
@@ -53,6 +54,21 @@ interface Candidate {
   appliedAtRaw: string | null;
   resumeId?: string;
 }
+
+type JobDetailsForEdit = {
+  id: string;
+  title: string;
+  company?: string;
+  location: string;
+  type?: "remote" | "hybrid" | "onsite" | null;
+  salary?: string;
+  postedAt: string;
+  matchScore: number;
+  skills: string[];
+  description: string;
+  autopilot_sourcing?: boolean;
+  target_count?: number | null;
+};
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -105,6 +121,11 @@ const EmployerCandidates = () => {
 
   // Human interview calendar slots (ch-job-marketplace style: pick 3)
   const [humanSelectedSlots, setHumanSelectedSlots] = useState<any[]>([]);
+
+  const [selectedJobForEdit, setSelectedJobForEdit] = useState<JobDetailsForEdit | null>(
+    null,
+  );
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   const employerDisplayName = useMemo(() => {
     try {
@@ -282,7 +303,9 @@ const EmployerCandidates = () => {
           title: fullJob.title,
           company: fullJob.company || "",
           location: fullJob.location,
-          type: fullJob.type ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite") : undefined,
+          type: fullJob.type
+            ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite")
+            : undefined,
           salary: fullJob.salary,
           postedAt: fullJob.posted_at || fullJob.postedAt || new Date().toISOString(),
           matchScore: fullJob.match_score || 0,
@@ -297,9 +320,47 @@ const EmployerCandidates = () => {
     }
   };
 
-  const handleEditJobFromDescription = (job: { id: string }) => {
+  const handleEditJobFromDescription = async (jobFromView: {
+    id: string;
+    title: string;
+    company?: string;
+    location: string;
+    type?: string;
+    salary?: string;
+    postedAt: string;
+    matchScore?: number;
+    skills?: string[];
+    description?: string;
+  }) => {
     setJobDescriptionOpen(false);
-    navigate(`/employer/jobs?jobId=${job.id}`);
+    try {
+      const jobResponse = (await apiClient.getJobById(jobFromView.id)) as any;
+      if (jobResponse.success && jobResponse.data) {
+        const fullJob = jobResponse.data as any;
+        setSelectedJobForEdit({
+          id: fullJob.id,
+          title: fullJob.title,
+          company: fullJob.company || "",
+          location: fullJob.location,
+          type: fullJob.type
+            ? (fullJob.type.toLowerCase() as "remote" | "hybrid" | "onsite")
+            : "remote",
+          salary: fullJob.salary,
+          postedAt: fullJob.posted_at || fullJob.postedAt || new Date().toISOString(),
+          matchScore: fullJob.match_score || 0,
+          skills: fullJob.skills || [],
+          description: fullJob.description || "",
+          autopilot_sourcing: fullJob.autopilot_sourcing,
+          target_count: fullJob.target_count,
+        });
+        setEditModalOpen(true);
+      } else {
+        toast.error("Failed to load job details");
+      }
+    } catch (error) {
+      console.error("Error fetching job details:", error);
+      toast.error("Failed to load job details");
+    }
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
@@ -334,6 +395,17 @@ Thank you for applying to the ${job} position. After reviewing your profile, I b
 
 Best regards,
 ${employerDisplayName}`;
+  };
+
+  const handleEditJob = async (jobId: string, jobData: Partial<JobDetailsForEdit>) => {
+    try {
+      await apiClient.updateJob(jobId, jobData);
+      toast.success("Job updated successfully");
+      window.location.reload();
+    } catch (error: any) {
+      console.error("Error updating job:", error);
+      toast.error(error.message || "Failed to update job");
+    }
   };
 
   const handleOpenContact = (mode: "single" | "bulk") => {
@@ -970,6 +1042,16 @@ ${employerDisplayName}`;
         job={selectedJobForView}
         onEditJob={handleEditJobFromDescription}
       />
+
+      {/* Edit Job Modal (shared behavior with Jobs page) */}
+      {selectedJobForEdit && (
+        <EditJobModal
+          open={editModalOpen}
+          onOpenChange={setEditModalOpen}
+          job={selectedJobForEdit as any}
+          onSave={handleEditJob as any}
+        />
+      )}
 
       {/* Email modal */}
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
