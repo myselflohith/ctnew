@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { apiClient } from "@/lib/api";
 import {
   LayoutDashboard,
@@ -34,6 +44,7 @@ const TalentJobs = () => {
   const [filterMinMatch, setFilterMinMatch] = useState<number | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [bulkAction, setBulkAction] = useState<"" | "save" | "apply" | "remove">("");
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobForApply, setSelectedJobForApply] = useState<typeof availableJobs[0] | null>(null);
   const [bulkApplyMode, setBulkApplyMode] = useState(false);
@@ -259,6 +270,17 @@ const TalentJobs = () => {
     })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 
+  const selectedVisibleJobs = filteredJobs.filter((job) => selectedJobs.includes(job.id));
+
+  const bulkActionLabel =
+    bulkAction === "save"
+      ? "save"
+      : bulkAction === "apply"
+      ? "apply to"
+      : bulkAction === "remove"
+      ? "remove"
+      : "";
+
   const allSelected = filteredJobs.length > 0 && selectedJobs.length === filteredJobs.length && 
     filteredJobs.every(job => selectedJobs.includes(job.id));
   const someSelected = selectedJobs.length > 0;
@@ -393,25 +415,19 @@ const TalentJobs = () => {
             <select
               className="border rounded-md px-2 py-1 text-xs bg-background"
               value={bulkAction}
-              onChange={(e) =>
-                setBulkAction(
-                  e.target.value as "" | "save" | "apply" | "remove"
-                )
-              }
+              onChange={(e) => {
+                const value = e.target.value as "" | "save" | "apply" | "remove";
+                setBulkAction(value);
+                if (value) {
+                  setBulkConfirmOpen(true);
+                }
+              }}
             >
               <option value="">Select action</option>
               <option value="save">Save job(s)</option>
               <option value="apply">Apply to job(s)</option>
               <option value="remove">Remove job(s)</option>
             </select>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!bulkAction}
-              onClick={handleBulkActionExecute}
-            >
-              Apply
-            </Button>
           </div>
         )}
       </div>
@@ -457,6 +473,62 @@ const TalentJobs = () => {
           )}
         </div>
       )}
+
+      {/* Bulk Action Confirmation */}
+      <AlertDialog
+        open={bulkConfirmOpen && !!bulkAction && selectedVisibleJobs.length > 0}
+        onOpenChange={(open) => {
+          setBulkConfirmOpen(open);
+          if (!open) {
+            setBulkAction("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm bulk action</AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkAction
+                ? `You have chosen to ${bulkActionLabel} the following job(s):`
+                : "You have chosen a bulk action for the following job(s):"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="mt-4 max-h-40 overflow-y-auto rounded-md border p-2 text-sm space-y-1">
+            {selectedVisibleJobs.slice(0, 5).map((job) => (
+              <div key={job.id} className="flex flex-col">
+                <span className="font-medium">{job.title ?? "Untitled role"}</span>
+                {job.company && (
+                  <span className="text-xs text-muted-foreground">{job.company}</span>
+                )}
+              </div>
+            ))}
+            {selectedVisibleJobs.length > 5 && (
+              <div className="text-xs text-muted-foreground">
+                and {selectedVisibleJobs.length - 5} more…
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setBulkConfirmOpen(false);
+                setBulkAction("");
+              }}
+            >
+              No
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                await handleBulkActionExecute();
+                setBulkConfirmOpen(false);
+                setBulkAction("");
+              }}
+            >
+              Yes, proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Apply Modal */}
       {selectedJobForApply && (
