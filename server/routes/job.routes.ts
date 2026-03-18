@@ -648,18 +648,61 @@ router.post('/reject-bulk', authenticateToken, async (req: Request, res: Respons
       return;
     }
 
-    // Keep endpoint for frontend compatibility; no-op for shared DB mode.
-    res.json({
-      success: true,
-      skipped: true,
-      reason: 'Disabled for DB parity: employer_auto_matched_candidates has Rails-only columns',
-    });
+    const { jobIds } = req.body as { jobIds?: string[] };
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      res.status(400).json({ error: 'jobIds array is required' });
+      return;
+    }
+
+    // Resolve person_id used in employer_auto_matched_candidates for this user
+    const personResult = await query(
+      'SELECT COALESCE(person_id, id)::integer AS person_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const personRow = personResult.rows[0];
+    if (!personRow) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    const personId = personRow.person_id as number;
+
+    const uniqueJobIds = Array.from(new Set(jobIds.map((id) => Number(id))));
+
+    for (const jobId of uniqueJobIds) {
+      if (!Number.isFinite(jobId)) continue;
+      // First try to update existing match row for this person + job (source_type = 'talent').
+      // If none exists, insert a new \"rejected\" record.
+      // eslint-disable-next-line no-await-in-loop
+      const updateResult = await query(
+        `UPDATE employer_auto_matched_candidates
+           SET person_reject_job = 1,
+               match = FALSE,
+               updated_at = CURRENT_TIMESTAMP
+         WHERE person_id = $1
+           AND job_id = $2
+           AND source_type = 'talent'
+         RETURNING id`,
+        [personId, jobId]
+      );
+
+      if (updateResult.rows.length === 0) {
+        // eslint-disable-next-line no-await-in-loop
+        await query(
+          `INSERT INTO employer_auto_matched_candidates
+             (person_id, job_id, match_score, score_summary, detail_response, source_type,
+              person_reject_job, match, created_at, updated_at)
+           VALUES ($1, $2, NULL, NULL, NULL, 'talent', 1, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [personId, jobId]
+        );
+      }
+    }
+
+    res.json({ success: true });
   } catch (error: any) {
     console.error('Reject jobs (bulk) error:', error);
     res.status(500).json({ error: error.message || 'Failed to reject jobs' });
   }
 });
-
 // Get user applications (for talent)
 router.get('/applications/list', authenticateToken, async (req: Request, res: Response) => {
   try {
