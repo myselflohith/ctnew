@@ -125,6 +125,7 @@ export async function getAvailableJobs(userId: string): Promise<Job[]> {
          AND e.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
          AND COALESCE(e.person_reject_job, 0) = 1
      )
+     AND j.active = true
      AND j.discarded_at IS NULL
      ORDER BY j.created_at DESC`,
     [userId]
@@ -151,6 +152,7 @@ export async function getAvailableJobsForMatching(userId: string): Promise<
          AND e.person_id = (SELECT COALESCE(u.person_id, u.id) FROM users u WHERE u.id = $1)
          AND COALESCE(e.person_reject_job, 0) = 1
      )
+     AND j.active = true
      AND j.discarded_at IS NULL
      ORDER BY j.created_at DESC
      LIMIT 200`,
@@ -197,6 +199,7 @@ export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> 
      ) m ON TRUE
      WHERE j.id NOT IN (SELECT job_id FROM ct_jobs_saved WHERE user_id = $1)
      AND j.id NOT IN (SELECT job_id FROM ct_job_applications WHERE user_id = $1)
+     AND j.active = true
      AND j.discarded_at IS NULL
      AND COALESCE(m.person_reject_job, 0) = 0
      ORDER BY m.match_score DESC NULLS LAST, j.created_at DESC
