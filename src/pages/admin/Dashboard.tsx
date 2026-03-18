@@ -72,12 +72,17 @@ const AdminDashboard = () => {
     fetchData();
   }, []);
 
-  const totalOrgs = organizations.length;
+  const visibleOrganizations = organizations.filter((org) => {
+    const s = (org?.status ?? "").toString().toLowerCase();
+    return s === "approved" || s === "active";
+  });
+
+  const totalOrgs = visibleOrganizations.length;
   const totalUsers = users.length;
   const activeJobs = jobs.filter((job) => job.status === "active").length;
   const systemHealth = "99.9%"; // Placeholder
 
-  const recentOrgs = organizations.slice(0, 5);
+  const recentOrgs = visibleOrganizations.slice(0, 5);
 
   return (
     <DashboardLayout role="admin" navItems={navItems} userName="Admin User">
