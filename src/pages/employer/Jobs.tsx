@@ -44,6 +44,7 @@ interface Job {
   description?: string;
   autopilot_sourcing?: boolean;
   target_count?: number | null;
+  creator_id?: number | null;
 }
 
 type JobDetails = {
@@ -79,6 +80,7 @@ const EmployerJobs = () => {
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
   const [hasRecommendations, setHasRecommendations] = useState<Record<string, number>>({});
 
@@ -125,22 +127,13 @@ const EmployerJobs = () => {
             }
           });
           
-          // Get user's company name to filter jobs
           const userResponse = await apiClient.getCurrentUser().catch(() => ({ success: false, user: null }));
-          const companyName = userResponse.user?.company_name;
-          
-          // Filter jobs by company if available
-          const employerJobs = companyName 
-            ? jobsData.filter((job: any) => job.company === companyName)
-            : jobsData;
-          
-          // Store company name for later use
-          if (companyName) {
-            setCompanyName(companyName);
-          }
-          
-          // Map jobs with stats
-          const jobsWithStats = employerJobs.map((job: any) => {
+          const companyNameFromUser = userResponse.user?.company_name;
+          if (companyNameFromUser) setCompanyName(companyNameFromUser);
+          const uid = userResponse.user?.id != null ? Number(userResponse.user.id) : null;
+          setCurrentUserId(uid);
+
+          const jobsWithStats = jobsData.map((job: any) => {
             const jobApplications = applicationsByJob[job.id] || [];
             const oneWeekAgo = new Date();
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -164,9 +157,10 @@ const EmployerJobs = () => {
                 : "Recently",
               autopilot_sourcing: Boolean(job.autopilot_sourcing),
               target_count: job.target_count ?? null,
+              creator_id: job.creator_id != null ? Number(job.creator_id) : null,
             };
           });
-          
+
           setJobs(jobsWithStats);
         } else {
           setJobs([]);
@@ -299,28 +293,35 @@ const EmployerJobs = () => {
     navigate(`/employer/candidates?jobId=${jobId}`);
   };
 
-  // Filter jobs by status
-  const filteredJobs = filterStatus 
-    ? jobs.filter(job => job.status === filterStatus)
-    : jobs;
+  // When ?myjob is set, show only jobs created by the current user
+  const showMyJobsOnly = searchParams.get("myjob") != null;
+  const displayJobs =
+    showMyJobsOnly && currentUserId != null
+      ? jobs.filter((j) => Number(j.creator_id) === Number(currentUserId))
+      : jobs;
+
+  // Filter jobs by status (within displayJobs)
+  const filteredJobs = filterStatus
+    ? displayJobs.filter((job) => job.status === filterStatus)
+    : displayJobs;
 
   const jobOptions = useMemo(
     () =>
-      jobs
+      displayJobs
         .slice()
         .sort((a, b) => a.title.localeCompare(b.title))
         .map((j) => ({ id: j.id, title: j.title })),
-    [jobs],
+    [displayJobs],
   );
 
   const selectedJobTitle =
     jobOptions.find((j) => j.id === recommendedJobId)?.title || "";
 
-  // Calculate stats
-  const totalJobs = jobs.length;
-  const activeJobs = jobs.filter((j) => j.status === "active").length;
-  const totalApplicants = jobs.reduce((sum, j) => sum + j.applicants, 0);
-  const newThisWeek = jobs.reduce((sum, j) => sum + j.newApplicants, 0);
+  // Calculate stats from displayed set (my jobs vs all org)
+  const totalJobs = displayJobs.length;
+  const activeJobs = displayJobs.filter((j) => j.status === "active").length;
+  const totalApplicants = displayJobs.reduce((sum, j) => sum + j.applicants, 0);
+  const newThisWeek = displayJobs.reduce((sum, j) => sum + j.newApplicants, 0);
 
   return (
     <DashboardLayout
@@ -330,11 +331,30 @@ const EmployerJobs = () => {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-            Jobs
+            {showMyJobsOnly ? "My Jobs" : "Jobs"}
           </h1>
           <p className="text-muted-foreground">
-            Manage all your job postings in one place.
+            {showMyJobsOnly
+              ? "Jobs you posted. Switch to all organization jobs below."
+              : "Manage all your job postings in one place."}
           </p>
+          {showMyJobsOnly ? (
+            <Button
+              variant="link"
+              className="px-0 mt-1 text-primary"
+              onClick={() => setSearchParams({})}
+            >
+              Show all organization jobs →
+            </Button>
+          ) : (
+            <Button
+              variant="link"
+              className="px-0 mt-1 text-primary"
+              onClick={() => setSearchParams({ myjob: "1" })}
+            >
+              Show only my jobs →
+            </Button>
+          )}
         </div>
         <Button variant="hero" onClick={() => navigate("/employer/jobs/new")}>
           <Plus className="w-5 h-5 mr-2" />

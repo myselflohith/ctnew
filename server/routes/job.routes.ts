@@ -4,6 +4,7 @@ import {
   getAvailableJobs,
   getAvailableJobsWithMatch,
   getAllJobs,
+  getJobsForEmployer,
   getJobById,
   getJobsByCompanyName,
   getJobsForApprovedOrganizations,
@@ -93,15 +94,22 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       return;
     }
 
-    const jobs = await getAllJobs();
+    const userIdNum = Number(req.user.id);
+    const jobs = req.user.role === 'admin' ? await getAllJobs() : await getJobsForEmployer(userIdNum);
 
     // Build counts keyed by job_id
-    const countsResult = await query(
-      `SELECT job_id::text AS job_id, COUNT(*)::int AS c
-       FROM employer_auto_matched_candidates
-       WHERE discarded_at IS NULL
-       GROUP BY job_id`
-    );
+    const jobIds = (jobs || []).map((j: any) => Number(j.id)).filter((n: any) => Number.isFinite(n));
+
+    const countsResult = jobIds.length
+      ? await query(
+          `SELECT job_id::text AS job_id, COUNT(*)::int AS c
+           FROM employer_auto_matched_candidates
+           WHERE discarded_at IS NULL
+             AND job_id = ANY($1::int[])
+           GROUP BY job_id`,
+          [jobIds]
+        )
+      : { rows: [] as any[] };
 
     const has_recommendations: Record<string, number> = {};
     for (const r of countsResult.rows || []) {
@@ -530,7 +538,7 @@ router.post('/save-bulk', authenticateToken, async (req: Request, res: Response)
     }
 
     const uniqueJobIds = Array.from(new Set(jobIds.map((id) => String(id))));
-    const savedResults = [];
+    const savedResults: any[] = [];
     for (const jobId of uniqueJobIds) {
       // Reuse single save logic for consistency
       // eslint-disable-next-line no-await-in-loop
@@ -621,7 +629,7 @@ router.post('/apply-bulk', authenticateToken, async (req: Request, res: Response
 
     const uniqueJobIds = Array.from(new Set(jobIds.map((id) => String(id))));
 
-    const applications = [];
+    const applications: any[] = [];
     for (const jobId of uniqueJobIds) {
       // Reuse single-apply logic server-side so we keep DB behaviour consistent
       // eslint-disable-next-line no-await-in-loop

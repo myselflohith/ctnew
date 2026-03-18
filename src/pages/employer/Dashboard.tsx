@@ -39,6 +39,7 @@ interface Job {
   newApplicants: number;
   views: number;
   postedAt: string;
+  creator_id?: number | null;
 }
 
 interface Candidate {
@@ -129,6 +130,7 @@ const EmployerDashboard = () => {
             .getCurrentUser()
             .catch(() => ({ success: false, user: null as any }));
           const companyName = userResponse.user?.company_name as string | undefined;
+          const userId = userResponse.user?.id != null ? Number(userResponse.user.id) : null;
           const employerJobs = companyName
             ? jobsData.filter((job: any) => job.company === companyName)
             : jobsData;
@@ -150,11 +152,16 @@ const EmployerDashboard = () => {
               postedAt: job.posted_at
                 ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
                 : "Recently",
+              creator_id: job.creator_id ?? null,
             };
           });
 
           setAllJobs(allJobsWithStats);
-          setJobs(allJobsWithStats.slice(0, 3));
+          const myJobs =
+            userId != null
+              ? allJobsWithStats.filter((j) => Number(j.creator_id) === userId)
+              : allJobsWithStats;
+          setJobs(myJobs.slice(0, 3));
         }
         
         // Fetch candidates (from applications for employer's jobs)
@@ -292,7 +299,7 @@ const EmployerDashboard = () => {
               variant="ghost" 
               size="sm" 
               className="group" 
-              onClick={() => navigate("/employer/jobs")}
+              onClick={() => navigate("/employer/jobs?myjob")}
             >
               View All
               <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />

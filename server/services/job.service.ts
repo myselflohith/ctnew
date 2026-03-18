@@ -22,6 +22,30 @@ const JOB_SELECT = `
   j.days_in_office,
   j.add_notes
 `;
+
+// Same as JOB_SELECT but also includes creator_id for employer/admin UIs
+// (e.g. to distinguish "My Jobs" vs "Org Jobs" views).
+const JOB_SELECT_WITH_CREATOR_ID = `
+  j.id,
+  j.name AS title,
+  j.company_name AS company,
+  j.location,
+  j.work_type::varchar AS type,
+  j.job_salary AS salary,
+  j.created_at AS posted_at,
+  NULL::integer AS match_score,
+  CASE WHEN j.skills IS NOT NULL AND j.skills != '' THEN string_to_array(trim(j.skills), ',') ELSE ARRAY[]::text[] END AS skills,
+  j.description,
+  CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
+  j.created_at,
+  j.updated_at,
+  COALESCE(j.autopilot_sourcing, 0) AS autopilot_sourcing,
+  j.target_count,
+  j.distance,
+  j.days_in_office,
+  j.add_notes,
+  j.creator_id AS creator_id
+`;
 // Same as JOB_SELECT but with j.id AS job_id for use in application/saved joins
 const JOB_SELECT_AS_JOB = `
   j.id AS job_id,
@@ -61,6 +85,9 @@ export interface Job {
   // Autosourcing (autopilot)
   autopilot_sourcing?: boolean;
   target_count?: number | null;
+
+  // Employer ownership (used to show "My Jobs" vs org-wide jobs)
+  creator_id?: number | null;
 
   // Location / office details
   distance?: string | null;
@@ -215,7 +242,37 @@ export async function getAvailableJobsWithMatch(userId: string): Promise<Job[]> 
 // Get all jobs (for admin/employer)
 export async function getAllJobs(): Promise<Job[]> {
   const result = await query(
-    `SELECT ${JOB_SELECT} FROM jobs j WHERE j.discarded_at IS NULL ORDER BY j.created_at DESC`
+    `SELECT ${JOB_SELECT_WITH_CREATOR_ID}
+     FROM jobs j
+     WHERE j.discarded_at IS NULL
+     ORDER BY j.created_at DESC`
+  );
+  return result.rows;
+}
+
+// Employer: return all jobs for the employee's organization.
+// Match: same company_name (case-insensitive trim) OR same organization_id OR jobs created by this user.
+// Jobs are usually created with company_name only (organization_id often null), so company_name match is primary.
+export async function getJobsForEmployer(userId: number): Promise<Job[]> {
+  const userResult = await query(
+    'SELECT company_name, organization_id FROM users WHERE id = $1',
+    [userId]
+  );
+  const row = userResult.rows[0];
+  const companyName = row?.company_name != null ? String(row.company_name).trim() : null;
+  const organizationId = row?.organization_id ?? null;
+
+  const result = await query(
+    `SELECT ${JOB_SELECT_WITH_CREATOR_ID}
+     FROM jobs j
+     WHERE j.discarded_at IS NULL
+       AND (
+         j.creator_id = $1
+         OR ($2::text IS NOT NULL AND $2 != '' AND LOWER(TRIM(COALESCE(j.company_name, ''))) = LOWER(TRIM($2)))
+         OR ($3::uuid IS NOT NULL AND j.organization_id = $3::uuid)
+       )
+     ORDER BY j.created_at DESC`,
+    [userId, companyName || null, organizationId]
   );
   return result.rows;
 }
