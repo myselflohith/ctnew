@@ -32,6 +32,8 @@ import {
   listEmployerAutoMatchedCandidatesForJobWithProfiles,
 } from '../services/employer-auto-matched-candidates.service.js';
 
+type RecommendedCandidatesBulkStatus = 'contacted' | 'not_interested';
+
 const router = Router();
 
 // Get available jobs (not saved or applied to by user)
@@ -69,7 +71,15 @@ router.get('/available-with-match', authenticateToken, async (req: Request, res:
   }
 });
 
-// Get all jobs (for admin/employer)
+/**
+ * Get all jobs (for admin/employer).
+ *
+ * Parity with ch-job-marketplace: include a `meta.has_recommendations` map keyed by job_id
+ * so the employer Jobs page can show "Recommended Candidates" without depending on job flags.
+ *
+ * We count recommendation rows from employer_auto_matched_candidates where:
+ * - discarded_at IS NULL
+ */
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
@@ -84,7 +94,21 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     }
 
     const jobs = await getAllJobs();
-    res.json({ success: true, data: jobs });
+
+    // Build counts keyed by job_id
+    const countsResult = await query(
+      `SELECT job_id::text AS job_id, COUNT(*)::int AS c
+       FROM employer_auto_matched_candidates
+       WHERE discarded_at IS NULL
+       GROUP BY job_id`
+    );
+
+    const has_recommendations: Record<string, number> = {};
+    for (const r of countsResult.rows || []) {
+      if (r.job_id != null) has_recommendations[String(r.job_id)] = Number(r.c ?? 0);
+    }
+
+    res.json({ success: true, data: jobs, meta: { has_recommendations } });
   } catch (error: any) {
     console.error('Get all jobs error:', error);
     res.status(500).json({ error: error.message || 'Failed to get jobs' });
@@ -167,7 +191,7 @@ router.get('/:id/autopilot-diagnostics', authenticateToken, async (req: Request,
     const dbCount = await query(
       `SELECT COUNT(*)::int AS c
        FROM employer_auto_matched_candidates
-       WHERE job_id = $1 AND source_type = 'job_post' AND discarded_at IS NULL`,
+       WHERE job_id = $1 AND discarded_at IS NULL`,
       [jobId]
     );
 
@@ -223,6 +247,106 @@ router.get('/:id/autopilot-diagnostics', authenticateToken, async (req: Request,
   }
 });
 
+/**
+ * Bulk update recommended candidates status (parity with ch-job-marketplace /weekly_recommendation/bulk_update).
+ *
+ * POST /api/jobs/:id/autopilot-candidates/bulk-update
+ * Body: { candidate_ids: number[], status: 'contacted' | 'not_interested', reason?: string[] }
+ *
+ * Notes:
+ * - candidate_ids refers to employer_auto_matched_candidates.id (NOT person_id)
+ * - For 'not_interested': sets discarded_at=NOW() and stores reason[] as JSON in detail_response (best-effort parity).
+ * - For 'contacted': sets email_sent_at=COALESCE(email_sent_at, NOW())
+ */
+router.post('/:id/autopilot-candidates/bulk-update', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    if (req.user.role !== 'admin' && req.user.role !== 'employer') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const jobId = Number(req.params.id);
+    if (!jobId) {
+      res.status(400).json({ error: 'Invalid job id' });
+      return;
+    }
+
+    const candidateIdsRaw = req.body?.candidate_ids;
+    const status = String(req.body?.status || '') as RecommendedCandidatesBulkStatus;
+    const reasonRaw = req.body?.reason;
+
+    const candidateIds: number[] = Array.isArray(candidateIdsRaw)
+      ? candidateIdsRaw.map((n: any) => Number(n)).filter((n: any) => Number.isFinite(n))
+      : [];
+
+    const reason: string[] = Array.isArray(reasonRaw)
+      ? reasonRaw.map((s: any) => String(s)).filter((s: any) => s.trim())
+      : [];
+
+    if (candidateIds.length === 0) {
+      res.status(400).json({ error: 'candidate_ids array is required' });
+      return;
+    }
+    if (status !== 'contacted' && status !== 'not_interested') {
+      res.status(400).json({ error: "status must be 'contacted' or 'not_interested'" });
+      return;
+    }
+
+    // Ensure these candidate row ids belong to this job
+    const idsResult = await query(
+      `SELECT id::int AS id
+       FROM employer_auto_matched_candidates
+       WHERE job_id = $1
+         AND id = ANY($2::int[])`,
+      [jobId, candidateIds]
+    );
+
+    const ids: number[] = (idsResult.rows || []).map((r: any) => Number(r.id)).filter((n) => Number.isFinite(n));
+    if (ids.length === 0) {
+      res.json({ success: true, updated: 0 });
+      return;
+    }
+
+    if (status === 'contacted') {
+      await query(
+        `UPDATE employer_auto_matched_candidates
+         SET email_sent_at = COALESCE(email_sent_at, NOW()),
+             updated_at = NOW()
+         WHERE job_id = $1
+           AND id = ANY($2::int[])`,
+        [jobId, ids]
+      );
+
+      res.json({ success: true, updated: ids.length });
+      return;
+    }
+
+    // not_interested
+    // Rails stores a reason column; ctnew doesn't have it. We preserve reason into detail_response JSON (best-effort),
+    // and also discard the row (discarded_at) so it disappears from recommended list (like ch-job-marketplace).
+    const reasonJson = JSON.stringify({ not_interested_reason: reason });
+
+    await query(
+      `UPDATE employer_auto_matched_candidates
+       SET discarded_at = NOW(),
+           detail_response = COALESCE(detail_response, $3),
+           updated_at = NOW()
+       WHERE job_id = $1
+         AND id = ANY($2::int[])`,
+      [jobId, ids, reasonJson]
+    );
+
+    res.json({ success: true, updated: ids.length });
+  } catch (error: any) {
+    console.error('Bulk update autopilot candidates error:', error);
+    res.status(500).json({ error: error.message || 'Failed to bulk update candidates' });
+  }
+});
+
 // Get autopilot recommended candidates for a job (employer/admin only)
 router.get('/:id/autopilot-candidates', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -243,15 +367,11 @@ router.get('/:id/autopilot-candidates', authenticateToken, async (req: Request, 
       return;
     }
 
-    if (!job.autopilot_sourcing) {
-      res.status(400).json({ error: 'Autosourcing is not enabled for this job' });
-      return;
-    }
-
-    const sourceType = typeof req.query.sourceType === 'string' ? req.query.sourceType : 'job_post';
+    // Parity with ch-job-marketplace: allow viewing recommendations regardless of job.autopilot_sourcing flag.
+    // If there are 0 recommendation rows, UI simply shows empty list / loading state.
+    // Rails schema does NOT have `source_type`; ctnew must not depend on it when sharing DB.
     const candidates = await listEmployerAutoMatchedCandidatesForJobWithProfiles({
       jobId: req.params.id,
-      sourceType,
     });
 
     res.json({ success: true, data: candidates });
@@ -517,6 +637,10 @@ router.post('/apply-bulk', authenticateToken, async (req: Request, res: Response
 });
 
 // Mark multiple jobs as rejected/removed for the current talent user
+//
+// NOTE: ch-job-marketplace does NOT use employer_auto_matched_candidates for talent job rejection.
+// Rails handles "reject" via other tables/logic. Since we want DB compatibility with Rails,
+// ctnew must not write non-parity columns into employer_auto_matched_candidates.
 router.post('/reject-bulk', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
@@ -524,56 +648,12 @@ router.post('/reject-bulk', authenticateToken, async (req: Request, res: Respons
       return;
     }
 
-    const { jobIds } = req.body as { jobIds?: string[] };
-    if (!Array.isArray(jobIds) || jobIds.length === 0) {
-      res.status(400).json({ error: 'jobIds array is required' });
-      return;
-    }
-
-    // Resolve person_id used in employer_auto_matched_candidates for this user
-    const personResult = await query(
-      'SELECT COALESCE(person_id, id)::integer AS person_id FROM users WHERE id = $1',
-      [req.user.id]
-    );
-    const personRow = personResult.rows[0];
-    if (!personRow) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    const personId = personRow.person_id as number;
-
-    const uniqueJobIds = Array.from(new Set(jobIds.map((id) => Number(id))));
-
-    for (const jobId of uniqueJobIds) {
-      if (!Number.isFinite(jobId)) continue;
-      // First try to update existing match row for this person + job (source_type = 'talent').
-      // If none exists, insert a new \"rejected\" record.
-      // eslint-disable-next-line no-await-in-loop
-      const updateResult = await query(
-        `UPDATE employer_auto_matched_candidates
-           SET person_reject_job = 1,
-               match = FALSE,
-               updated_at = CURRENT_TIMESTAMP
-         WHERE person_id = $1
-           AND job_id = $2
-           AND source_type = 'talent'
-         RETURNING id`,
-        [personId, jobId]
-      );
-
-      if (updateResult.rows.length === 0) {
-        // eslint-disable-next-line no-await-in-loop
-        await query(
-          `INSERT INTO employer_auto_matched_candidates
-             (person_id, job_id, match_score, score_summary, detail_response, source_type,
-              person_reject_job, match, created_at, updated_at)
-           VALUES ($1, $2, NULL, NULL, NULL, 'talent', 1, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-          [personId, jobId]
-        );
-      }
-    }
-
-    res.json({ success: true });
+    // Keep endpoint for frontend compatibility; no-op for shared DB mode.
+    res.json({
+      success: true,
+      skipped: true,
+      reason: 'Disabled for DB parity: employer_auto_matched_candidates has Rails-only columns',
+    });
   } catch (error: any) {
     console.error('Reject jobs (bulk) error:', error);
     res.status(500).json({ error: error.message || 'Failed to reject jobs' });

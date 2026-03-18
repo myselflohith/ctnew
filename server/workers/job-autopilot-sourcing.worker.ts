@@ -48,7 +48,7 @@ async function ensureNoDuplicates(jobId: number): Promise<Set<number>> {
   const r = await query(
     `SELECT person_id
      FROM employer_auto_matched_candidates
-     WHERE job_id = $1 AND source_type = 'job_post' AND discarded_at IS NULL`,
+     WHERE job_id = $1 AND discarded_at IS NULL`,
     [jobId]
   );
   return new Set<number>(r.rows.map((x: any) => Number(x.person_id)));
@@ -60,25 +60,20 @@ async function insertCandidates(params: {
 }) {
   if (params.rows.length === 0) return;
 
-  // NOTE:
-  // Our DB currently does NOT have a unique constraint that matches:
-  //   ON CONFLICT (job_id, person_id, source_type)
-  // because source_type is de-duped using an expression index on COALESCE(source_type,'').
-  // So instead we do an idempotent "insert if not exists" per row.
+  // Rails-parity: no source_type / score_summary columns. De-dupe on (job_id, person_id) + discarded_at.
   for (const r of params.rows) {
     await query(
       `INSERT INTO employer_auto_matched_candidates
-       (person_id, job_id, match_score, score_summary, detail_response, source_type)
-       SELECT $1, $2, $3, $4, $5, 'job_post'
+       (person_id, job_id, match_score, detail_response)
+       SELECT $1, $2, $3, $4
        WHERE NOT EXISTS (
          SELECT 1
          FROM employer_auto_matched_candidates e
          WHERE e.job_id = $2
            AND e.person_id = $1
-           AND COALESCE(e.source_type,'') = 'job_post'
            AND e.discarded_at IS NULL
        )`,
-      [r.personId, params.jobId, Number(r.score), r.summary, JSON.stringify(r.detail ?? {})]
+      [r.personId, params.jobId, Number(r.score), JSON.stringify(r.detail ?? {})]
     );
   }
 }
@@ -115,7 +110,7 @@ export function startJobAutopilotSourcingWorker() {
         const processPersonResult = await query(
           `SELECT person_id
            FROM employer_auto_matched_candidates
-           WHERE job_id = $1 AND source_type = 'job_post' AND discarded_at IS NULL`,
+           WHERE job_id = $1 AND discarded_at IS NULL`,
           [jobId]
         );
         const process_person_id = processPersonResult.rows.map((r: any) => Number(r.person_id));
@@ -165,7 +160,7 @@ export function startJobAutopilotSourcingWorker() {
             const currentCountResult = await query(
               `SELECT COUNT(*)::int AS c
                FROM employer_auto_matched_candidates
-               WHERE job_id = $1 AND source_type = 'job_post' AND discarded_at IS NULL`,
+               WHERE job_id = $1 AND discarded_at IS NULL`,
               [jobId]
             );
             const currentCount = Number(currentCountResult.rows[0]?.c ?? 0);
@@ -235,7 +230,7 @@ export function startJobAutopilotSourcingWorker() {
             const afterCountResult = await query(
               `SELECT COUNT(*)::int AS c
                FROM employer_auto_matched_candidates
-               WHERE job_id = $1 AND source_type = 'job_post' AND discarded_at IS NULL`,
+               WHERE job_id = $1 AND discarded_at IS NULL`,
               [jobId]
             );
             const afterCount = Number(afterCountResult.rows[0]?.c ?? 0);

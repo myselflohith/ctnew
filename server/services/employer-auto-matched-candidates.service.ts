@@ -5,10 +5,8 @@ export type EmployerAutoMatchedCandidate = {
   person_id: number;
   job_id: number;
   match_score: number | null;
-  score_summary: string | null;
   detail_response: string | null;
-  source_type: string | null;
-  interested: number;
+  interested: number | null;
   email_sent_at: Date | null;
   discarded_at: Date | null;
   created_at: Date;
@@ -26,6 +24,11 @@ export type CandidateProfileForRecommendation = {
   picture_url: string | null;
   skills: string[] | null;
   phone_number: string | null;
+
+  // Extra fields for employer recommended candidates table
+  current_company: string | null;
+  current_position: string | null;
+
   created_at: Date;
   updated_at: Date;
 
@@ -39,18 +42,14 @@ export type EmployerAutoMatchedCandidateWithProfile = EmployerAutoMatchedCandida
 
 export async function listEmployerAutoMatchedCandidatesForJob(params: {
   jobId: string;
-  sourceType?: string;
 }): Promise<EmployerAutoMatchedCandidate[]> {
-  const sourceType = params.sourceType ?? 'job_post';
-
   const result = await query(
     `SELECT *
      FROM employer_auto_matched_candidates
      WHERE job_id = $1
-       AND COALESCE(source_type,'') = $2
        AND discarded_at IS NULL
      ORDER BY COALESCE(match_score, 0) DESC, created_at DESC`,
-    [params.jobId, sourceType]
+    [params.jobId]
   );
 
   return result.rows;
@@ -65,10 +64,7 @@ export async function listEmployerAutoMatchedCandidatesForJob(params: {
  */
 export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params: {
   jobId: string;
-  sourceType?: string;
 }): Promise<EmployerAutoMatchedCandidateWithProfile[]> {
-  const sourceType = params.sourceType ?? 'job_post';
-
   const result = await query(
     `SELECT
         e.*,
@@ -82,6 +78,8 @@ export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params
         u.picture_url AS u_picture_url,
         u.skills AS u_skills,
         u.phone_number AS u_phone_number,
+        u.current_employer AS u_current_employer,
+        u.current_position AS u_current_position,
         u.created_at AS u_created_at,
         u.updated_at AS u_updated_at,
         r.file_path AS r_file_path
@@ -95,10 +93,9 @@ export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params
        LIMIT 1
      ) r ON true
      WHERE e.job_id = $1
-       AND COALESCE(e.source_type,'') = $2
        AND e.discarded_at IS NULL
      ORDER BY COALESCE(e.match_score, 0) DESC, e.created_at DESC`,
-    [params.jobId, sourceType]
+    [params.jobId]
   );
 
   return (result.rows as any[]).map((r) => {
@@ -121,6 +118,8 @@ export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params
                   : JSON.stringify(r.u_picture_url),
             skills: Array.isArray(r.u_skills) ? r.u_skills : null,
             phone_number: r.u_phone_number ?? null,
+            current_company: r.u_current_employer ?? null,
+            current_position: r.u_current_position ?? null,
             created_at: r.u_created_at,
             updated_at: r.u_updated_at,
             resume_url: r.r_file_path ?? null,
@@ -140,6 +139,8 @@ export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params
       u_created_at,
       u_updated_at,
       u_phone_number,
+      u_current_employer,
+      u_current_position,
       r_file_path,
       ...base
     } = r;
