@@ -17,8 +17,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
-import RecommendedCandidatesModal from "@/components/employer/RecommendedCandidatesModal";
+import { useMemo, useState, useEffect } from "react";
+import RecommendedCandidatesTab from "@/components/employer/RecommendedCandidatesTab";
 import { apiClient } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import JobDescriptionDialog from "@/components/talent/JobDescriptionDialog";
@@ -80,9 +80,10 @@ const EmployerJobs = () => {
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
 
-  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
-  const [selectedRecommendedJobId, setSelectedRecommendedJobId] = useState<string | null>(null);
-  const [selectedRecommendedJobTitle, setSelectedRecommendedJobTitle] = useState<string>("");
+  const [hasRecommendations, setHasRecommendations] = useState<Record<string, number>>({});
+
+  const [activeTab, setActiveTab] = useState<"jobs" | "recommended">("jobs");
+  const [recommendedJobId, setRecommendedJobId] = useState<string>("");
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -99,6 +100,14 @@ const EmployerJobs = () => {
 
         if (jobsResponse.success && Array.isArray(jobsResponse.data)) {
           const jobsData: any[] = jobsResponse.data;
+
+          // Parity with ch-job-marketplace: job list provides counts keyed by job_id
+          const counts = (jobsResponse as any)?.meta?.has_recommendations;
+          if (counts && typeof counts === "object") {
+            setHasRecommendations(counts as Record<string, number>);
+          } else {
+            setHasRecommendations({});
+          }
 
           // Get applications for employer's jobs
           const applicationsResponse = (await apiClient.getApplications().catch(() => ({ success: false, data: [] }))) as any;
@@ -173,16 +182,15 @@ const EmployerJobs = () => {
     fetchJobs();
   }, []);
 
-  // Open recommendations modal via query params (supports click → deep-link)
+  // Open recommended tab via query params (supports click → deep-link)
   useEffect(() => {
     const jobId = searchParams.get("jobId");
     const recommended = searchParams.get("recommended");
     if (jobId && recommended === "1") {
       const job = jobs.find((j) => j.id === jobId);
-      if (job?.autopilot_sourcing) {
-        setSelectedRecommendedJobId(jobId);
-        setSelectedRecommendedJobTitle(job.title);
-        setRecommendationsOpen(true);
+      if (job) {
+        setActiveTab("recommended");
+        setRecommendedJobId(jobId);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -296,9 +304,21 @@ const EmployerJobs = () => {
     ? jobs.filter(job => job.status === filterStatus)
     : jobs;
 
+  const jobOptions = useMemo(
+    () =>
+      jobs
+        .slice()
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .map((j) => ({ id: j.id, title: j.title })),
+    [jobs],
+  );
+
+  const selectedJobTitle =
+    jobOptions.find((j) => j.id === recommendedJobId)?.title || "";
+
   // Calculate stats
   const totalJobs = jobs.length;
-  const activeJobs = jobs.filter(j => j.status === "active").length;
+  const activeJobs = jobs.filter((j) => j.status === "active").length;
   const totalApplicants = jobs.reduce((sum, j) => sum + j.applicants, 0);
   const newThisWeek = jobs.reduce((sum, j) => sum + j.newApplicants, 0);
 
@@ -307,25 +327,6 @@ const EmployerJobs = () => {
       role="employer"
       navItems={employerNavItems}
     >
-      <RecommendedCandidatesModal
-        open={recommendationsOpen}
-        onOpenChange={(open) => {
-          setRecommendationsOpen(open);
-          if (!open) {
-            setSelectedRecommendedJobId(null);
-            setSelectedRecommendedJobTitle("");
-            // Clear query params
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.delete("jobId");
-              next.delete("recommended");
-              return next;
-            });
-          }
-        }}
-        jobId={selectedRecommendedJobId}
-        jobTitle={selectedRecommendedJobTitle}
-      />
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">
@@ -341,7 +342,37 @@ const EmployerJobs = () => {
         </Button>
       </div>
 
+      {/* Page Tabs */}
+      <div className="mb-6 flex gap-2">
+        <Button
+          type="button"
+          variant={activeTab === "jobs" ? "default" : "outline"}
+          onClick={() => setActiveTab("jobs")}
+        >
+          Jobs
+        </Button>
+        <Button
+          type="button"
+          variant={activeTab === "recommended" ? "default" : "outline"}
+          onClick={() => setActiveTab("recommended")}
+        >
+          Recommended Candidates
+        </Button>
+      </div>
+
+      {activeTab === "recommended" ? (
+        <div className="glass rounded-2xl p-6 mb-8">
+          <RecommendedCandidatesTab
+            jobOptions={jobOptions}
+            jobId={recommendedJobId}
+            onJobChange={setRecommendedJobId}
+            jobTitle={selectedJobTitle}
+          />
+        </div>
+      ) : null}
+
       {/* Stats */}
+      {activeTab === "jobs" ? (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <button
           onClick={() => setFilterStatus(null)}
@@ -378,9 +409,11 @@ const EmployerJobs = () => {
           <p className="text-sm text-muted-foreground">New This Week</p>
         </button>
       </div>
+      ) : null}
 
       {/* Jobs List */}
-      {loading ? (
+      {activeTab === "jobs" ? (
+      loading ? (
         <div className="glass rounded-2xl p-12 text-center">
           <p className="text-muted-foreground">Loading jobs...</p>
         </div>
@@ -448,22 +481,20 @@ const EmployerJobs = () => {
                     {job.views} views
                   </span>
                 </div>
-                {job.autopilot_sourcing ? (
+                {(hasRecommendations[job.id] ?? 0) > 0 ? (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Open modal directly (query-param approach was flaky due to state timing)
-                      setSelectedRecommendedJobId(job.id);
-                      setSelectedRecommendedJobTitle(job.title);
-                      setRecommendationsOpen(true);
+                      setActiveTab("recommended");
+                      setRecommendedJobId(job.id);
 
                       // keep deep-link in URL for refresh/share
                       setSearchParams({ jobId: job.id, recommended: "1" });
                     }}
                   >
-                    Recommended candidates
+                    Recommended candidates ({hasRecommendations[job.id]})
                   </Button>
                 ) : null}
                 <DropdownMenu>
@@ -557,7 +588,8 @@ const EmployerJobs = () => {
             Post New Job
           </Button>
         </div>
-      )}
+      )
+      ) : null}
 
       {/* Job Description Dialog */}
       {selectedJobForView && (

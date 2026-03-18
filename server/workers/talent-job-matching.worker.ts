@@ -94,14 +94,13 @@ export function startTalentJobMatchingWorker() {
 
           const first = results?.[0];
           const score = first != null && typeof first.score === 'number' ? first.score : null;
-          const scoreSummary = first?.summary != null ? String(first.summary) : null;
           const detailResponse = first != null ? JSON.stringify(first) : null;
 
           await query(
             `INSERT INTO employer_auto_matched_candidates 
-               (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-            [personId, job.id, score, scoreSummary, detailResponse]
+               (person_id, job_id, match_score, detail_response, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [personId, job.id, score, detailResponse]
           );
 
           computed += 1;
@@ -109,8 +108,8 @@ export function startTalentJobMatchingWorker() {
           console.warn(`[talent-job-matching] match API failed for job ${job.id}:`, (e as Error)?.message);
           await query(
             `INSERT INTO employer_auto_matched_candidates
-               (person_id, job_id, match_score, score_summary, detail_response, source_type, created_at, updated_at)
-             VALUES ($1, $2, NULL, NULL, NULL, 'talent', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+               (person_id, job_id, match_score, detail_response, created_at, updated_at)
+             VALUES ($1, $2, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
             [personId, job.id]
           );
         }

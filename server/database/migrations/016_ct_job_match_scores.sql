@@ -8,14 +8,13 @@ CREATE TABLE IF NOT EXISTS employer_auto_matched_candidates (
   person_id INTEGER NOT NULL,
   job_id INTEGER NOT NULL,
   match_score DOUBLE PRECISION NULL,
-  score_summary TEXT NULL,
   detail_response TEXT NULL,
-  source_type VARCHAR(255) NOT NULL DEFAULT 'talent',
+  interested INTEGER NULL DEFAULT 0,
+  email_sent_at TIMESTAMP WITH TIME ZONE NULL,
+  discarded_at TIMESTAMP WITH TIME ZONE NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(person_id, job_id, source_type)
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_employer_auto_matched_candidates_person_id ON employer_auto_matched_candidates(person_id);
 CREATE INDEX IF NOT EXISTS idx_employer_auto_matched_candidates_job_id ON employer_auto_matched_candidates(job_id);
-CREATE INDEX IF NOT EXISTS idx_employer_auto_matched_candidates_source_type ON employer_auto_matched_candidates(source_type);

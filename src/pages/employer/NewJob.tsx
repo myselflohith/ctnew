@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import RecommendedCandidatesModal from "@/components/employer/RecommendedCandidatesModal";
 import SourcingProgressModal from "@/components/employer/SourcingProgressModal";
 import { employerNavItems } from "@/components/layout/navItems";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +52,6 @@ const NewJob = () => {
 
   const [skills, setSkills] = useState<string[]>([]);
 
-  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
   const [sourcingProgressOpen, setSourcingProgressOpen] = useState(false);
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
   const [createdJobTitle, setCreatedJobTitle] = useState<string>("");
@@ -346,7 +344,6 @@ const NewJob = () => {
             ? Number(formData.daysInOffice)
             : null,
         linkedin_url: formData.linkedInUrl || null,
-        rate: undefined,
         is_original_job: 1,
         is_automation: 0,
         automation_limit: null,
@@ -1120,21 +1117,13 @@ const NewJob = () => {
           targetCount={createdTargetCount}
           onDone={() => {
             setSourcingProgressOpen(false);
-            setRecommendationsOpen(true);
-          }}
-        />
-
-        <RecommendedCandidatesModal
-          open={recommendationsOpen}
-          onOpenChange={(open) => {
-            setRecommendationsOpen(open);
-            if (!open) {
-              // After closing, stay on this page.
-              return;
+            // Redirect to Jobs page and open the Recommended tab for this job
+            if (createdJobId) {
+              navigate(`/employer/jobs?recommended=1&jobId=${createdJobId}`);
+            } else {
+              navigate(`/employer/jobs`);
             }
           }}
-          jobId={createdJobId}
-          jobTitle={createdJobTitle}
         />
         {/* Header */}
         <div className="mb-8">

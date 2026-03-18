@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { FileText, Download, Mail, GraduationCap, Briefcase, Award, Globe, Linkedin } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface CandidateProfileModalProps {
   open: boolean;
@@ -24,6 +25,7 @@ interface CandidateProfileModalProps {
     rankScore?: number | null;
     status?: string;
     resumeId?: string;
+    resumeUrl?: string;
     appliedAt?: string;
     userId?: string;
   } | null;
@@ -56,7 +58,9 @@ const CandidateProfileModal = ({
     let cancelled = false;
     const load = async () => {
       if (!open || !candidate?.userId) return;
+      let toastId: string | number | undefined;
       try {
+        toastId = toast.loading("Loading candidate profile…");
         setLoading(true);
         const res = await apiClient.getEmployerCandidateProfile(candidate.userId);
         if (!cancelled && res?.success && res.data) {
@@ -78,8 +82,10 @@ const CandidateProfileModal = ({
         }
       } catch (e) {
         console.error("[CandidateProfileModal] Failed to load profile", e);
+        toast.error("Failed to load candidate profile", { id: toastId });
       } finally {
         if (!cancelled) setLoading(false);
+        if (toastId !== undefined) toast.dismiss(toastId);
       }
     };
     load();
@@ -91,8 +97,12 @@ const CandidateProfileModal = ({
   const handleDownloadResume = () => {
     if (candidate.resumeId) {
       const url = apiClient.getResumeDownloadUrl(candidate.resumeId);
-      window.open(url, '_blank');
+      window.open(url, "_blank");
+      return;
     }
+    // Fallback: resume_url sometimes exists in the row payload
+    const resumeUrl = (candidate as any)?.resumeUrl as string | undefined;
+    if (resumeUrl) window.open(resumeUrl, "_blank");
   };
 
   return (
@@ -151,7 +161,7 @@ const CandidateProfileModal = ({
           </div>
 
           {/* Resume Section */}
-          {candidate.resumeId && (
+          {(candidate.resumeId || (candidate as any)?.resumeUrl) && (
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -163,7 +173,7 @@ const CandidateProfileModal = ({
                 </div>
                 <Button variant="outline" onClick={handleDownloadResume}>
                   <Download className="w-4 h-4 mr-2" />
-                  Download
+                  Open CV
                 </Button>
               </div>
             </div>
@@ -211,9 +221,6 @@ const CandidateProfileModal = ({
               <FileText className="w-4 h-4" />
               Summary
             </h4>
-            {loading && (
-              <p className="text-xs text-muted-foreground">Loading candidate profile…</p>
-            )}
             {!loading && profile?.summary && (
               <p className="text-sm text-muted-foreground whitespace-pre-line">
                 {profile.summary}

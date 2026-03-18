@@ -1298,13 +1298,21 @@ ${employerDisplayName}`;
                 />
               </div>
 
-              <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t pt-3 flex items-center justify-end gap-2">
-                <Button variant="outline" onClick={() => setInviteStep("type")} disabled={inviteSending}>
+              <div className="flex items-center justify-end gap-2 border-t bg-background/95 pt-3 backdrop-blur">
+                <Button
+                  variant="outline"
+                  onClick={() => setInviteStep("type")}
+                  disabled={inviteSending}
+                >
                   Back
                 </Button>
                 <Button
                   onClick={handleSendInvite}
-                  disabled={inviteSending || (humanSelectedSlots || []).filter((s: any) => !!s?.startISO).length < 3}
+                  disabled={
+                    inviteSending ||
+                    (humanSelectedSlots || []).filter((s: any) => !!s?.startISO)
+                      .length < 3
+                  }
                 >
                   {inviteSending ? "Sending..." : "Send"}
                 </Button>

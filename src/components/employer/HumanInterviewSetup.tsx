@@ -41,6 +41,19 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
 
   const [loading, setLoading] = useState(false);
 
+  const employerDisplayName = useState(() => {
+    try {
+      const raw = localStorage.getItem("auth_user");
+      const u = raw ? JSON.parse(raw) : null;
+      const first = String(u?.first_name || u?.firstName || "").trim();
+      const last = String(u?.last_name || u?.lastName || "").trim();
+      const full = `${first} ${last}`.trim();
+      return full || String(u?.name || u?.email || "Employer");
+    } catch {
+      return "Employer";
+    }
+  })[0];
+
   useEffect(() => {
     const fetchJobs = async () => {
       const token = apiClient.getToken();
@@ -162,7 +175,8 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
       const jobTitle = jobs.find((j) => j.id === formData.jobId)?.title || "your role";
       const messageSubject = `Interview availability for ${jobTitle}`;
 
-      // Leave body empty so backend default includes booking link.
+      // The /human-interview/request endpoint only creates the scheduleUrl; it does NOT send email.
+      // Therefore we must send the booking link ourselves via /employer/candidates/email.
       const messageBody = "";
 
       await Promise.all(
@@ -197,12 +211,31 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
             throw new Error("Booking link generation returned an invalid URL (legacy token link).");
           }
 
-          if (scheduleUrl) {
-            toast.success(`Booking link created: ${scheduleUrl}`);
-          }
-
           if (!res?.success) {
             throw new Error(res?.error || `Failed to create request for ${candidate.name}`);
+          }
+
+          // Send invite email to the candidate (this is the email the user expects).
+          const bodyText =
+            `Dear ${candidate.name},\n\n` +
+            `We'd like to schedule an interview for the ${jobTitle} position.\n\n` +
+            `[button] Review and Book Slot\n` +
+            `${scheduleUrl}\n\n` +
+            `Best regards,\n` +
+            `${employerDisplayName}`;
+
+          const emailRes: any = await apiClient.request("/employer/candidates/email", {
+            method: "POST",
+            body: JSON.stringify({
+              to: candidate.email,
+              subject: messageSubject,
+              body: bodyText,
+              job_id: Number(formData.jobId),
+            }),
+          });
+
+          if (!emailRes?.success) {
+            throw new Error(emailRes?.error || "Failed to send booking email");
           }
         })
       );
