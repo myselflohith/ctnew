@@ -1287,7 +1287,7 @@ ${employerDisplayName}`;
               </div>
 
               {/* Calendar widget (same component used in other human interview flows) */}
-              <div className="border rounded-xl overflow-hidden">
+              <div className="border rounded-xl overflow-hidden pb-4">
                 {/* TimeSlotCalendar is heavy; keep it inside the modal only */}
                 {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
                 {/* @ts-ignore */}

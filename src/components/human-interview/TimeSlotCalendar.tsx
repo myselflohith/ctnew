@@ -267,7 +267,7 @@ export function TimeSlotCalendar({
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Confirm Slot</DialogTitle>
           </DialogHeader>
@@ -286,7 +286,7 @@ export function TimeSlotCalendar({
             <div className="mt-2 text-muted-foreground">Time Zone: {DEFAULT_TIMEZONE}</div>
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="mt-4 gap-2">
             <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
