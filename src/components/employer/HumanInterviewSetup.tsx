@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api";
+import { TimeSlotCalendar } from "@/components/human-interview/TimeSlotCalendar";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,10 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const shouldPrefill = searchParams.get("prefill") === "1";
-  const [step, setStep] = useState<"details" | "review">("details");
+  const [step, setStep] = useState<"details" | "calendar" | "review">("details");
+  const stepIndex = step === "details" ? 1 : step === "calendar" ? 2 : 3;
+  const stepAccentClass = "bg-emerald-500 text-white";
+  const stepInactiveClass = "bg-gray-200 text-gray-600";
   const [formData, setFormData] = useState({
     title: "",
     jobId: "",
@@ -40,6 +44,8 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
   const isMultiSelect = manualCandidates.length > 1;
 
   const [loading, setLoading] = useState(false);
+
+  const [humanSelectedSlots, setHumanSelectedSlots] = useState<any[]>([]);
 
   const employerDisplayName = useState(() => {
     try {
@@ -158,8 +164,73 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
         return;
       }
 
+      setStep("calendar");
+    } else if (step === "calendar") {
+      const filled = (humanSelectedSlots || []).filter((s: any) => !!s?.startISO).slice(0, 3);
+      if (filled.length < 3) {
+        toast.error("Please select 3 availability slots");
+        return;
+      }
+
       setStep("review");
     }
+  };
+
+  const formatSlot = (iso: string) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+
+    return d.toLocaleString(undefined, {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+  };
+
+  const buildHumanInterviewEmailBody = (
+    candidate: { name: string; email: string },
+    slots: Array<{ startISO: string; endISO: string }>,
+    scheduleUrl: string,
+    jobTitle: string
+  ) => {
+    const slotLines = (slots || [])
+      .filter((s) => !!s?.startISO)
+      .slice(0, 3)
+      .map((s, idx) => {
+        const startText = formatSlot(s.startISO);
+        const endText = formatSlot(s.endISO);
+        return `Slot ${idx + 1}: ${startText} - ${endText}`;
+      })
+      .join("\n");
+
+    const slotParams = encodeURIComponent(
+      JSON.stringify(
+        (slots || [])
+          .filter((s) => !!s?.startISO && !!s?.endISO)
+          .slice(0, 3)
+          .map((s) => ({ start: s.startISO, end: s.endISO }))
+      )
+    );
+
+    const scheduleUrlWithPrefill = scheduleUrl
+      ? `${scheduleUrl}${scheduleUrl.includes("?") ? "&" : "?"}prefillSlots=${slotParams}`
+      : scheduleUrl;
+
+    return (
+      `Dear ${candidate.name},\n\n` +
+      `We'd like to schedule an interview for the ${jobTitle} position. Here are 3 proposed time slots:\n\n` +
+      `${slotLines}\n\n` +
+      `[button] Review and Book Slot\n` +
+      `${scheduleUrlWithPrefill}\n\n` +
+      `If you'd like a different time, you can adjust the timing in the calendar after opening the link (or request a different time).\n\n` +
+      `Best regards,\n` +
+      `${employerDisplayName}`
+    );
   };
 
   const handleSubmit = async () => {
@@ -172,12 +243,14 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
         return;
       }
 
+      const filled = (humanSelectedSlots || []).filter((s: any) => !!s?.startISO).slice(0, 3);
+      if (filled.length < 3) {
+        toast.error("Please select 3 availability slots");
+        return;
+      }
+
       const jobTitle = jobs.find((j) => j.id === formData.jobId)?.title || "your role";
       const messageSubject = `Interview availability for ${jobTitle}`;
-
-      // The /human-interview/request endpoint only creates the scheduleUrl; it does NOT send email.
-      // Therefore we must send the booking link ourselves via /employer/candidates/email.
-      const messageBody = "";
 
       await Promise.all(
         selected.map(async (candidate) => {
@@ -187,7 +260,7 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
             candidateUserId: undefined,
             jobId: formData.jobId ? Number(formData.jobId) : undefined,
             messageSubject,
-            messageBody,
+            messageBody: "",
           };
 
           const res = await apiClient.request<{
@@ -199,30 +272,20 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
             body: JSON.stringify(payload),
           });
 
-          // New backend returns { data: { scheduleUrl, manageUrl } } where scheduleUrl is
-          // /human-interview/schedule/:jobId/:personId (NOT hir_cand_* token).
           const scheduleUrl: string | undefined =
             (res as any)?.data?.scheduleUrl ||
             (res as any)?.data?.links?.scheduleUrl ||
             (res as any)?.data?.links?.candidateUrl;
 
-          // Hard fail if backend didn't return the new-style URL, because token URLs 404.
-          if (!scheduleUrl || scheduleUrl.includes("hir_cand_") || scheduleUrl.includes("hir_emp_")) {
-            throw new Error("Booking link generation returned an invalid URL (legacy token link).");
-          }
-
           if (!res?.success) {
             throw new Error(res?.error || `Failed to create request for ${candidate.name}`);
           }
 
-          // Send invite email to the candidate (this is the email the user expects).
-          const bodyText =
-            `Dear ${candidate.name},\n\n` +
-            `We'd like to schedule an interview for the ${jobTitle} position.\n\n` +
-            `[button] Review and Book Slot\n` +
-            `${scheduleUrl}\n\n` +
-            `Best regards,\n` +
-            `${employerDisplayName}`;
+          if (!scheduleUrl || scheduleUrl.includes("hir_cand_") || scheduleUrl.includes("hir_emp_")) {
+            throw new Error("Booking link generation returned an invalid URL (legacy token link).");
+          }
+
+          const bodyText = buildHumanInterviewEmailBody(candidate, filled, scheduleUrl, jobTitle);
 
           const emailRes: any = await apiClient.request("/employer/candidates/email", {
             method: "POST",
@@ -260,9 +323,7 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
           <div className="flex items-center gap-2">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                step === "details" || step === "review"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-gray-200 text-gray-600"
+                stepIndex >= 1 ? stepAccentClass : stepInactiveClass
               }`}
             >
               1
@@ -275,10 +336,23 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
           <div className="flex items-center gap-2">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                step === "review" ? "bg-emerald-500 text-white" : "bg-gray-200 text-gray-600"
+                stepIndex >= 2 ? stepAccentClass : stepInactiveClass
               }`}
             >
               2
+            </div>
+            <div className="text-sm font-medium">Availability</div>
+          </div>
+
+          <div className="flex-1 h-1 mx-4 bg-gray-200" />
+
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                stepIndex >= 3 ? stepAccentClass : stepInactiveClass
+              }`}
+            >
+              3
             </div>
             <div className="text-sm font-medium">Review</div>
           </div>
@@ -402,6 +476,43 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
         </div>
       )}
 
+      {/* Step: Calendar */}
+      {step === "calendar" && (
+        <div className="glass rounded-2xl p-8 space-y-6">
+          <div className="space-y-2">
+            <h3 className="text-lg font-bold text-foreground">Select Availability</h3>
+            <p className="text-sm text-muted-foreground">
+              Select 3 availability slots. These will be prefilled when the candidate opens the booking link.
+            </p>
+          </div>
+
+          <div className="border rounded-xl overflow-hidden">
+            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+            {/* @ts-ignore */}
+            <TimeSlotCalendar
+              maxSlots={3}
+              onSlotsSelected={(slots: any[]) => setHumanSelectedSlots(slots)}
+              disabled={loading}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t bg-background/95 pt-3 backdrop-blur">
+            <Button variant="outline" onClick={() => setStep("details")} disabled={loading}>
+              Back
+            </Button>
+            <Button
+              onClick={handleNextStep}
+              disabled={
+                loading ||
+                (humanSelectedSlots || []).filter((s: any) => !!s?.startISO).length < 3
+              }
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
 
       {/* Step: Review */}
       {step === "review" && (
@@ -435,13 +546,10 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
           </div>
 
           <div className="flex gap-4 justify-end">
-            <Button variant="outline" onClick={() => setStep("details")}>
+            <Button variant="outline" onClick={() => setStep("calendar")}>
               Back
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={loading}
-            >
+            <Button onClick={handleSubmit} disabled={loading}>
               Send Booking Link
             </Button>
           </div>
