@@ -16,7 +16,7 @@ const JOB_SELECT = `
   CASE WHEN j.active = false THEN 'closed' WHEN j.status = 1 THEN 'paused' ELSE 'active' END AS status,
   j.created_at,
   j.updated_at,
-  COALESCE(j.autopilot_sourcing, 0) AS autopilot_sourcing,
+  COALESCE(j.autopilot_sourcing, false) AS autopilot_sourcing,
   j.target_count,
   j.distance,
   j.days_in_office,
