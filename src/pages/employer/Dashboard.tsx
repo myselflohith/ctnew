@@ -81,7 +81,6 @@ const EmployerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [interviews, setInterviews] = useState<InterviewItem[]>([]);
   const [allInterviews, setAllInterviews] = useState<InterviewItem[]>([]);
-  const [showAllJobs, setShowAllJobs] = useState(false);
   const [showAllCandidates, setShowAllCandidates] = useState(false);
   const [showAllInterviews, setShowAllInterviews] = useState(false);
   const [candidateMatchDialogOpen, setCandidateMatchDialogOpen] = useState(false);
@@ -293,18 +292,18 @@ const EmployerDashboard = () => {
               variant="ghost" 
               size="sm" 
               className="group" 
-              onClick={() => setShowAllJobs(!showAllJobs)}
+              onClick={() => navigate("/employer/jobs")}
             >
-              {showAllJobs ? "Show Less" : "View All"}
-              <ArrowRight className={`w-4 h-4 ml-1 transition-transform ${showAllJobs ? 'rotate-90' : 'group-hover:translate-x-1'}`} />
+              View All
+              <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
             </Button>
           </div>
 
           <div className="space-y-4">
             {loading ? (
               <p className="text-muted-foreground text-center py-4">Loading jobs...</p>
-            ) : (showAllJobs ? allJobs : jobs).length > 0 ? (
-              (showAllJobs ? allJobs : jobs).map((job) => (
+            ) : jobs.length > 0 ? (
+              jobs.map((job) => (
               <div
                 key={job.id}
                 className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors"
