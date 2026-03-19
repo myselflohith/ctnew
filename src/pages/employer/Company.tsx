@@ -274,45 +274,42 @@ const EmployerCompany = () => {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Logo Section */}
+      <div className="space-y-6">
         <div className="glass rounded-2xl p-6">
-          <h2 className="font-display text-lg font-semibold text-foreground mb-4">
-            Company Logo
-          </h2>
-          <div className="flex flex-col items-center">
-            {orgData.image_url ? (
-              <img
-                src={orgData.image_url}
-                alt="Company logo"
-                className="w-32 h-32 rounded-2xl object-cover mb-4"
+          {/* Logo control row sits above details to avoid empty left-column space */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-border">
+            <div className="shrink-0 mx-auto sm:mx-0">
+              {orgData.image_url ? (
+                <img
+                  src={orgData.image_url}
+                  alt="Company logo"
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover"
+                />
+              ) : (
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center">
+                  <Building2 className="w-12 h-12 sm:w-14 sm:h-14 text-primary" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0 text-center sm:text-left">
+              <h2 className="font-display text-lg font-semibold text-foreground">Company Logo</h2>
+              <p className="text-sm text-muted-foreground mt-1 mb-3">PNG or JPG, max 2MB</p>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={handleLogoFileChange}
               />
-            ) : (
-              <div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-cardinal/20 to-amber/20 flex items-center justify-center mb-4">
-                <Building2 className="w-16 h-16 text-primary" />
-              </div>
-            )}
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/png,image/jpeg"
-              className="hidden"
-              onChange={handleLogoFileChange}
-            />
-            <Button variant="outline" size="sm" onClick={handleLogoButtonClick} disabled={uploadingLogo}>
-              <Upload className="w-4 h-4 mr-2" />
-              {uploadingLogo ? "Uploading..." : "Upload Logo"}
-            </Button>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              PNG or JPG, max 2MB
-            </p>
+              <Button variant="outline" size="sm" onClick={handleLogoButtonClick} disabled={uploadingLogo}>
+                <Upload className="w-4 h-4 mr-2" />
+                {uploadingLogo ? "Uploading..." : "Upload Logo"}
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {/* Company Details */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="glass rounded-2xl p-6">
-            <h2 className="font-display text-lg font-semibold text-foreground mb-6">
+          <div className="pt-6 space-y-4">
+            <h2 className="font-display text-lg font-semibold text-foreground mb-2">
               Basic Information
             </h2>
             <div className="space-y-4">
@@ -321,8 +318,8 @@ const EmployerCompany = () => {
                 <Input
                   id="companyName"
                   value={orgData.name ?? ""}
-                  onChange={(e) => updateOrg({ name: e.target.value })}
-                  placeholder="Your company name"
+                  readOnly
+                  className="bg-muted/50"
                 />
               </div>
               <div className="grid md:grid-cols-2 gap-4">
@@ -379,6 +376,7 @@ const EmployerCompany = () => {
               </div>
             </div>
           </div>
+        </div>
 
           <div className="glass rounded-2xl p-6">
             <h2 className="font-display text-lg font-semibold text-foreground mb-6">
@@ -456,7 +454,6 @@ const EmployerCompany = () => {
           <Button variant="hero" size="lg" onClick={handleSaveCompany} disabled={saving || !org}>
             {saving ? "Saving..." : "Save Changes"}
           </Button>
-        </div>
       </div>
 
       {/* Must Have Job Requirements */}

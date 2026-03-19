@@ -153,18 +153,19 @@ const EmployerProfile = () => {
         <p className="text-muted-foreground">Loading…</p>
       ) : (
         <div className="w-full max-w-none">
-          {/* Same full-width grid pattern as Company page */}
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="glass rounded-2xl p-6">
-              <h2 className="font-display text-lg font-semibold text-foreground mb-4">Profile photo</h2>
-              <div className="flex flex-col items-center text-center lg:items-stretch lg:text-left">
-                <div className="relative h-28 w-28 rounded-full overflow-hidden bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white text-2xl font-semibold shrink-0 mx-auto lg:mx-0 mb-4">
-                  {pictureUrl ? (
-                    <img src={pictureUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    displayName.charAt(0).toUpperCase()
-                  )}
-                </div>
+          <div className="glass rounded-2xl p-6 w-full">
+            {/* Photo + upload directly above personal details — one row, no empty sidebar column */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-border">
+              <div className="relative h-24 w-24 sm:h-28 sm:w-28 rounded-full overflow-hidden bg-gradient-to-br from-cardinal to-amber flex items-center justify-center text-white text-2xl font-semibold shrink-0 mx-auto sm:mx-0">
+                {pictureUrl ? (
+                  <img src={pictureUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  displayName.charAt(0).toUpperCase()
+                )}
+              </div>
+              <div className="flex-1 min-w-0 text-center sm:text-left">
+                <h2 className="font-display text-lg font-semibold text-foreground">Profile photo</h2>
+                <p className="text-sm text-muted-foreground mt-1 mb-3">JPG or PNG, max 1 MB.</p>
                 <input
                   ref={avatarInputRef}
                   type="file"
@@ -176,77 +177,75 @@ const EmployerProfile = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="w-full sm:w-auto"
                   disabled={uploadingAvatar}
                   onClick={() => avatarInputRef.current?.click()}
                 >
                   <Camera className="w-4 h-4 mr-2" />
-                  {uploadingAvatar ? "Uploading…" : "Upload picture"}
+                  {uploadingAvatar ? "Uploading…" : "Upload or change picture"}
                 </Button>
-                <p className="text-xs text-muted-foreground mt-2">JPG or PNG, max 1 MB.</p>
               </div>
             </div>
 
-            <div className="lg:col-span-2 glass rounded-2xl p-6 space-y-4">
-            <h2 className="font-display text-lg font-semibold text-foreground mb-2">Personal details</h2>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="emp-first">First name</Label>
-                <Input id="emp-first" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            <div className="pt-6 space-y-4">
+              <h2 className="font-display text-lg font-semibold text-foreground">Personal details</h2>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="emp-first">First name</Label>
+                  <Input id="emp-first" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emp-last">Last name</Label>
+                  <Input id="emp-last" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="emp-last">Last name</Label>
-                <Input id="emp-last" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                <Label htmlFor="emp-email">Email</Label>
+                <Input id="emp-email" type="email" value={email} readOnly className="bg-muted/50" />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="emp-email">Email</Label>
-              <Input id="emp-email" type="email" value={email} readOnly className="bg-muted/50" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="emp-phone">Phone</Label>
-              <Input
-                id="emp-phone"
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="Optional"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="emp-location">Location</Label>
-              <Input
-                id="emp-location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="City, region, or country"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="emp-li">LinkedIn profile URL</Label>
-              <Input
-                id="emp-li"
-                type="url"
-                value={linkedInUrl}
-                onChange={(e) => setLinkedInUrl(e.target.value)}
-                placeholder="https://linkedin.com/in/…"
-              />
-            </div>
-            {roleLabel && (
               <div className="space-y-2">
-                <Label>Account type</Label>
-                <Input value={roleLabel} readOnly className="bg-muted/50" />
+                <Label htmlFor="emp-phone">Phone</Label>
+                <Input
+                  id="emp-phone"
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="Optional"
+                />
               </div>
-            )}
-            {currentUser?.company_name && (
               <div className="space-y-2">
-                <Label>Organization (read-only)</Label>
-                <Input value={currentUser.company_name} readOnly className="bg-muted/50" />
+                <Label htmlFor="emp-location">Location</Label>
+                <Input
+                  id="emp-location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="City, region, or country"
+                />
               </div>
-            )}
-            <Button variant="hero" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save changes"}
-            </Button>
+              <div className="space-y-2">
+                <Label htmlFor="emp-li">LinkedIn profile URL</Label>
+                <Input
+                  id="emp-li"
+                  type="url"
+                  value={linkedInUrl}
+                  onChange={(e) => setLinkedInUrl(e.target.value)}
+                  placeholder="https://linkedin.com/in/…"
+                />
+              </div>
+              {roleLabel && (
+                <div className="space-y-2">
+                  <Label>Account type</Label>
+                  <Input value={roleLabel} readOnly className="bg-muted/50" />
+                </div>
+              )}
+              {currentUser?.company_name && (
+                <div className="space-y-2">
+                  <Label>Organization (read-only)</Label>
+                  <Input value={currentUser.company_name} readOnly className="bg-muted/50" />
+                </div>
+              )}
+              <Button variant="hero" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
             </div>
           </div>
         </div>
