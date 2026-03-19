@@ -861,9 +861,18 @@ export async function applyToJob(
   return result.rows[0];
 }
 
-// Get applications for jobs created by an employer (by company name and/or creator_id so list is never empty for their jobs)
-export async function getApplicationsForEmployer(companyName: string | null, creatorId: number | null): Promise<(JobApplication & { candidate_name?: string; candidate_email?: string; rank_score?: number | null; score_edu?: number | null; score_company?: number | null; latest_company?: string | null; latest_school?: string | null })[]> {
-  if (!companyName && !creatorId) return [];
+// Get applications for all jobs visible to this employer user — same scope as getJobsForEmployer:
+// own created jobs, same company name (case-insensitive), or same organization_id (teammates' postings).
+export async function getApplicationsForEmployer(employerUserId: number): Promise<(JobApplication & { candidate_name?: string; candidate_email?: string; rank_score?: number | null; score_edu?: number | null; score_company?: number | null; latest_company?: string | null; latest_school?: string | null })[]> {
+  const userResult = await query(
+    'SELECT company_name, organization_id FROM users WHERE id = $1',
+    [employerUserId]
+  );
+  const urow = userResult.rows[0];
+  if (!urow) return [];
+  const companyName = urow.company_name != null ? String(urow.company_name).trim() : null;
+  const organizationId = urow.organization_id ?? null;
+
   const result = await query(
     `SELECT 
        a.id as application_id,
@@ -912,10 +921,14 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
        ON m.person_id = u.person_id
       AND m.job_id    = j.id
       AND m.source_type = 'talent'
-     WHERE (($1::text IS NOT NULL AND TRIM(j.company_name) = TRIM($1)) OR ($2::int IS NOT NULL AND j.creator_id = $2))
-       AND j.discarded_at IS NULL
+     WHERE j.discarded_at IS NULL
+       AND (
+         j.creator_id = $1
+         OR ($2::text IS NOT NULL AND $2 != '' AND LOWER(TRIM(COALESCE(j.company_name, ''))) = LOWER(TRIM($2)))
+         OR ($3::uuid IS NOT NULL AND j.organization_id = $3::uuid)
+       )
      ORDER BY a.applied_at DESC`,
-    [companyName || null, creatorId ?? null]
+    [employerUserId, companyName || null, organizationId]
   );
   return result.rows.map(row => {
     const candidateName = row.first_name != null || row.last_name != null
@@ -970,10 +983,15 @@ export async function updateApplicationStatus(
     `SELECT a.id
      FROM ct_job_applications a
      JOIN jobs j ON a.job_id = j.id
+     CROSS JOIN LATERAL (
+       SELECT company_name, organization_id FROM users WHERE id = $2 LIMIT 1
+     ) em
      WHERE a.id = $1
        AND (
          j.creator_id = $2
-         OR LOWER(TRIM(COALESCE(j.company_name, ''))) = LOWER(TRIM(COALESCE((SELECT company_name FROM users WHERE id = $2), '')))
+         OR (em.company_name IS NOT NULL AND TRIM(em.company_name) != ''
+             AND LOWER(TRIM(COALESCE(j.company_name, ''))) = LOWER(TRIM(em.company_name)))
+         OR (em.organization_id IS NOT NULL AND j.organization_id = em.organization_id)
        )`,
     [appId, employerUserId]
   );

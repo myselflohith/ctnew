@@ -719,11 +719,14 @@ router.get('/applications/list', authenticateToken, async (req: Request, res: Re
       return;
     }
 
-    // If employer, get applications for their company's jobs (match by company_name or creator_id so all their jobs' applications show)
+    // If employer, get applications for org-visible jobs (same rules as GET jobs list: creator, company name, organization_id)
     if (req.user.role === 'employer') {
-      const companyName = req.user.company_name && String(req.user.company_name).trim() ? String(req.user.company_name).trim() : null;
-      const creatorId = req.user.id != null ? Number(req.user.id) : null;
-      const applications = await getApplicationsForEmployer(companyName, creatorId);
+      const employerId = req.user.id != null ? Number(req.user.id) : NaN;
+      if (Number.isNaN(employerId)) {
+        res.status(400).json({ error: 'Invalid user' });
+        return;
+      }
+      const applications = await getApplicationsForEmployer(employerId);
       res.json({ success: true, data: applications });
       return;
     }
