@@ -698,7 +698,7 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
        a.user_id,
        a.job_id,
        a.resume_id,
-       a.status,
+       a.status as application_status,
        a.applied_at,
        a.updated_at as application_updated_at,
        j.id AS job_id,
@@ -870,7 +870,7 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
        a.user_id,
        a.job_id,
        a.resume_id,
-       a.status,
+       a.status as application_status,
        a.applied_at,
        a.updated_at as application_updated_at,
        j.id AS job_id,
@@ -893,7 +893,7 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
          WHEN j.active = false THEN 'closed' 
          WHEN j.status = 1 THEN 'paused' 
          ELSE 'active' 
-       END AS status,
+       END AS job_status,
        j.created_at as job_created_at,
        j.updated_at as job_updated_at,
       u.first_name,
@@ -926,7 +926,7 @@ export async function getApplicationsForEmployer(companyName: string | null, cre
       user_id: row.user_id,
       job_id: row.job_id,
       resume_id: row.resume_id,
-      status: row.status,
+      status: row.application_status,
       applied_at: row.applied_at,
       updated_at: row.application_updated_at,
       candidate_name: candidateName || undefined,
@@ -964,10 +964,17 @@ export async function updateApplicationStatus(
 ): Promise<JobApplication | null> {
   const appId = parseInt(applicationId, 10);
   if (Number.isNaN(appId)) return null;
+  // Verify employer can update this application.
+  // Prefer creator_id check (most reliable). For company_name matching, do case-insensitive compare.
   const check = await query(
-    `SELECT a.id FROM ct_job_applications a
+    `SELECT a.id
+     FROM ct_job_applications a
      JOIN jobs j ON a.job_id = j.id
-     WHERE a.id = $1 AND (TRIM(COALESCE(j.company_name, '')) = (SELECT TRIM(COALESCE(company_name, '')) FROM users WHERE id = $2) OR j.creator_id = $2)`,
+     WHERE a.id = $1
+       AND (
+         j.creator_id = $2
+         OR LOWER(TRIM(COALESCE(j.company_name, ''))) = LOWER(TRIM(COALESCE((SELECT company_name FROM users WHERE id = $2), '')))
+       )`,
     [appId, employerUserId]
   );
   if (!check.rows.length) return null;

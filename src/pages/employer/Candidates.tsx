@@ -77,20 +77,10 @@ type JobDetailsForEdit = {
   target_count?: number | null;
 };
 
-const getStatusVariant = (status: string) => {
-  switch (status) {
-    case "Interview Scheduled":
-      return "excellent";
-    case "Phone Screen":
-      return "good";
-    case "Under Review":
-      return "secondary";
-    case "New":
-      return "outline";
-    default:
-      return "secondary";
-  }
-};
+  const getStatusVariant = (status: string) => {
+    // Candidate list tab only supports Active / Rejected
+    return String(status || "").trim() === "Rejected" ? "secondary" : "outline";
+  };
 
 const EmployerCandidates = () => {
   const [searchParams] = useSearchParams();
@@ -243,7 +233,7 @@ const EmployerCandidates = () => {
                 // If backend already sends JSON (driver/jsonb), keep it as-is.
                 return raw;
               })(),
-              status: app.status || "Application Sent",
+              status: app.status === "Rejected" ? "Rejected" : "Active",
               appliedAt: appliedAtFormatted,
               appliedAtRaw: appliedAtRaw,
               resumeId: app.resume_id ?? undefined,
@@ -412,25 +402,117 @@ const EmployerCandidates = () => {
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
-    const ids = candidates
-      .filter((c) => selectedIds.has(c.id))
-      .map((c) => c.applicationId);
+    const selected = candidates.filter((c) => selectedIds.has(c.id));
+    const ids = selected.map((c) => c.applicationId);
     if (!ids.length) return;
+
     try {
-      await Promise.all(
-        ids.map((id) =>
-          apiClient.updateApplicationStatus(id, newStatus).catch((err) => {
-            console.error("Failed to update status for application", id, err);
-          })
-        )
+      const results = await Promise.allSettled(
+        ids.map((id) => apiClient.updateApplicationStatus(id, newStatus as any))
       );
-      setCandidates((prev) =>
-        prev.map((c) =>
-          selectedIds.has(c.id) ? { ...c, status: newStatus } : c
-        )
-      );
+
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length) {
+        console.error("Bulk status update failed for some applications:", failed);
+        toast.error(`Failed to update ${failed.length} candidate(s).`);
+      } else {
+        toast.success("Status updated");
+      }
+
+      // Clear selection after performing an action (UX parity).
+      setSelectedIds(new Set());
+
+      // Always refetch from server so refresh matches DB state.
+      // (Also helps if any updates were rejected by backend auth checks.)
+      const refreshed = jobIdFilter
+        ? await apiClient.getJobApplications(jobIdFilter).catch(() => ({ success: false, data: [] }))
+        : await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
+
+      if ((refreshed as any)?.success && (refreshed as any)?.data) {
+        const rawApps: any[] = (refreshed as any).data as any[];
+
+        const candidatesData: Candidate[] = rawApps.map((app: any, index: number) => {
+          const appliedAtRaw = app.applied_at ?? null;
+          const appliedAtFormatted =
+            appliedAtRaw != null
+              ? formatDistanceToNow(new Date(appliedAtRaw), { addSuffix: true })
+              : null;
+
+          const name =
+            app.candidate_name ||
+            app.candidate_email ||
+            `Candidate ${index + 1}`;
+
+          return {
+            id: String(app.id || app.application_id),
+            applicationId: String(app.id || app.application_id),
+            userId: String(app.user_id),
+            jobId: String(app.job_id),
+            name,
+            email: app.candidate_email ?? undefined,
+            jobTitle: app.job?.title || "Unknown Position",
+            matchScore:
+              typeof app.job?.match_score === "number"
+                ? app.job.match_score
+                : app.job?.match_score != null
+                  ? Number(app.job.match_score)
+                  : null,
+            rankScore:
+              typeof app.rank_score === "number"
+                ? app.rank_score
+                : app.rank_score != null
+                  ? Number(app.rank_score)
+                  : null,
+            scoreEdu:
+              typeof app.score_edu === "number"
+                ? app.score_edu
+                : app.score_edu != null
+                  ? Number(app.score_edu)
+                  : null,
+            scoreCompany:
+              typeof app.score_company === "number"
+                ? app.score_company
+                : app.score_company != null
+                  ? Number(app.score_company)
+                  : null,
+            latestCompany:
+              app.latest_company != null && String(app.latest_company).trim() !== ""
+                ? String(app.latest_company).trim()
+                : null,
+            latestSchool:
+              app.latest_school != null && String(app.latest_school).trim() !== ""
+                ? String(app.latest_school).trim()
+                : null,
+            matchSummary:
+              typeof (app.job as any)?.match_summary === "string"
+                ? (app.job as any).match_summary
+                : null,
+            detailResponse: (() => {
+              const raw = (app.job as any)?.detail_response;
+              if (raw == null) return undefined;
+              if (typeof raw === "string") {
+                try {
+                  return JSON.parse(raw);
+                } catch {
+                  return raw;
+                }
+              }
+              return raw;
+            })(),
+            status: app.status === "Rejected" ? "Rejected" : "Active",
+            appliedAt: appliedAtFormatted,
+            appliedAtRaw: appliedAtRaw,
+            resumeId: app.resume_id ?? undefined,
+          };
+        });
+
+        setCandidates(candidatesData);
+      }
     } catch (err) {
       console.error("Bulk status update failed:", err);
+      toast.error("Bulk status update failed");
+      // Still clear selection to avoid accidental repeated actions
+      setSelectedIds(new Set());
     }
   };
 
@@ -459,6 +541,11 @@ ${employerDisplayName}`;
   const handleOpenContact = (mode: "single" | "bulk") => {
     const selected = candidates.filter((c) => selectedIds.has(c.id));
     if (!selected.length) return;
+
+    setContactRecipients(selected);
+
+    // Clear selection once an action is chosen (requested: checkbox should be removed)
+    setSelectedIds(new Set());
 
     const first = selected[0];
     setContactMode(mode);
@@ -501,8 +588,12 @@ ${employerDisplayName}`;
     return out;
   };
 
+  const [contactRecipients, setContactRecipients] = useState<Candidate[]>([]);
+  const [inviteRecipients, setInviteRecipients] = useState<Candidate[]>([]);
+
   const handleSendContact = async () => {
-    const selected = candidates.filter((c) => selectedIds.has(c.id)).filter((c) => !!c.email);
+    const selected = (contactRecipients || []).filter((c) => !!c.email);
+
     if (!selected.length) {
       setContactOpen(false);
       return;
@@ -581,6 +672,11 @@ ${employerDisplayName}`;
     const selected = candidates.filter((c) => selectedIds.has(c.id)).filter((c) => !!c.email);
     if (!selected.length) return;
 
+    setInviteRecipients(selected);
+
+    // Clear selection once an action is chosen (requested: checkbox should be removed)
+    setSelectedIds(new Set());
+
     // reset invite flow state
     setInviteStep("type");
     setInviteType(null);
@@ -652,7 +748,7 @@ ${employerDisplayName}`;
   };
 
   const handleSendInvite = async () => {
-    const selected = candidates.filter((c) => selectedIds.has(c.id)).filter((c) => !!c.email);
+    const selected = (inviteRecipients || []).filter((c) => !!c.email);
     if (!selected.length) {
       setInviteOpen(false);
       return;
@@ -859,24 +955,36 @@ ${employerDisplayName}`;
               Actions
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem title="Reject" onClick={() => handleBulkStatusChange("Rejected")}>
-              Reject
-            </DropdownMenuItem>
+          <DropdownMenuContent align="end" className="p-1 [&>[role=menuitem]]:my-0 [&>[role=menuitem]]:py-1.5">
+            {candidates.some((c) => selectedIds.has(c.id) && c.status === "Rejected") ? (
+              <DropdownMenuItem
+                className="py-1.5"
+                title="Cancel Rejection"
+                onClick={() => handleBulkStatusChange("Application Sent")}
+              >
+                Cancel Rejection
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                className="py-1.5"
+                title="Reject"
+                onClick={() => handleBulkStatusChange("Rejected")}
+              >
+                Reject
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
-              title="Cancel Rejection"
-              disabled={
-                !candidates.some((c) => selectedIds.has(c.id) && c.status === "Rejected")
-              }
-              onClick={() => handleBulkStatusChange("Under Review")}
+              className="py-1.5"
+              title="Email Candidate"
+              onClick={() => handleOpenContact("bulk")}
             >
-              Cancel Rejection
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem title="Email Candidate" onClick={() => handleOpenContact("bulk")}>
               Email Candidate
             </DropdownMenuItem>
-            <DropdownMenuItem title="Invite for Interview" onClick={handleOpenInvite}>
+            <DropdownMenuItem
+              className="py-1.5"
+              title="Invite for Interview"
+              onClick={handleOpenInvite}
+            >
               Invite for Interview
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -1036,33 +1144,156 @@ ${employerDisplayName}`;
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="p-1 [&>[role=menuitem]]:my-0 [&>[role=menuitem]]:py-1.5">
                             <DropdownMenuItem
+                              className="py-1.5"
                               title={candidate.status === "Rejected" ? "Cancel Rejection" : "Reject"}
-                              onClick={() => {
-                                setSelectedIds(new Set([candidate.id]));
-                                handleBulkStatusChange(
-                                  candidate.status === "Rejected" ? "Under Review" : "Rejected"
-                                );
+                              onClick={async () => {
+                                const nextStatus =
+                                  candidate.status === "Rejected" ? "Application Sent" : "Rejected";
+
+                                // Clear selection after action (user asked checkbox should be removed)
+                                setSelectedIds(new Set());
+
+                                try {
+                                  await apiClient.updateApplicationStatus(
+                                    candidate.applicationId,
+                                    nextStatus as any
+                                  );
+
+                                  // Refetch to ensure refresh matches DB and status sticks.
+                                  const refreshed = jobIdFilter
+                                    ? await apiClient.getJobApplications(jobIdFilter).catch(() => ({ success: false, data: [] }))
+                                    : await apiClient.getApplications().catch(() => ({ success: false, data: [] }));
+
+                                  if ((refreshed as any)?.success && (refreshed as any)?.data) {
+                                    const rawApps: any[] = (refreshed as any).data as any[];
+
+                                    const candidatesData: Candidate[] = rawApps.map((app: any, index: number) => {
+                                      const appliedAtRaw = app.applied_at ?? null;
+                                      const appliedAtFormatted =
+                                        appliedAtRaw != null
+                                          ? formatDistanceToNow(new Date(appliedAtRaw), { addSuffix: true })
+                                          : null;
+
+                                      const name =
+                                        app.candidate_name ||
+                                        app.candidate_email ||
+                                        `Candidate ${index + 1}`;
+
+                                      return {
+                                        id: String(app.id || app.application_id),
+                                        applicationId: String(app.id || app.application_id),
+                                        userId: String(app.user_id),
+                                        jobId: String(app.job_id),
+                                        name,
+                                        email: app.candidate_email ?? undefined,
+                                        jobTitle: app.job?.title || "Unknown Position",
+                                        matchScore:
+                                          typeof app.job?.match_score === "number"
+                                            ? app.job.match_score
+                                            : app.job?.match_score != null
+                                              ? Number(app.job.match_score)
+                                              : null,
+                                        rankScore:
+                                          typeof app.rank_score === "number"
+                                            ? app.rank_score
+                                            : app.rank_score != null
+                                              ? Number(app.rank_score)
+                                              : null,
+                                        scoreEdu:
+                                          typeof app.score_edu === "number"
+                                            ? app.score_edu
+                                            : app.score_edu != null
+                                              ? Number(app.score_edu)
+                                              : null,
+                                        scoreCompany:
+                                          typeof app.score_company === "number"
+                                            ? app.score_company
+                                            : app.score_company != null
+                                              ? Number(app.score_company)
+                                              : null,
+                                        latestCompany:
+                                          app.latest_company != null && String(app.latest_company).trim() !== ""
+                                            ? String(app.latest_company).trim()
+                                            : null,
+                                        latestSchool:
+                                          app.latest_school != null && String(app.latest_school).trim() !== ""
+                                            ? String(app.latest_school).trim()
+                                            : null,
+                                        matchSummary:
+                                          typeof (app.job as any)?.match_summary === "string"
+                                            ? (app.job as any).match_summary
+                                            : null,
+                                        detailResponse: (() => {
+                                          const raw = (app.job as any)?.detail_response;
+                                          if (raw == null) return undefined;
+                                          if (typeof raw === "string") {
+                                            try {
+                                              return JSON.parse(raw);
+                                            } catch {
+                                              return raw;
+                                            }
+                                          }
+                                          return raw;
+                                        })(),
+                                        status: app.status || "Application Sent",
+                                        appliedAt: appliedAtFormatted,
+                                        appliedAtRaw: appliedAtRaw,
+                                        resumeId: app.resume_id ?? undefined,
+                                      };
+                                    });
+
+                                    setCandidates(candidatesData);
+                                  }
+
+                                  toast.success("Status updated");
+                                } catch (err) {
+                                  console.error(
+                                    "Failed to update status for application",
+                                    candidate.applicationId,
+                                    err
+                                  );
+                                  toast.error("Failed to update status");
+                                }
                               }}
                             >
                               {candidate.status === "Rejected" ? "Cancel Rejection" : "Reject"}
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem
+                              className="py-1.5"
                               title="Email Candidate"
                               onClick={() => {
-                                setSelectedIds(new Set([candidate.id]));
-                                handleOpenContact("single");
+                                setContactRecipients([candidate]);
+                                setContactMode("single");
+                                setContactHint(null);
+
+                                // Clear selection immediately (requested behavior)
+                                setSelectedIds(new Set());
+
+                                setContactSubject(
+                                  `Regarding your application to ${candidate.jobTitle}`
+                                );
+                                setContactBody(buildEmailBody("single", candidate));
+                                setContactOpen(true);
                               }}
                             >
                               Email Candidate
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              className="py-1.5"
                               title="Invite for Interview"
-                              onClick={async () => {
-                                setSelectedIds(new Set([candidate.id]));
-                                await handleOpenInvite();
+                              onClick={() => {
+                                setInviteRecipients(candidate.email ? [candidate] : []);
+                                setInviteStep("type");
+                                setInviteType(null);
+                                setHumanSelectedSlots([]);
+                                setSelectedInterviewId("");
+
+                                // Clear selection immediately (requested behavior)
+                                setSelectedIds(new Set());
+
+                                setInviteOpen(true);
                               }}
                             >
                               Invite for Interview
