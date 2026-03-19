@@ -28,10 +28,25 @@ import {
   Calendar,
   RefreshCw,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useJobs } from "@/contexts/JobsContext";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
+type TalentJobRow = {
+  id: string;
+  matchScore?: number;
+  matchSummary?: string;
+  detailResponse?: any;
+};
+
+function jobHasMatchFromApi(j: TalentJobRow) {
+  return (
+    (typeof j.matchScore === "number" && j.matchScore > 0) ||
+    !!(j.matchSummary && String(j.matchSummary).trim()) ||
+    j.detailResponse != null
+  );
+}
 
 const TalentJobs = () => {
   const [searchInput, setSearchInput] = useState("");
@@ -50,6 +65,8 @@ const TalentJobs = () => {
   const [bulkApplyMode, setBulkApplyMode] = useState(false);
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
   const [selectedJobForView, setSelectedJobForView] = useState<typeof availableJobs[0] | null>(null);
+  const [matchDetailsOpen, setMatchDetailsOpen] = useState(false);
+  const [selectedMatchDetails, setSelectedMatchDetails] = useState<any | null>(null);
   const {
     availableJobs,
     jobsWithMatch,
@@ -65,11 +82,10 @@ const TalentJobs = () => {
     savedJobs,
   } = useJobs();
 
+  // Load match scores so Find Jobs can show the same scores as Dashboard "Recommended for you".
   useEffect(() => {
-    if (filterMinMatch != null && jobsWithMatch === null) {
-      fetchJobsWithMatch();
-    }
-  }, [filterMinMatch, jobsWithMatch, fetchJobsWithMatch]);
+    fetchJobsWithMatch();
+  }, [fetchJobsWithMatch]);
 
   const toggleFilterType = (type: "remote" | "hybrid" | "onsite") => {
     setFilterType((prev) => (prev === type ? null : type));
@@ -241,14 +257,45 @@ const TalentJobs = () => {
     removeFromSaved(job.id);
   };
 
-  // Merge available jobs (or jobsWithMatch when 90%+ filter is on) with saved jobs so saved jobs appear in the list
-  const rawBaseJobs = filterMinMatch != null ? (jobsWithMatch ?? []) : availableJobs;
   const savedJobIds = new Set(savedJobs.map((j) => j.id));
-  const baseJobs = (() => {
+
+  const matchByJobId = useMemo(() => {
+    const m = new Map<string, (typeof availableJobs)[0]>();
+    for (const j of jobsWithMatch ?? []) {
+      m.set(j.id, j);
+    }
+    return m;
+  }, [jobsWithMatch]);
+
+  // Merge available jobs (or jobsWithMatch when 90%+ filter is on) with saved jobs; enrich with match when not using match-only list
+  const rawBaseJobs = useMemo(() => {
+    if (filterMinMatch != null) {
+      return jobsWithMatch ?? [];
+    }
+    return availableJobs.map((job) => {
+      const m = matchByJobId.get(job.id);
+      if (!m || !jobHasMatchFromApi(m)) return job;
+      return {
+        ...job,
+        matchScore: m.matchScore,
+        matchSummary: m.matchSummary,
+        detailResponse: m.detailResponse,
+      };
+    });
+  }, [filterMinMatch, jobsWithMatch, availableJobs, matchByJobId]);
+
+  const baseJobs = useMemo(() => {
     const byId = new Map(rawBaseJobs.map((j) => [j.id, j]));
-    savedJobs.forEach((j) => byId.set(j.id, j));
+    savedJobs.forEach((j) => {
+      const withMatch = matchByJobId.get(j.id);
+      const merged =
+        filterMinMatch == null && withMatch && jobHasMatchFromApi(withMatch)
+          ? { ...j, matchScore: withMatch.matchScore, matchSummary: withMatch.matchSummary, detailResponse: withMatch.detailResponse }
+          : j;
+      byId.set(j.id, merged);
+    });
     return Array.from(byId.values());
-  })();
+  }, [rawBaseJobs, savedJobs, matchByJobId, filterMinMatch]);
 
   const filteredJobs = baseJobs
     .filter((job) => {
@@ -452,6 +499,18 @@ const TalentJobs = () => {
               onSave={() => handleSave(job)}
               onUnsave={() => handleUnsave(job)}
               onView={() => handleViewJob(job)}
+              onViewMatchDetails={
+                jobHasMatchFromApi(job)
+                  ? () => {
+                      const basic = {
+                        score: job.matchScore ?? undefined,
+                        summary: job.matchSummary ?? undefined,
+                      };
+                      setSelectedMatchDetails(job.detailResponse ?? basic);
+                      setMatchDetailsOpen(true);
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -547,6 +606,80 @@ const TalentJobs = () => {
         onOpenChange={setJobDescriptionOpen}
         job={selectedJobForView}
       />
+
+      <Dialog open={matchDetailsOpen} onOpenChange={setMatchDetailsOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Overall Match</DialogTitle>
+            <DialogDescription>
+              Detailed scoring and explanation for why this job was recommended.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedMatchDetails && (
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="font-semibold">
+                  Summary (Match Score: {selectedMatchDetails.score}%)
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {selectedMatchDetails.summary}
+                </p>
+              </div>
+
+              <div>
+                <p className="font-semibold">Overall Score</p>
+                <p className="text-muted-foreground">
+                  Final overall score: {selectedMatchDetails.score} / 100
+                </p>
+              </div>
+
+              {selectedMatchDetails.skills && selectedMatchDetails.skills.length > 0 && (
+                <div>
+                  <p className="font-semibold">Skills</p>
+                  <div className="mt-2 space-y-2">
+                    {selectedMatchDetails.skills.map((s: any) => (
+                      <div key={s.name}>
+                        <p className="font-medium">{s.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Match type: {s.match_type}, Experience: {s.years_experience}
+                        </p>
+                        {Array.isArray(s.evidence) && s.evidence.length > 0 && (
+                          <p className="text-xs">
+                            Evidence: {s.evidence.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedMatchDetails.notes_score_breakdown && (
+                <div>
+                  <p className="font-semibold">Score Breakdown</p>
+                  <div className="mt-2 space-y-2">
+                    {Object.values(
+                      selectedMatchDetails.notes_score_breakdown as Record<string, any>
+                    ).map((note: any, idx: number) => (
+                      <div key={idx}>
+                        <p className="text-xs font-medium">{note.note_text}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Score: {note.score} / {note.max_points} (weight {note.weight})
+                        </p>
+                        {note.match_summary && (
+                          <p className="text-xs text-muted-foreground">
+                            {note.match_summary}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
