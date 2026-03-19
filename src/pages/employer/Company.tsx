@@ -259,6 +259,9 @@ const EmployerCompany = () => {
   }
 
   const orgData = org ?? emptyOrg;
+  const orgLogoUrl: string | null =
+    (org && org.image_url ? String(org.image_url) : null) ??
+    ((user as any)?.picture_url ? String((user as any).picture_url) : null);
 
   return (
     <DashboardLayout
@@ -279,9 +282,9 @@ const EmployerCompany = () => {
           {/* Logo control row sits above details to avoid empty left-column space */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-border">
             <div className="shrink-0 mx-auto sm:mx-0">
-              {orgData.image_url ? (
+              {orgLogoUrl ? (
                 <img
-                  src={orgData.image_url}
+                  src={orgLogoUrl}
                   alt="Company logo"
                   className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover"
                 />
