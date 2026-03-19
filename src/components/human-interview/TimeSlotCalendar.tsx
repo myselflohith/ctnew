@@ -268,11 +268,11 @@ export function TimeSlotCalendar({
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
-          <DialogHeader>
+          <DialogHeader className="shrink-0">
             <DialogTitle>Confirm Slot</DialogTitle>
           </DialogHeader>
 
-          <div className="text-sm">
+          <div className="flex-1 overflow-auto text-sm">
             <div>
               <span className="font-semibold">Date:</span>{" "}
               {slotInfo ? moment(slotInfo.start).format("MMMM DD, YYYY") : ""}
@@ -286,7 +286,7 @@ export function TimeSlotCalendar({
             <div className="mt-2 text-muted-foreground">Time Zone: {DEFAULT_TIMEZONE}</div>
           </div>
 
-          <DialogFooter className="mt-4 gap-2">
+          <DialogFooter className="shrink-0 mt-4 gap-2">
             <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>

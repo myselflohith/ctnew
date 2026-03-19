@@ -254,37 +254,31 @@ const HumanInterviewSetup = ({ onBack }: HumanInterviewSetupProps) => {
 
       await Promise.all(
         selected.map(async (candidate) => {
-          const payload = {
-            candidateName: candidate.name,
-            candidateEmail: candidate.email,
-            candidateUserId: undefined,
-            jobId: formData.jobId ? Number(formData.jobId) : undefined,
-            messageSubject,
-            messageBody: "",
-          };
-
-          const res = await apiClient.request<{
-            success: boolean;
-            data?: { request: any; links?: any; scheduleUrl?: string; manageUrl?: string; match?: any };
-            error?: string;
-          }>("/human-interview/request", {
+          // 1) Create/ensure scheduling record and generate public schedule link
+          const reqResp: any = await apiClient.request("/human-interview/request", {
             method: "POST",
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              candidateName: candidate.name,
+              candidateEmail: candidate.email,
+              jobId: formData.jobId ? Number(formData.jobId) : undefined,
+            }),
           });
 
-          const scheduleUrl: string | undefined =
-            (res as any)?.data?.scheduleUrl ||
-            (res as any)?.data?.links?.scheduleUrl ||
-            (res as any)?.data?.links?.candidateUrl;
+          const scheduleUrl: string =
+            reqResp?.data?.scheduleUrl ||
+            reqResp?.scheduleUrl ||
+            reqResp?.data?.data?.scheduleUrl ||
+            "";
 
-          if (!res?.success) {
-            throw new Error(res?.error || `Failed to create request for ${candidate.name}`);
+          if (!reqResp?.success) {
+            throw new Error(reqResp?.error || `Failed to create request for ${candidate.name}`);
           }
 
-          if (!scheduleUrl || scheduleUrl.includes("hir_cand_") || scheduleUrl.includes("hir_emp_")) {
-            throw new Error("Booking link generation returned an invalid URL (legacy token link).");
+          if (!scheduleUrl) {
+            throw new Error("Booking link generation failed (missing scheduleUrl).");
           }
 
+          // 2) Send invite email (same endpoint as Candidates -> Invite dropdown)
           const bodyText = buildHumanInterviewEmailBody(candidate, filled, scheduleUrl, jobTitle);
 
           const emailRes: any = await apiClient.request("/employer/candidates/email", {
