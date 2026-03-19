@@ -30,6 +30,24 @@ module.exports = {
         // RESUME_MATCH_API: 'http://ec2-3-136-87-20.us-east-2.compute.amazonaws.com:8080/match',
       },
     },
+    {
+      name: 'ctnew-job-autopilot-worker',
+      script: 'dist/server/workers/job-autopilot-sourcing.worker.js',
+      exec_mode: 'fork',
+      instances: 1,
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+    {
+      name: 'ctnew-interview-video-worker',
+      script: 'dist/server/workers/interview-video.worker.js',
+      exec_mode: 'fork',
+      instances: 1,
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
 
