@@ -324,12 +324,6 @@ const EmployerResumeDatabase = () => {
                       : "the candidate's past employers."}
                   </p>
                 )}
-                {scoreExplainCandidate.matchScore != null && (
-                  <p>
-                    <span className="font-semibold">Match score:</span>{" "}
-                    {Math.round(scoreExplainCandidate.matchScore)}%
-                  </p>
-                )}
                 {scoreExplainCandidate.matchSummary && (
                   <p className="text-xs text-muted-foreground mt-1">
                     {scoreExplainCandidate.matchSummary}

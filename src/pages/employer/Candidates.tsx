@@ -1614,12 +1614,6 @@ ${employerDisplayName}`;
                         : "the candidate's past employers."}
                     </p>
                   )}
-                  {scoreExplainCandidate.matchScore != null && (
-                    <p>
-                      <span className="font-semibold">Match score:</span>{" "}
-                      {Math.round(scoreExplainCandidate.matchScore)}%
-                    </p>
-                  )}
                 </div>
               )}
 
