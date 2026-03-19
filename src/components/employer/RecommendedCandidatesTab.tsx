@@ -25,7 +25,17 @@ import CandidateProfileModal from "@/components/employer/CandidateProfileModal";
 import { FileText, Info } from "lucide-react";
 import linkedInIcon from "@/assets/theme/icons/linkedin-icon.svg";
 
-type JobOption = { id: string; title: string };
+type JobOption = {
+  id: string;
+  title: string;
+
+  // Optional extra fields if parent passes richer job objects
+  type?: string | null;
+  location?: string | null;
+  work_type?: string | null;
+  status?: string | null;
+  target_count?: number | null;
+};
 
 type Props = {
   jobOptions: JobOption[];
@@ -194,6 +204,44 @@ export default function RecommendedCandidatesTab({
     [jobOptions, jobId],
   );
 
+  const jobSummary = useMemo(() => {
+    const title = selectedJob?.title || jobTitle || "-";
+
+    // Try a few common field names so this works even if parent passes Rails-like keys.
+    const type =
+      (selectedJob as any)?.type ??
+      (selectedJob as any)?.job_type ??
+      (selectedJob as any)?.employment_type ??
+      "-";
+
+    const workType =
+      (selectedJob as any)?.work_type ??
+      (selectedJob as any)?.workMode ??
+      (selectedJob as any)?.work_mode ??
+      (selectedJob as any)?.days_in_office ??
+      "-";
+
+    const location =
+      (selectedJob as any)?.location ??
+      (selectedJob as any)?.job_location ??
+      (selectedJob as any)?.city ??
+      "-";
+
+    const status = (selectedJob as any)?.status ?? "Active";
+
+    const matchedCount = rows.length;
+
+    const goalRaw =
+      (selectedJob as any)?.target_count ??
+      (selectedJob as any)?.targetCount ??
+      (selectedJob as any)?.goal ??
+      null;
+
+    const goal = goalRaw != null && Number.isFinite(Number(goalRaw)) ? Number(goalRaw) : 50;
+
+    return { title, type, workType, location, status, matchedCount, goal };
+  }, [rows.length, selectedJob, jobTitle]);
+
   const fetchEmailHistoryCounts = async (candidateUserIds: number[]) => {
     if (!jobId) return;
     if (candidateUserIds.length === 0) return;
@@ -229,8 +277,11 @@ export default function RecommendedCandidatesTab({
 
     setError(null);
     try {
+      const qs = new URLSearchParams();
+      qs.set("min_match_score", "70");
+
       const res: any = await apiClient.request(
-        `/jobs/${jobId}/autopilot-candidates`,
+        `/jobs/${jobId}/autopilot-candidates?${qs.toString()}`,
       );
       const data = (res as any)?.data ?? [];
       const nextRows = Array.isArray(data) ? data : [];
@@ -645,14 +696,67 @@ CardinalTalent.ai
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-xl bg-secondary/30 p-6 text-sm text-muted-foreground space-y-2">
-          <div>No recommendations yet.</div>
-          <div className="text-xs">
-            Autosourcing runs in the background. This list will auto-refresh in
-            ~90 seconds.
+          <div>No Recommended Candidates for this Job.</div>
+          <div className="text-xs text-muted-foreground/80">
+            Recommendations only appear when a candidate’s match score is 70% or higher. If autosourcing just ran,
+            check again later or lower the threshold for debugging via{" "}
+            <span className="font-mono">?min_match_score=0</span>.
           </div>
         </div>
       ) : (
         <>
+          {/* Job Summary (parity-style top div) */}
+          <div className="rounded-xl border border-border/60 bg-background shadow-sm p-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">Title</div>
+                <div className="text-sm font-medium text-foreground">
+                  {jobSummary.title}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Type</div>
+                <div className="text-sm font-medium text-foreground">
+                  {jobSummary.type}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Location</div>
+                <div className="text-sm font-medium text-foreground truncate" title={jobSummary.location}>
+                  {jobSummary.location}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Status</div>
+                <div className="text-sm font-medium text-foreground">
+                  {jobSummary.status}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-border/60 bg-secondary/10 p-3 text-center min-w-[150px]">
+                  <div className="text-xs text-muted-foreground mb-0.5 font-semibold">
+                    Candidates Matched
+                  </div>
+                  <div className="text-base font-semibold text-foreground">
+                    {jobSummary.matchedCount}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border/60 bg-secondary/10 p-3 text-center">
+                  <div className="text-xs text-muted-foreground font-semibold">
+                    Goal
+                  </div>
+                  <div className="text-base font-semibold text-foreground">
+                    {jobSummary.goal}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           {/* Bulk actions header */}
           <div className="px-1 py-1 border-b border-border/60 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -696,15 +800,13 @@ CardinalTalent.ai
               className="grid bg-secondary/30 px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide items-center"
               style={{
                 gridTemplateColumns:
-                  "40px minmax(180px, 2.2fr) minmax(220px, 2.2fr) minmax(130px, 1.2fr) minmax(170px, 1.6fr) minmax(170px, 1.6fr) minmax(120px, 1.1fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(140px, 1.1fr)",
+                  "40px minmax(180px, 2.2fr) minmax(220px, 2.2fr) minmax(130px, 1.2fr) minmax(120px, 1.1fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(140px, 1.1fr)",
               }}
             >
               <div></div>
               <div>Name</div>
               <div>Email</div>
               <div>Date Added</div>
-              <div>Current Company</div>
-              <div>Current Position</div>
               <div>Status</div>
               <div>Rank Score</div>
               <div>Match Score</div>
@@ -755,7 +857,7 @@ CardinalTalent.ai
                       className="grid items-center"
                       style={{
                         gridTemplateColumns:
-                          "40px minmax(180px, 2.2fr) minmax(220px, 2.2fr) minmax(130px, 1.2fr) minmax(170px, 1.6fr) minmax(170px, 1.6fr) minmax(120px, 1.1fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(140px, 1.1fr)",
+                          "40px minmax(180px, 2.2fr) minmax(220px, 2.2fr) minmax(130px, 1.2fr) minmax(120px, 1.1fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(140px, 1.1fr)",
                       }}
                     >
                       <div className="flex justify-center">
@@ -818,24 +920,6 @@ CardinalTalent.ai
                       <div className="min-w-0 pr-2">
                         <div className="text-sm text-foreground whitespace-nowrap">
                           {dateAdded || "-"}
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 pr-2">
-                        <div
-                          className="text-sm text-foreground truncate"
-                          title={c?.current_company || ""}
-                        >
-                          {c?.current_company || "-"}
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 pr-2">
-                        <div
-                          className="text-sm text-foreground truncate"
-                          title={c?.current_position || ""}
-                        >
-                          {c?.current_position || "-"}
                         </div>
                       </div>
 
