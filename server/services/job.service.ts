@@ -690,8 +690,18 @@ export async function updateJobStatus(
   return job;
 }
 
-// Get applications for a specific job
-export async function getApplicationsForJob(jobId: string): Promise<JobApplication[]> {
+// Get applications for a specific job (same payload shape as getApplicationsForEmployer: match + rank + profile hints)
+export async function getApplicationsForJob(jobId: string): Promise<
+  (JobApplication & {
+    candidate_name?: string;
+    candidate_email?: string;
+    rank_score?: number | null;
+    score_edu?: number | null;
+    score_company?: number | null;
+    latest_company?: string | null;
+    latest_school?: string | null;
+  })[]
+> {
   const result = await query(
     `SELECT 
        a.id as application_id,
@@ -709,9 +719,7 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
        j.job_salary AS salary,
        j.created_at AS posted_at,
        COALESCE(m.match_score, 0)::integer AS match_score,
-       m.detail_response AS detail_response,
        (m.detail_response::jsonb ->> 'summary') AS match_summary,
-       m.detail_response AS detail_response,
        m.detail_response AS detail_response,
        CASE 
          WHEN j.skills IS NOT NULL AND j.skills != '' 
@@ -723,47 +731,62 @@ export async function getApplicationsForJob(jobId: string): Promise<JobApplicati
        j.updated_at as job_updated_at,
        u.first_name,
        u.last_name,
-       u.email
+       u.email,
+       p.rank_score as candidate_rank_score,
+       p.score_edu as candidate_score_edu,
+       p.score_company as candidate_score_company,
+       p.latest_company as candidate_latest_company,
+       p.latest_school as candidate_latest_school
      FROM ct_job_applications a
      JOIN jobs j ON a.job_id = j.id
      LEFT JOIN users u ON a.user_id = u.id
+     LEFT JOIN people p ON u.person_id = p.id
      LEFT JOIN employer_auto_matched_candidates m
-       ON m.person_id = u.person_id
-      AND m.job_id    = j.id
+       ON m.person_id = COALESCE(u.person_id, u.id)
+      AND m.job_id = j.id
       AND m.source_type = 'talent'
      WHERE a.job_id = $1
      ORDER BY a.applied_at DESC`,
     [jobId]
   );
-  return result.rows.map(row => ({
-    id: row.application_id,
-    user_id: row.user_id,
-    job_id: row.job_id,
-    resume_id: row.resume_id,
-    status: row.status,
-    applied_at: row.applied_at,
-    updated_at: row.application_updated_at,
-    job: {
-      id: row.job_id,
-      title: row.title,
-      company: row.company,
-      location: row.location,
-      type: row.type,
-      salary: row.salary,
-      posted_at: row.posted_at,
-      match_score: row.match_score,
-      match_summary: row.match_summary ?? null,
-      detail_response: row.detail_response ?? null,
-      skills: row.skills,
-      description: row.description,
-      created_at: row.job_created_at,
-      updated_at: row.job_updated_at,
-    },
-    candidate_name: row.first_name && row.last_name 
-      ? `${row.first_name} ${row.last_name}` 
-      : row.email || 'Unknown',
-    candidate_email: row.email,
-  }));
+  return result.rows.map((row) => {
+    const candidateName =
+      row.first_name != null || row.last_name != null
+        ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim()
+        : row.email || 'Unknown';
+    return {
+      id: row.application_id,
+      user_id: row.user_id,
+      job_id: row.job_id,
+      resume_id: row.resume_id,
+      status: row.application_status,
+      applied_at: row.applied_at,
+      updated_at: row.application_updated_at,
+      candidate_name: candidateName || undefined,
+      candidate_email: row.email ?? undefined,
+      rank_score: row.candidate_rank_score != null ? Number(row.candidate_rank_score) : null,
+      score_edu: row.candidate_score_edu != null ? Number(row.candidate_score_edu) : null,
+      score_company: row.candidate_score_company != null ? Number(row.candidate_score_company) : null,
+      latest_company: row.candidate_latest_company != null ? String(row.candidate_latest_company) : null,
+      latest_school: row.candidate_latest_school != null ? String(row.candidate_latest_school) : null,
+      job: {
+        id: row.job_id,
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        type: row.type,
+        salary: row.salary,
+        posted_at: row.posted_at,
+        match_score: row.match_score,
+        match_summary: row.match_summary ?? null,
+        detail_response: row.detail_response ?? null,
+        skills: row.skills,
+        description: row.description,
+        created_at: row.job_created_at,
+        updated_at: row.job_updated_at,
+      },
+    };
+  });
 }
 
 // Save a job for a user
@@ -918,7 +941,7 @@ export async function getApplicationsForEmployer(employerUserId: number): Promis
      LEFT JOIN users u ON a.user_id = u.id
      LEFT JOIN people p ON u.person_id = p.id
      LEFT JOIN employer_auto_matched_candidates m
-       ON m.person_id = u.person_id
+       ON m.person_id = COALESCE(u.person_id, u.id)
       AND m.job_id    = j.id
       AND m.source_type = 'talent'
      WHERE j.discarded_at IS NULL
