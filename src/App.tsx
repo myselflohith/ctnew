@@ -46,7 +46,7 @@ import InterviewDetails from "./pages/employer/InterviewDetails";
 import CandidateReportPage from "./pages/employer/CandidateReportPage";
 import InviteCandidates from "./pages/employer/InviteCandidates";
 import EmployerCompany from "./pages/employer/Company";
-import EmployerSettings from "./pages/employer/Settings";
+import EmployerProfile from "./pages/employer/Profile";
 import EmployerSetCompany from "./pages/employer/SetCompany";
 import EmployerRequireCompany from "./components/EmployerRequireCompany";
 import InvestorRequireAuth from "./components/InvestorRequireAuth";
@@ -128,7 +128,8 @@ const App = () => (
             <Route path="/employer/interviews/:id/invite" element={<EmployerRequireCompany><InviteCandidates /></EmployerRequireCompany>} />
             <Route path="/employer/candidate-report/:reportId" element={<EmployerRequireCompany><CandidateReportPage /></EmployerRequireCompany>} />
             <Route path="/employer/company" element={<EmployerRequireCompany><EmployerCompany /></EmployerRequireCompany>} />
-            <Route path="/employer/settings" element={<EmployerRequireCompany><EmployerSettings /></EmployerRequireCompany>} />
+            <Route path="/employer/profile" element={<EmployerRequireCompany><EmployerProfile /></EmployerRequireCompany>} />
+            <Route path="/employer/settings" element={<EmployerRequireCompany><Navigate to="/employer/company" replace /></EmployerRequireCompany>} />
             
             {/* Recruiter routes */}
             <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />

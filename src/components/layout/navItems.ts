@@ -26,7 +26,6 @@ export const employerNavItems: NavItem[] = [
   { icon: Database, label: "Resume Database", path: "/employer/resume-database" },
   { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
   { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
 ];
 
 export const recruiterNavItems: NavItem[] = [

@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { employerNavItems } from "@/components/layout/navItems";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,28 +10,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  Database,
-  Calendar,
-  Building2,
-  Settings,
-  Search,
-} from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useState, FormEvent } from "react";
 import { apiClient } from "@/lib/api";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Database, label: "Resume Database", path: "/employer/resume-database" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
 
 interface ResumeCandidate {
   userId: string;
@@ -114,7 +96,7 @@ const EmployerResumeDatabase = () => {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
+      navItems={employerNavItems}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">

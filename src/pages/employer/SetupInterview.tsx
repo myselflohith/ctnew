@@ -1,31 +1,11 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { employerNavItems } from "@/components/layout/navItems";
 import { Button } from "@/components/ui/button";
-import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  Database,
-  Building2,
-  Settings,
-  Calendar,
-  ArrowLeft,
-  Zap,
-  Users2,
-} from "lucide-react";
+import { ArrowLeft, Zap, Users2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AIInterviewSetup from "@/components/employer/AIInterviewSetup";
 import HumanInterviewSetup from "@/components/employer/HumanInterviewSetup";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Database, label: "Resume Database", path: "/employer/resume-database" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
 
 type InterviewType = "ai" | "human" | null;
 
@@ -63,7 +43,7 @@ const SetupInterview = () => {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
+      navItems={employerNavItems}
       userName="Jane Smith"
       companyName="TechCorp AI"
     >

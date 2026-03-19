@@ -183,7 +183,13 @@ const DashboardLayout = ({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem
                 onClick={() =>
-                  navigate(role === "talent" ? "/talent/profile" : `/${role}/settings`)
+                  navigate(
+                    role === "talent"
+                      ? "/talent/profile"
+                      : role === "employer"
+                        ? "/employer/profile"
+                        : `/${role}/settings`
+                  )
                 }
               >
                 <User className="w-4 h-4 mr-2" />

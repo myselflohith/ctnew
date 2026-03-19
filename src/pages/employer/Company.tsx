@@ -1,38 +1,23 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { employerNavItems } from "@/components/layout/navItems";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
-  LayoutDashboard,
-  Briefcase,
-  Users,
-  Database,
   Building2,
-  Settings,
-  Calendar,
   Upload,
   Globe,
   Linkedin,
   Twitter,
   Plus,
-  X,
   Trash2,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/employer/dashboard" },
-  { icon: Briefcase, label: "Jobs", path: "/employer/jobs" },
-  { icon: Users, label: "Candidates", path: "/employer/candidates" },
-  { icon: Database, label: "Resume Database", path: "/employer/resume-database" },
-  { icon: Calendar, label: "Interviews", path: "/employer/interviews" },
-  { icon: Building2, label: "Company", path: "/employer/company" },
-  { icon: Settings, label: "Settings", path: "/employer/settings" },
-];
 
 interface Requirement {
   id?: string;
@@ -264,7 +249,7 @@ const EmployerCompany = () => {
 
   if (fetching) {
     return (
-      <DashboardLayout role="employer" navItems={navItems}>
+      <DashboardLayout role="employer" navItems={employerNavItems}>
         <div className="mb-8">
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">Company Profile</h1>
           <p className="text-muted-foreground">Loading company data...</p>
@@ -278,7 +263,7 @@ const EmployerCompany = () => {
   return (
     <DashboardLayout
       role="employer"
-      navItems={navItems}
+      navItems={employerNavItems}
     >
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">
@@ -558,6 +543,53 @@ const EmployerCompany = () => {
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-6 mt-6">
+        <h2 className="font-display text-lg font-semibold text-foreground mb-2">
+          Notification preferences
+        </h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Choose what you want to be notified about.
+        </p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-foreground">New applications</p>
+              <p className="text-sm text-muted-foreground">
+                When candidates apply to your jobs
+              </p>
+            </div>
+            <Switch defaultChecked />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-foreground">Interview reminders</p>
+              <p className="text-sm text-muted-foreground">
+                Before scheduled interviews
+              </p>
+            </div>
+            <Switch defaultChecked />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-foreground">Weekly digest</p>
+              <p className="text-sm text-muted-foreground">
+                Summary of hiring activity
+              </p>
+            </div>
+            <Switch />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-foreground">AI recommendations</p>
+              <p className="text-sm text-muted-foreground">
+                High-match candidate alerts
+              </p>
+            </div>
+            <Switch defaultChecked />
+          </div>
         </div>
       </div>
     </DashboardLayout>
