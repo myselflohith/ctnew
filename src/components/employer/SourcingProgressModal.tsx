@@ -34,6 +34,7 @@ export default function SourcingProgressModal({
   durationMs = 45_000,
   onDone,
 }: Props) {
+  const [isComplete, setIsComplete] = useState(false);
   const [currentCount, setCurrentCount] = useState(0);
   const startRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -46,6 +47,7 @@ export default function SourcingProgressModal({
   useEffect(() => {
     if (!open) return;
 
+    setIsComplete(false);
     setCurrentCount(0);
     startRef.current = Date.now();
 
@@ -61,6 +63,7 @@ export default function SourcingProgressModal({
         rafRef.current = requestAnimationFrame(tick);
       } else {
         rafRef.current = null;
+        setIsComplete(true);
         onDone();
       }
     };
@@ -75,8 +78,15 @@ export default function SourcingProgressModal({
   }, [open, durationMs, targetCount, onDone]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // While autosourcing is running, keep the modal non-dismissible.
+        if (!isComplete && next === false) return;
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent className="sm:max-w-md" showCloseButton={isComplete}>
         <DialogHeader>
           <DialogTitle>Autosourcing candidates…</DialogTitle>
         </DialogHeader>
@@ -97,23 +107,26 @@ export default function SourcingProgressModal({
               <div className="mt-1 text-xs text-muted-foreground">{pct}%</div>
             </div>
 
-            <div className="mt-4 flex justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  // keep modal open/close decision to parent
-                  onDone();
-                }}
-              >
-                View Recommendations
-              </Button>
-            </div>
+            {isComplete ? (
+              <div className="mt-4 flex justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    onDone();
+                  }}
+                >
+                  Done
+                </Button>
+              </div>
+            ) : null}
           </div>
 
-          <div className="text-xs text-muted-foreground">
-            Autosourcing runs in the background. You can close this and come back later from the dashboard.
-          </div>
+          {!isComplete ? (
+            <div className="text-xs text-muted-foreground">
+              Autosourcing is in progress. Please keep this window open.
+            </div>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

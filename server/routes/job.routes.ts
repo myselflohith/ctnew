@@ -378,8 +378,15 @@ router.get('/:id/autopilot-candidates', authenticateToken, async (req: Request, 
     // Parity with ch-job-marketplace: allow viewing recommendations regardless of job.autopilot_sourcing flag.
     // If there are 0 recommendation rows, UI simply shows empty list / loading state.
     // Rails schema does NOT have `source_type`; ctnew must not depend on it when sharing DB.
+    const minMatchScoreRaw = req.query.min_match_score;
+    const minMatchScore =
+      typeof minMatchScoreRaw === 'string' && minMatchScoreRaw.trim() !== ''
+        ? Number(minMatchScoreRaw)
+        : 70;
+
     const candidates = await listEmployerAutoMatchedCandidatesForJobWithProfiles({
       jobId: req.params.id,
+      minMatchScore: Number.isFinite(minMatchScore) ? minMatchScore : 70,
     });
 
     res.json({ success: true, data: candidates });

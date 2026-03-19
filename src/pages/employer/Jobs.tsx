@@ -310,7 +310,14 @@ const EmployerJobs = () => {
       displayJobs
         .slice()
         .sort((a, b) => a.title.localeCompare(b.title))
-        .map((j) => ({ id: j.id, title: j.title })),
+        .map((j) => ({
+          id: j.id,
+          title: j.title,
+          type: j.type ?? null,
+          location: j.location ?? null,
+          status: j.status ?? null,
+          target_count: j.target_count ?? null,
+        })),
     [displayJobs],
   );
 
@@ -514,7 +521,7 @@ const EmployerJobs = () => {
                       setSearchParams({ jobId: job.id, recommended: "1" });
                     }}
                   >
-                    Recommended candidates ({hasRecommendations[job.id]})
+                    Recommended candidates
                   </Button>
                 ) : null}
                 <DropdownMenu>

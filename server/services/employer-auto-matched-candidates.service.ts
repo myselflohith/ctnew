@@ -42,14 +42,18 @@ export type EmployerAutoMatchedCandidateWithProfile = EmployerAutoMatchedCandida
 
 export async function listEmployerAutoMatchedCandidatesForJob(params: {
   jobId: string;
+  minMatchScore?: number;
 }): Promise<EmployerAutoMatchedCandidate[]> {
+  const minMatchScore = params.minMatchScore ?? 70;
+
   const result = await query(
     `SELECT *
      FROM employer_auto_matched_candidates
      WHERE job_id = $1
        AND discarded_at IS NULL
+       AND COALESCE(match_score, 0) >= $2
      ORDER BY COALESCE(match_score, 0) DESC, created_at DESC`,
-    [params.jobId]
+    [params.jobId, minMatchScore]
   );
 
   return result.rows;
@@ -64,7 +68,10 @@ export async function listEmployerAutoMatchedCandidatesForJob(params: {
  */
 export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params: {
   jobId: string;
+  minMatchScore?: number;
 }): Promise<EmployerAutoMatchedCandidateWithProfile[]> {
+  const minMatchScore = params.minMatchScore ?? 70;
+
   const result = await query(
     `SELECT
         e.*,
@@ -94,8 +101,9 @@ export async function listEmployerAutoMatchedCandidatesForJobWithProfiles(params
      ) r ON true
      WHERE e.job_id = $1
        AND e.discarded_at IS NULL
+       AND COALESCE(e.match_score, 0) >= $2
      ORDER BY COALESCE(e.match_score, 0) DESC, e.created_at DESC`,
-    [params.jobId]
+    [params.jobId, minMatchScore]
   );
 
   return (result.rows as any[]).map((r) => {
